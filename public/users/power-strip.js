@@ -46,18 +46,30 @@ class PowerStrip extends HTMLElement {
           font-family: system-ui, -apple-system, sans-serif;
         }
         
-        /* Trigger Button Styling */
+        /* Main Container Styling */
+        .container {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 0.3rem;
+        }
+
+        /* Trigger (Login link) Styling */
         .trigger {
            cursor: pointer;
-           padding: 0.3rem;
-           display: flex;
-           align-items: center;
-           justify-content: center;
-           transition: transform 0.2s;
+           padding: 2px 6px;
+           transition: background-color 0.2s;
+           border-radius: 4px;
+           font-size: 0.9rem;
+           font-weight: 500;
+           color: #444;
+           text-decoration: none;
         }
 
         .trigger:hover {
-            transform: scale(1.1);
+            background-color: rgba(0, 0, 0, 0.05);
+            text-decoration: underline;
+            color: #1a73e8; /* Standard-ish blue for links on hover */
         }
 
         svg.bolt {
@@ -65,6 +77,7 @@ class PowerStrip extends HTMLElement {
           height: 1rem;
           fill: #ffcc00; 
           filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.5));
+          flex-shrink: 0;
         }
 
         /* Dialog Styling */
@@ -181,10 +194,13 @@ class PowerStrip extends HTMLElement {
         }
       </style>
       
-      <div class="trigger" id="login-trigger" title="Login" role="button" tabindex="0">
+      <div class="container">
         <svg class="bolt" viewBox="0 0 24 24">
           <path d="M7 2v11h3v9l7-12h-4l4-8z"/>
         </svg>
+        <a class="trigger" id="login-trigger" title="Login" role="button" href="javascript:void(0)">
+          Login
+        </a>
       </div>
 
       <dialog id="login-dialog">
