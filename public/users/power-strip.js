@@ -28,4 +28,3 @@ class PowerStrip extends HTMLElement {
 }
 
 customElements.define('power-strip', PowerStrip);
-console.log('Hello from Startup API');
