@@ -17,10 +17,10 @@ This application uses the Cloudflare Developer Platform, including Workers and D
 This is the easiest way to deploy and keep your worker up to date.
 
 1. **Fork this repository** to your own GitHub account.
-2. Log in to your [Cloudflare Dashboard](https://dash.cloudflare.com/).
-3. Navigate to **Workers & Pages** > **Create application**.
-4. Select **Workers** and click **Connect to Git**.
-5. Select your forked `startup-api-cloudflare` repository.
+2. Go to your [Cloudflare Dashboard's Workers & pages > Create Application](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create).
+3. Click **Connect to Git**.
+4. Select your forked `startup-api-cloudflare` repository.
+5. Pick the name for your site's worker (e.g. you might have multiple)
 6. Deploy the Worker.
 7. In the **Settings** tab of your Worker, go to **Variables** and add the required `ORIGIN_URL` (see [Configuration](#configuration-details) below).
 
