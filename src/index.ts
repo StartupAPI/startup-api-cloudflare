@@ -1,3 +1,5 @@
+const DEFAULT_USERS_PATH = '/users/';
+
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
@@ -15,11 +17,12 @@ export default {
       const contentType = response.headers.get('Content-Type');
 
       if (contentType && contentType.includes('text/html')) {
+        const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
         return new HTMLRewriter()
           .on('body', {
             element(element) {
-              element.prepend('<script src="/users/power-strip.js" async></script>', { html: true });
-              element.prepend('<power-strip></power-strip>', { html: true });
+              element.prepend(`<script src="${usersPath}power-strip.js" async></script>`, { html: true });
+              element.prepend('<power-strip style="position: absolute; top: 0; right: 0; z-index: 9999;"></power-strip>', { html: true });
             },
           })
           .transform(response);

@@ -18,11 +18,13 @@
   },
   "vars": {
     "ORIGIN_URL": "",
+    "USERS_PATH": "/users/",
   },
   "env": {
     "preview": {
       "vars": {
         "ORIGIN_URL": "https://example.com",
+        "USERS_PATH": "/preview-users/",
       },
       // copied from main enviroment to make suer env.ASSETS is not optional
       "assets": {
