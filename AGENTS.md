@@ -1,0 +1,16 @@
+# Startup API Cloudflare App
+
+This application uses Cloudflare Developer Platform, including Workers and DurableObjects to implement functionality that every web application needs on day zero.
+
+## Setup commands
+
+- Install deps: `npm install`
+- Start dev server: `npm dev`
+- Run tests: `npm test`
+- Run prettier: `npm format`
+
+## Code style
+
+- TypeScript strict mode
+- Single quotes, trailing comma
+- Use prettier for formatting after each prompt
