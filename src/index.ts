@@ -8,11 +8,24 @@ export default {
       url.host = originUrl.host;
       url.port = originUrl.port;
 
-      // Create a new request to the origin, ensuring the Host header matches the origin
       const newRequest = new Request(url.toString(), request);
       newRequest.headers.set('Host', url.host);
 
-      return fetch(newRequest);
+      const response = await fetch(newRequest);
+      const contentType = response.headers.get('Content-Type');
+
+      if (contentType && contentType.includes('text/html')) {
+        return new HTMLRewriter()
+          .on('body', {
+            element(element) {
+              element.prepend('<script src="/users/power-strip.js" async></script>', { html: true });
+              element.prepend('<power-strip></power-strip>', { html: true });
+            },
+          })
+          .transform(response);
+      }
+
+      return response;
     }
 
     // do not modify the request as it will loop through the same worker again
