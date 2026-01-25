@@ -11,9 +11,21 @@
   "assets": {
     // The path to the directory containing the `index.html` file to be served at `/`
     "directory": "./public",
+    "run_worker_first": true,
+    "binding": "ASSETS",
   },
   "observability": {
     "enabled": true,
+  },
+  "vars": {
+    "ORIGIN_URL": "",
+  },
+  "env": {
+    "preview": {
+      "vars": {
+        "ORIGIN_URL": "https://example.com",
+      },
+    },
   },
   /**
    * Smart Placement
