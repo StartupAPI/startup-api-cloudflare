@@ -16,6 +16,20 @@
   "observability": {
     "enabled": true,
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "USER",
+        "class_name": "UserDO",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["UserDO"],
+    },
+  ],
   "vars": {
     "ORIGIN_URL": "",
     "USERS_PATH": "/users/",
@@ -31,6 +45,14 @@
         "directory": "./public",
         "run_worker_first": true,
         "binding": "ASSETS",
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "USER",
+            "class_name": "UserDO",
+          },
+        ],
       },
     },
   },

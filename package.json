@@ -12,7 +12,7 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "preview": "wrangler dev --env preview",
-    "test": "vitest",
+    "test": "vitest run",
     "cf-typegen": "wrangler types",
     "format": "npx prettier . --write"
   },

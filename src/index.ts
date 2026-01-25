@@ -1,6 +1,20 @@
+import { UserDO } from './UserDO';
+
 const DEFAULT_USERS_PATH = '/users/';
 
+export { UserDO };
+
 export default {
+  /**
+   * Main Worker fetch handler.
+   * Intercepts requests, serves static assets from `public/users` if applicable,
+   * proxies requests to an origin URL, and injects a custom script into HTML responses.
+   *
+   * @param request - The incoming HTTP request.
+   * @param env - The environment variables and bindings.
+   * @param ctx - The execution context.
+   * @returns A Promise resolving to the HTTP response.
+   */
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
     const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
