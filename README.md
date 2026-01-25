@@ -20,7 +20,7 @@ This is the easiest way to deploy and keep your worker up to date.
 2. Log in to your [Cloudflare Dashboard](https://dash.cloudflare.com/).
 3. Navigate to **Workers & Pages** > **Create application**.
 4. Select **Workers** and click **Connect to Git**.
-5. Select your forked `cloudflare` repository.
+5. Select your forked `startup-api-cloudflare` repository.
 6. Deploy the Worker.
 7. In the **Settings** tab of your Worker, go to **Variables** and add the required `ORIGIN_URL` (see [Configuration](#configuration-details) below).
 
@@ -30,7 +30,7 @@ Use this option if you want to deploy from your local machine.
 
 1. **Clone and Install**
    ```bash
-   git clone https://github.com/StartupAPI/cloudflare.git
+   git clone https://github.com/StartupAPI/startup-api-cloudflare.git
    cd cloudflare
    npm install
    ```
