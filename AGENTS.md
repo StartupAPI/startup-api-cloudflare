@@ -14,3 +14,8 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 - TypeScript strict mode
 - Single quotes, trailing comma
 - Use prettier for formatting after each prompt
+
+## Script rules
+
+- Every time you update wrangler.jsonc file, run `npm run cf-typegem` command
+- After you update any code, run `npm run format` command
