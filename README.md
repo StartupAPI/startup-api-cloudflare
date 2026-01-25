@@ -6,9 +6,9 @@ This application uses the Cloudflare Developer Platform, including Workers and D
 
 ## Features
 
-- **Transparent Proxying:** Forwards requests to your origin application.
-- **HTML Injection:** Uses `HTMLRewriter` to inject scripts and custom elements (like `<power-strip>`) into your HTML pages.
-- **Path Interception:** Intercepts requests to a configurable path to serve internal assets.
+- **Transparent Proxying:** Forwards requests to your origin application
+- **HTML Injection:** Uses `HTMLRewriter` to inject scripts and custom elements (like `<power-strip>`) into your HTML pages
+- **Path Interception:** Intercepts requests to a configurable path to serve internal assets
 
 ## Installation
 
@@ -16,13 +16,13 @@ This application uses the Cloudflare Developer Platform, including Workers and D
 
 This is the easiest way to deploy and keep your worker up to date.
 
-1. **Fork this repository** to your own GitHub account.
-2. Go to your [Cloudflare Dashboard's Workers & pages > Create Application](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create).
-3. Click **Connect to Git**.
-4. Select your forked `startup-api-cloudflare` repository.
+1. **Fork this repository** to your account
+2. Go to your [Cloudflare Dashboard's Workers & pages > Create Application](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create)
+3. Click **Continue with GitHub**
+4. Select your forked `startup-api-cloudflare` repository
 5. Pick the name for your site's worker (e.g. you might have multiple)
-6. Deploy the Worker.
-7. In the **Settings** tab of your Worker, go to **Variables** and add the required `ORIGIN_URL` (see [Configuration](#configuration-details) below).
+6. Deploy the Worker
+7. In the **Settings** tab of your Worker, go to **Variables** and add the required `ORIGIN_URL` (see [Configuration](#configuration-details) below)
 
 ### Option 2: Manual Installation (CLI)
 
@@ -31,11 +31,11 @@ Use this option if you want to deploy from your local machine.
 1. **Clone and Install**
    ```bash
    git clone https://github.com/StartupAPI/startup-api-cloudflare.git
-   cd cloudflare
+   cd startup-api-cloudflare
    npm install
    ```
 2. **Configure Environment Variables**
-   Update `wrangler.jsonc` with your settings.
+   Update `wrangler.jsonc` or use dashboard **Settings** tab of your Worker, go to **Variables** and add the required `ORIGIN_URL` (see [Configuration](#configuration-details) below)
 3. **Deploy**
    ```bash
    npm run deploy
@@ -46,20 +46,20 @@ Use this option if you want to deploy from your local machine.
 ### How to set environment variables
 
 - **Using Cloudflare Dashboard (Recommended):**
-  1. Go to **Workers & Pages**.
-  2. Select your worker.
-  3. Navigate to **Settings** > **Variables**.
-  4. Click **Add variable** under **Environment Variables**.
-  5. Add `ORIGIN_URL` and any optional variables.
-  6. Click **Save and deploy**.
+  1. Go to **Workers & Pages**
+  2. Select your worker
+  3. Navigate to **Settings** > **Variables**
+  4. Click **Add variable** under **Environment Variables**
+  5. Add `ORIGIN_URL` and any optional variables
+  6. Click **Save and deploy**
 
 - **Using `wrangler.jsonc`:**
   Add the variables to the `"vars"` object in your configuration file. See [Cloudflare documentation](https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables) for more details.
 
-| Variable     | Required | Default   | Description                                                                    |
-| :----------- | :------- | :-------- | :----------------------------------------------------------------------------- |
-| `ORIGIN_URL` | **Yes**  | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`). |
-| `USERS_PATH` | No       | `/users/` | The path used to serve internal assets like `power-strip.js`.                  |
+| Variable     | Required | Default   | Description                                                                   |
+| :----------- | :------- | :-------- | :---------------------------------------------------------------------------- |
+| `ORIGIN_URL` | **Yes**  | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
+| `USERS_PATH` | No       | `/users/` | The path used to serve internal assets like `power-strip.js`                  |
 
 ### Example `wrangler.jsonc` snippet:
 
@@ -74,10 +74,10 @@ Use this option if you want to deploy from your local machine.
 
 ## How It Works
 
-1. **Request Interception:** The worker receives all incoming requests.
-2. **Path Mapping:** If the request path starts with `USERS_PATH`, the worker serves assets directly from the `public/users/` directory.
-3. **Proxying:** All other requests are proxied to the configured `ORIGIN_URL`.
-4. **Injection:** For `text/html` responses, the worker injects a `<script>` tag and a `<power-strip>` custom element before serving the content to the user.
+1. **Request Interception:** The worker receives all incoming requests
+2. **Path Mapping:** If the request path starts with `USERS_PATH`, the worker serves assets directly from the `public/users/` directory
+3. **Proxying:** All other requests are proxied to the configured `ORIGIN_URL`
+4. **Injection:** For `text/html` responses, the worker injects a `<script>` tag and a `<power-strip>` custom element before serving the content to the user
 
 ## Contributing
 
