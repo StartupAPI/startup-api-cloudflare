@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/StartupAPI/cloudflare.git"
+  },
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
