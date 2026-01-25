@@ -39,7 +39,9 @@ export default {
             element(element) {
               element.prepend(
                 `<script src="${usersPath}power-strip.js" async></script>` +
-                  '<power-strip style="position: absolute; top: 0; right: 0; z-index: 9999;"></power-strip>',
+                  '<power-strip style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.3rem; border-radius: 0 0 0 0.1rem; cursor: pointer; fill: #ccc; filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.5));">' +
+                  '<svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>' +
+                  '</power-strip>',
                 { html: true },
               );
             },
