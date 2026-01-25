@@ -20,6 +20,13 @@
   "vars": {
     "ORIGIN_URL": "",
   },
+  "env": {
+    "preview": {
+      "vars": {
+        "ORIGIN_URL": "https://example.com",
+      },
+    },
+  },
   /**
    * Smart Placement
    * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
