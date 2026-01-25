@@ -35,7 +35,9 @@ Use this option if you want to deploy from your local machine.
    npm install
    ```
 2. **Configure Environment Variables**
+
    Update `wrangler.jsonc` or use dashboard **Settings** tab of your Worker, go to **Variables** and add the required `ORIGIN_URL` (see [Configuration](#configuration-details) below)
+
 3. **Deploy**
    ```bash
    npm run deploy
