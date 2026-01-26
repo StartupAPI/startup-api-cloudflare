@@ -30,4 +30,22 @@
       "new_sqlite_classes": ["UserDO"],
     },
   ],
+  "env": {
+    "preview": {
+      // copied from main enviroment to make sure env.ASSETS is not optional
+      "assets": {
+        "directory": "./public",
+        "run_worker_first": true,
+        "binding": "ASSETS",
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "USER",
+            "class_name": "UserDO",
+          },
+        ],
+      },
+    },
+  },
 }
