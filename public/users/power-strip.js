@@ -102,9 +102,10 @@ class PowerStrip extends HTMLElement {
           height: 1.3rem;
           padding: 0.0625rem;
           animation: fadeIn 0.4s ease-out;
-          background-color: rgba(255, 255, 255, 0.8);
+          background-color: rgba(255, 255, 255, 0.7);
           border-radius: 0 0 0 0.3rem;
           box-shadow: 0 0.0625rem 0.1875rem rgba(0,0,0,0.1);
+          font-size: 1rem;
         }
 
         .trigger {
@@ -184,10 +185,6 @@ class PowerStrip extends HTMLElement {
             .user-name {
                 display: none;
             }
-        }
-
-        .logout-btn:hover {
-            color: #d93025; /* Reddish color for logout hover */
         }
 
         /* Dialog Styling */
