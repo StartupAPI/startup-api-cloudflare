@@ -1,13 +1,50 @@
+import { handleAuth } from './auth/index';
+import { injectPowerStrip } from './PowerStrip';
+import { UserDO } from './UserDO';
+
 const DEFAULT_USERS_PATH = '/users/';
 
-export default {
-  async fetch(request, env, ctx): Promise<Response> {
-    const url = new URL(request.url);
-    const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+export { UserDO };
 
+export default {
+  /**
+   * Main Worker fetch handler.
+   * Intercepts requests, serves static assets from `public/users` if applicable,
+   * proxies requests to an origin URL, and injects a custom script into HTML responses.
+   *
+   * @param request - The incoming HTTP request.
+   * @param env - The environment variables and bindings.
+   * @param ctx - The execution context.
+   * @returns A Promise resolving to the HTTP response.
+   */
+  async fetch(request, env, ctx): Promise<Response> {
     // Prevent infinite loops when serving assets
     if (request.headers.has('x-skip-worker')) {
       return env.ASSETS.fetch(request);
+    }
+
+    const url = new URL(request.url);
+    const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+
+    // Handle OAuth Routes
+    if (url.pathname.startsWith(usersPath + 'auth/')) {
+      return handleAuth(request, env, url, usersPath);
+    }
+
+    if (url.pathname === usersPath + 'me') {
+      return handleMe(request, env);
+    }
+
+    if (url.pathname === usersPath + 'me/avatar') {
+      return handleMeImage(request, env, 'avatar');
+    }
+
+    if (url.pathname === usersPath + 'me/provider-icon') {
+      return handleMeImage(request, env, 'provider-icon');
+    }
+
+    if (url.pathname === usersPath + 'logout') {
+      return handleLogout(usersPath);
     }
 
     // Intercept requests to usersPath and serve them from the public/users directory.
@@ -29,30 +66,81 @@ export default {
       newRequest.headers.set('Host', url.host);
 
       const response = await fetch(newRequest);
-      const contentType = response.headers.get('Content-Type');
 
-      if (contentType && contentType.includes('text/html')) {
-        // Inject a script tag and a custom element into the proxied HTML pages.
-        // The script is loaded from the USERS_PATH, which is intercepted by this worker.
-        return new HTMLRewriter()
-          .on('body', {
-            element(element) {
-              element.prepend(
-                `<script src="${usersPath}power-strip.js" async></script>` +
-                  '<power-strip style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.3rem; border-radius: 0 0 0 0.1rem; cursor: pointer; fill: #ccc; filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.5));">' +
-                  '<svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>' +
-                  '</power-strip>',
-                { html: true },
-              );
-            },
-          })
-          .transform(response);
+      const providers: string[] = [];
+      if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+        providers.push('google');
+      }
+      if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) {
+        providers.push('twitch');
       }
 
-      return response;
+      return injectPowerStrip(response, usersPath, providers);
     }
 
     // do not modify the request as it will loop through the same worker again
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
+
+async function handleMe(request: Request, env: Env): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies['session_id'];
+
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const stub = env.USER.get(id);
+    return await stub.fetch('http://do/validate-session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleMeImage(request: Request, env: Env, type: string): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies['session_id'];
+
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const stub = env.USER.get(id);
+    return await stub.fetch(`http://do/images/${type}`);
+  } catch (e) {
+    return new Response('Error fetching image', { status: 500 });
+  }
+}
+
+function handleLogout(usersPath: string): Response {
+  const headers = new Headers();
+  headers.set('Set-Cookie', 'session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+  headers.set('Location', '/');
+  return new Response(null, { status: 302, headers });
+}
+
+function parseCookies(cookieHeader: string): Record<string, string> {
+  return cookieHeader.split(';').reduce((acc, cookie) => {
+    const [key, value] = cookie.split('=').map(c => c.trim());
+    if (key && value) acc[key] = value;
+    return acc;
+  }, {} as Record<string, string>);
+}

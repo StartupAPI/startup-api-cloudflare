@@ -58,10 +58,35 @@ Use this option if you want to deploy from your local machine.
 - **Using `wrangler.jsonc`:**
   Add the variables to the `"vars"` object in your configuration file. See [Cloudflare documentation](https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables) for more details.
 
-| Variable     | Required | Default   | Description                                                                   |
-| :----------- | :------- | :-------- | :---------------------------------------------------------------------------- |
-| `ORIGIN_URL` | **Yes**  | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
-| `USERS_PATH` | No       | `/users/` | The path used to serve internal assets like `power-strip.js`                  |
+| Variable               | Required | Default   | Description                                                                   |
+| :--------------------- | :------- | :-------- | :---------------------------------------------------------------------------- |
+| `ORIGIN_URL`           | **Yes**  | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
+| `USERS_PATH`           | No       | `/users/` | The path used to serve internal assets like `power-strip.js`                  |
+| `AUTH_ORIGIN`          | No       | N/A       | Optional base URL for OAuth redirects (overrides request origin)              |
+| `GOOGLE_CLIENT_ID`     | No       | N/A       | Google OAuth2 Client ID                                                       |
+| `GOOGLE_CLIENT_SECRET` | No       | N/A       | Google OAuth2 Client Secret                                                   |
+| `TWITCH_CLIENT_ID`     | No       | N/A       | Twitch OAuth2 Client ID                                                       |
+| `TWITCH_CLIENT_SECRET` | No       | N/A       | Twitch OAuth2 Client Secret                                                   |
+
+### Setting up OAuth
+
+#### Google
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a new project or select an existing one.
+3. Navigate to **APIs & Services > Credentials**.
+4. Click **Create Credentials > OAuth client ID**.
+5. Select **Web application** as the application type.
+6. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/google/callback`.
+7. Copy the **Client ID** and **Client Secret** and add them to your Worker's environment variables.
+
+#### Twitch
+
+1. Go to the [Twitch Developer Console](https://dev.twitch.tv/console).
+2. Register a new application.
+3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/twitch/callback`.
+4. Select **Website** as the category.
+5. Copy the **Client ID** and generate a **Client Secret** to add them to your Worker's environment variables.
 
 ### Example `wrangler.jsonc` snippet:
 

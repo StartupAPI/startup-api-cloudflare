@@ -19,3 +19,7 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 
 - Every time you update wrangler.jsonc file, run `npm run cf-typegem` command
 - After you update any code, run `npm run format` command
+
+## Worker implementation
+
+- Internal worker routes all start with ${usersPath}, make sure to always prefix them
