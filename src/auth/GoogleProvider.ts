@@ -1,7 +1,9 @@
+import type { StartupAPIEnv } from '../StartupAPIEnv';
+
 import { OAuthProvider, OAuthTokenResponse, UserProfile } from './OAuthProvider';
 
 export class GoogleProvider extends OAuthProvider {
-  static create(env: Env, redirectBase: string): GoogleProvider | null {
+  static create(env: StartupAPIEnv, redirectBase: string): GoogleProvider | null {
     if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
     return new GoogleProvider(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, redirectBase + '/google/callback', 'google');
   }

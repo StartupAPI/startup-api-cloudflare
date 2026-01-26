@@ -6,6 +6,8 @@ const DEFAULT_USERS_PATH = '/users/';
 
 export { UserDO };
 
+import type { StartupAPIEnv } from './StartupAPIEnv';
+
 export default {
   /**
    * Main Worker fetch handler.
@@ -17,7 +19,7 @@ export default {
    * @param ctx - The execution context.
    * @returns A Promise resolving to the HTTP response.
    */
-  async fetch(request, env, ctx): Promise<Response> {
+  async fetch(request: Request, env: StartupAPIEnv, ctx): Promise<Response> {
     // Prevent infinite loops when serving assets
     if (request.headers.has('x-skip-worker')) {
       return env.ASSETS.fetch(request);
@@ -83,7 +85,7 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function handleMe(request: Request, env: Env): Promise<Response> {
+async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
@@ -108,7 +110,7 @@ async function handleMe(request: Request, env: Env): Promise<Response> {
   }
 }
 
-async function handleMeImage(request: Request, env: Env, type: string): Promise<Response> {
+async function handleMeImage(request: Request, env: StartupAPIEnv, type: string): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
@@ -130,7 +132,7 @@ async function handleMeImage(request: Request, env: Env, type: string): Promise<
   }
 }
 
-async function handleLogout(request: Request, env: Env, usersPath: string): Promise<Response> {
+async function handleLogout(request: Request, env: StartupAPIEnv, usersPath: string): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (cookieHeader) {
     const cookies = parseCookies(cookieHeader);

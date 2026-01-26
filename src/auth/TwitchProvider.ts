@@ -1,7 +1,9 @@
+import type { StartupAPIEnv } from '../StartupAPIEnv';
+
 import { OAuthProvider, OAuthTokenResponse, UserProfile } from './OAuthProvider';
 
 export class TwitchProvider extends OAuthProvider {
-  static create(env: Env, redirectBase: string): TwitchProvider | null {
+  static create(env: StartupAPIEnv, redirectBase: string): TwitchProvider | null {
     if (!env.TWITCH_CLIENT_ID || !env.TWITCH_CLIENT_SECRET) return null;
     return new TwitchProvider(env.TWITCH_CLIENT_ID, env.TWITCH_CLIENT_SECRET, redirectBase + '/twitch/callback', 'twitch');
   }

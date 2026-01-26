@@ -13,16 +13,6 @@
     "run_worker_first": true,
     "binding": "ASSETS",
   },
-  "keep_vars": true,
-  "vars": {
-    "AUTH_ORIGIN": "",
-    "ORIGIN_URL": "",
-    "USERS_PATH": "/users/",
-    "GOOGLE_CLIENT_ID": "",
-    "GOOGLE_CLIENT_SECRET": "",
-    "TWITCH_CLIENT_ID": "",
-    "TWITCH_CLIENT_SECRET": "",
-  },
   "observability": {
     "enabled": true,
   },
@@ -40,31 +30,4 @@
       "new_sqlite_classes": ["UserDO"],
     },
   ],
-  "env": {
-    "preview": {
-      "vars": {
-        "AUTH_ORIGIN": "",
-        "ORIGIN_URL": "https://example.com",
-        "USERS_PATH": "/preview-users/",
-        "GOOGLE_CLIENT_ID": "",
-        "GOOGLE_CLIENT_SECRET": "",
-        "TWITCH_CLIENT_ID": "",
-        "TWITCH_CLIENT_SECRET": "",
-      },
-      // copied from main enviroment to make sure env.ASSETS is not optional
-      "assets": {
-        "directory": "./public",
-        "run_worker_first": true,
-        "binding": "ASSETS",
-      },
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "USER",
-            "class_name": "UserDO",
-          },
-        ],
-      },
-    },
-  },
 }

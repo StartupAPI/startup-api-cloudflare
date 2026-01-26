@@ -1,3 +1,5 @@
+import type { StartupAPIEnv } from './StartupAPIEnv';
+
 /**
  * A Durable Object representing a User.
  * This class handles the storage and management of user profiles,
@@ -5,7 +7,7 @@
  */
 export class UserDO implements DurableObject {
   state: DurableObjectState;
-  env: Env;
+  env: StartupAPIEnv;
   sql: SqlStorage;
 
   /**
@@ -15,7 +17,7 @@ export class UserDO implements DurableObject {
    * @param state - The state of the Durable Object, including storage.
    * @param env - The environment variables and bindings.
    */
-  constructor(state: DurableObjectState, env: Env) {
+  constructor(state: DurableObjectState, env: StartupAPIEnv) {
     this.state = state;
     this.env = env;
     this.sql = state.storage.sql;

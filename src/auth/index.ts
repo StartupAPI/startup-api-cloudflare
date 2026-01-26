@@ -1,8 +1,10 @@
+import type { StartupAPIEnv } from '../StartupAPIEnv';
+
 import { GoogleProvider } from './GoogleProvider';
 import { TwitchProvider } from './TwitchProvider';
 import { OAuthProvider } from './OAuthProvider';
 
-export async function handleAuth(request: Request, env: Env, url: URL, usersPath: string): Promise<Response> {
+export async function handleAuth(request: Request, env: StartupAPIEnv, url: URL, usersPath: string): Promise<Response> {
   const path = url.pathname;
   const authPath = usersPath + 'auth';
 
