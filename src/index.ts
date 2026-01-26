@@ -66,7 +66,16 @@ export default {
       newRequest.headers.set('Host', url.host);
 
       const response = await fetch(newRequest);
-      return injectPowerStrip(response, usersPath);
+
+      const providers: string[] = [];
+      if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+        providers.push('google');
+      }
+      if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) {
+        providers.push('twitch');
+      }
+
+      return injectPowerStrip(response, usersPath, providers);
     }
 
     // do not modify the request as it will loop through the same worker again

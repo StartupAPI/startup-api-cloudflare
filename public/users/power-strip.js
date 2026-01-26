@@ -47,7 +47,13 @@ class PowerStrip extends HTMLElement {
 
   getProviderIcon(provider) {
     if (provider === 'google') {
-      return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285F4" stroke="white" stroke-width="1"/><path d="M17.64 12.2c0-.41-.03-.81-.1-1.21H12v2.3h3.16c-.14.73-.57 1.35-1.19 1.79v1.48h1.92c1.12-1.03 1.75-2.55 1.75-4.36z" fill="white"/><path d="M12 18c1.62 0 2.98-.54 3.97-1.46l-1.92-1.48c-.54.37-1.23.59-2.05.59-1.57 0-2.91-1.06-3.39-2.48H6.65v1.53C7.64 16.69 9.68 18 12 18z" fill="white"/><path d="M8.61 13.17c-.12-.37-.19-.76-.19-1.17s.07-.8.19-1.17V9.3H6.65c-.41.81-.65 1.73-.65 2.7s.24 1.89.65 2.7l1.96-1.53z" fill="white"/><path d="M12 8.35c.88 0 1.67.3 2.3.91l1.73-1.73C14.98 6.51 13.62 6 12 6c-2.32 0-4.36 1.31-5.35 3.3L8.61 10.83c.48-1.42 1.82-2.48 3.39-2.48z" fill="white"/></svg>`;
+      return `<svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="11" fill="white" stroke="#dadce0" stroke-width="0.5"/>
+                <path d="M17.64 12.2c0-.41-.03-.81-.1-1.21H12v2.3h3.16c-.14.73-.57 1.35-1.19 1.79v1.48h1.92c1.12-1.03 1.75-2.55 1.75-4.36z" fill="#4285F4"/>
+                <path d="M12 18c1.62 0 2.98-.54 3.97-1.46l-1.92-1.48c-.54.37-1.23.59-2.05.59-1.57 0-2.91-1.06-3.39-2.48H6.65v1.53C7.64 16.69 9.68 18 12 18z" fill="#34A853"/>
+                <path d="M8.61 13.17c-.12-.37-.19-.76-.19-1.17s.07-.8.19-1.17V9.3H6.65c-.41.81-.65 1.73-.65 2.7s.24 1.89.65 2.7l1.96-1.53z" fill="#FBBC05"/>
+                <path d="M12 8.35c.88 0 1.67.3 2.3.91l1.73-1.73C14.98 6.51 13.62 6 12 6c-2.32 0-4.36 1.31-5.35 3.3L8.61 10.83c.48-1.42 1.82-2.48 3.39-2.48z" fill="#EA4335"/>
+              </svg>`;
     } else if (provider === 'twitch') {
       return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#9146FF" stroke="white" stroke-width="1"/><path d="M7 6H6v10h2v3l3-3h3l4-4V6H7zm9 6l-2 2h-3l-2 2v-2H8V7h8v5z" fill="white"/><path d="M14 8.5h1.5v2H14V8.5zm-3 0h1.5v2H11v-2z" fill="white"/></svg>`;
     }
@@ -59,28 +65,56 @@ class PowerStrip extends HTMLElement {
     const twitchLink = `${this.basePath}/auth/twitch`;
     const logoutLink = `${this.basePath}/logout`;
 
+    const providersStr = this.getAttribute('providers') || '';
+    const providers = providersStr.split(',');
+
+    let authButtons = '';
+    if (providers.includes('google')) {
+      authButtons += `
+                <a href="${googleLink}" class="auth-btn google">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    Continue with Google
+                </a>`;
+    }
+    if (providers.includes('twitch')) {
+      authButtons += `
+                <a href="${twitchLink}" class="auth-btn twitch">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z" fill="currentColor"/>
+                    </svg>
+                    Continue with Twitch
+                </a>`;
+    }
+
     let content = '';
 
-    if (this.user) {
-      const providerIcon = this.getProviderIcon(this.user.provider);
-      content = `
-          <div class="user-profile">
-            <div class="avatar-container">
-                <img src="${this.user.picture}" alt="${this.user.name}" title="${this.user.name}" class="avatar" width="16" height="16" />
-                <div class="provider-badge ${this.user.provider}">
-                    ${providerIcon}
-                </div>
+    if (providers.length > 0 && providers[0] !== '') {
+      if (this.user) {
+        const providerIcon = this.getProviderIcon(this.user.provider);
+        content = `
+            <div class="user-profile">
+              <div class="avatar-container">
+                  <img src="${this.user.picture}" alt="${this.user.name}" title="${this.user.name}" class="avatar" width="16" height="16" />
+                  <div class="provider-badge ${this.user.provider}">
+                      ${providerIcon}
+                  </div>
+              </div>
+              <span class="user-name">${this.user.name}</span>
+              <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
             </div>
-            <span class="user-name">${this.user.name}</span>
-            <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
-          </div>
-        `;
-    } else {
-      content = `
-          <a class="trigger" id="login-trigger" title="Login" role="button" href="javascript:void(0)">
-            Login
-          </a>
-        `;
+          `;
+      } else {
+        content = `
+            <a class="trigger" id="login-trigger" title="Login" role="button" href="javascript:void(0)">
+              Login
+            </a>
+          `;
+      }
     }
 
     this.shadowRoot.innerHTML = `
@@ -277,8 +311,8 @@ class PowerStrip extends HTMLElement {
         }
 
         .auth-btn svg {
-            width: 1.25rem;
-            height: 1.25rem;
+            width: 1.5rem;
+            height: 1.5rem;
         }
 
         .auth-btn.google {
@@ -313,14 +347,7 @@ class PowerStrip extends HTMLElement {
                 <button class="close-btn" id="close-dialog" aria-label="Close">&times;</button>
             </div>
             <div class="auth-buttons">
-                <a href="${googleLink}" class="auth-btn google">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285F4" stroke="white" stroke-width="1"/><path d="M17.64 12.2c0-.41-.03-.81-.1-1.21H12v2.3h3.16c-.14.73-.57 1.35-1.19 1.79v1.48h1.92c1.12-1.03 1.75-2.55 1.75-4.36z" fill="white"/><path d="M12 18c1.62 0 2.98-.54 3.97-1.46l-1.92-1.48c-.54.37-1.23.59-2.05.59-1.57 0-2.91-1.06-3.39-2.48H6.65v1.53C7.64 16.69 9.68 18 12 18z" fill="white"/><path d="M8.61 13.17c-.12-.37-.19-.76-.19-1.17s.07-.8.19-1.17V9.3H6.65c-.41.81-.65 1.73-.65 2.7s.24 1.89.65 2.7l1.96-1.53z" fill="white"/><path d="M12 8.35c.88 0 1.67.3 2.3.91l1.73-1.73C14.98 6.51 13.62 6 12 6c-2.32 0-4.36 1.31-5.35 3.3L8.61 10.83c.48-1.42 1.82-2.48 3.39-2.48z" fill="white"/></svg>
-                    Continue with Google
-                </a>
-                <a href="${twitchLink}" class="auth-btn twitch">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#9146FF" stroke="white" stroke-width="1"/><path d="M7 6H6v10h2v3l3-3h3l4-4V6H7zm9 6l-2 2h-3l-2 2v-2H8V7h8v5z" fill="white"/><path d="M14 8.5h1.5v2H14V8.5zm-3 0h1.5v2H11v-2z" fill="white"/></svg>
-                    Continue with Twitch
-                </a>
+                ${authButtons}
             </div>
         </div>
       </dialog>
