@@ -159,9 +159,12 @@ async function handleLogout(request: Request, env: Env, usersPath: string): Prom
 }
 
 function parseCookies(cookieHeader: string): Record<string, string> {
-  return cookieHeader.split(';').reduce((acc, cookie) => {
-    const [key, value] = cookie.split('=').map(c => c.trim());
-    if (key && value) acc[key] = value;
-    return acc;
-  }, {} as Record<string, string>);
+  return cookieHeader.split(';').reduce(
+    (acc, cookie) => {
+      const [key, value] = cookie.split('=').map((c) => c.trim());
+      if (key && value) acc[key] = value;
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
 }

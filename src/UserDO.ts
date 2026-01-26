@@ -120,7 +120,7 @@ export class UserDO implements DurableObject {
    */
   async validateSession(request: Request): Promise<Response> {
     const { sessionId } = (await request.json()) as { sessionId: string };
-    
+
     // Check session
     const sessionResult = this.sql.exec('SELECT * FROM sessions WHERE id = ?', sessionId);
     const session = sessionResult.next().value as any;
@@ -136,14 +136,14 @@ export class UserDO implements DurableObject {
     // Get latest profile data
     const credsResult = this.sql.exec('SELECT profile_data, provider FROM credentials ORDER BY updated_at DESC LIMIT 1');
     const creds = credsResult.next().value as any;
-    
+
     let profile = {};
     if (creds && creds.profile_data) {
-        try {
-            profile = JSON.parse(creds.profile_data as string);
-            // Add provider info for the UI icon
-            (profile as any).provider = creds.provider;
-        } catch (e) {}
+      try {
+        profile = JSON.parse(creds.profile_data as string);
+        // Add provider info for the UI icon
+        (profile as any).provider = creds.provider;
+      } catch (e) {}
     }
 
     return Response.json({ valid: true, profile });

@@ -30,15 +30,6 @@
       "new_sqlite_classes": ["UserDO"],
     },
   ],
-  "vars": {
-    "ORIGIN_URL": "",
-    "AUTH_ORIGIN": "",
-    "USERS_PATH": "/users/",
-    "GOOGLE_CLIENT_ID": "",
-    "GOOGLE_CLIENT_SECRET": "",
-    "TWITCH_CLIENT_ID": "",
-    "TWITCH_CLIENT_SECRET": "",
-  },
   "env": {
     "preview": {
       "vars": {

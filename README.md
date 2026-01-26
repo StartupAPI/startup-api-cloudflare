@@ -93,8 +93,7 @@ Use this option if you want to deploy from your local machine.
 ```json
 {
   "vars": {
-    "ORIGIN_URL": "https://your-app-origin.com",
-    "USERS_PATH": "/users/"
+    "ORIGIN_URL": "https://your-app-origin.com"
   }
 }
 ```
