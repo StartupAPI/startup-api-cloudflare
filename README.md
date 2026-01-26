@@ -72,21 +72,21 @@ Use this option if you want to deploy from your local machine.
 
 #### Google
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project or select an existing one.
-3. Navigate to **APIs & Services > Credentials**.
-4. Click **Create Credentials > OAuth client ID**.
-5. Select **Web application** as the application type.
-6. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/google/callback`.
-7. Copy the **Client ID** and **Client Secret** and add them to your Worker's environment variables.
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Navigate to **APIs & Services > Credentials**
+4. Click **Create Credentials > OAuth client ID**
+5. Select **Web application** as the application type
+6. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/google/callback`
+7. Copy the **Client ID** and **Client Secret** and add them to your Worker's environment variables
 
 #### Twitch
 
-1. Go to the [Twitch Developer Console](https://dev.twitch.tv/console).
-2. Register a new application.
-3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/twitch/callback`.
-4. Select **Website** as the category.
-5. Copy the **Client ID** and generate a **Client Secret** to add them to your Worker's environment variables.
+1. Go to the [Twitch Developer Console](https://dev.twitch.tv/console)
+2. Register a new application
+3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/twitch/callback`
+4. Select **Website** as the category
+5. Copy the **Client ID** and generate a **Client Secret** to add them to your Worker's environment variables
 
 ### Example `wrangler.jsonc` snippet:
 
