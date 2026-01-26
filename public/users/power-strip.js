@@ -6,11 +6,13 @@ class PowerStrip extends HTMLElement {
   }
 
   detectBasePath() {
-    const script = document.currentScript || (function() {
-      const scripts = document.getElementsByTagName('script');
-      return scripts[scripts.length - 1];
-    })();
-    
+    const script =
+      document.currentScript ||
+      (function () {
+        const scripts = document.getElementsByTagName('script');
+        return scripts[scripts.length - 1];
+      })();
+
     if (script && script.src) {
       try {
         const url = new URL(script.src);
@@ -24,7 +26,7 @@ class PowerStrip extends HTMLElement {
         // If script is at /users/power-strip.js, base is /users
         return path;
       } catch (e) {
-        console.error("Failed to parse script URL", e);
+        console.error('Failed to parse script URL', e);
       }
     }
     return '';
@@ -240,8 +242,8 @@ class PowerStrip extends HTMLElement {
     // Close on click outside
     dialog.addEventListener('click', (e) => {
       const rect = dialog.getBoundingClientRect();
-      const isInDialog = (rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
-        rect.left <= e.clientX && e.clientX <= rect.left + rect.width);
+      const isInDialog =
+        rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
       if (!isInDialog) {
         dialog.close();
       }

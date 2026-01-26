@@ -32,13 +32,23 @@
   ],
   "vars": {
     "ORIGIN_URL": "",
+    "AUTH_ORIGIN": "",
     "USERS_PATH": "/users/",
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_CLIENT_SECRET": "",
+    "TWITCH_CLIENT_ID": "",
+    "TWITCH_CLIENT_SECRET": "",
   },
   "env": {
     "preview": {
       "vars": {
+        "AUTH_ORIGIN": "",
         "ORIGIN_URL": "https://example.com",
         "USERS_PATH": "/preview-users/",
+        "GOOGLE_CLIENT_ID": "",
+        "GOOGLE_CLIENT_SECRET": "",
+        "TWITCH_CLIENT_ID": "",
+        "TWITCH_CLIENT_SECRET": "",
       },
       // copied from main enviroment to make sure env.ASSETS is not optional
       "assets": {
