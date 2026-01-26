@@ -37,6 +37,7 @@ export abstract class OAuthProvider {
   }
 
   abstract getAuthUrl(state: string): string;
+  abstract getIcon(): string;
   abstract getToken(code: string): Promise<OAuthTokenResponse>;
   abstract getUserProfile(token: string): Promise<UserProfile>;
 

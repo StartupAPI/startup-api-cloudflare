@@ -31,6 +31,22 @@ export default {
       return handleAuth(request, env, url, usersPath);
     }
 
+    if (url.pathname === usersPath + 'me') {
+      return handleMe(request, env);
+    }
+
+    if (url.pathname === usersPath + 'me/avatar') {
+      return handleMeImage(request, env, 'avatar');
+    }
+
+    if (url.pathname === usersPath + 'me/provider-icon') {
+      return handleMeImage(request, env, 'provider-icon');
+    }
+
+    if (url.pathname === usersPath + 'logout') {
+      return handleLogout(usersPath);
+    }
+
     // Intercept requests to usersPath and serve them from the public/users directory.
     // This allows us to serve our own scripts and assets.
     if (url.pathname.startsWith(usersPath)) {
@@ -57,3 +73,65 @@ export default {
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
+
+async function handleMe(request: Request, env: Env): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies['session_id'];
+
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const stub = env.USER.get(id);
+    return await stub.fetch('http://do/validate-session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleMeImage(request: Request, env: Env, type: string): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies['session_id'];
+
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const stub = env.USER.get(id);
+    return await stub.fetch(`http://do/images/${type}`);
+  } catch (e) {
+    return new Response('Error fetching image', { status: 500 });
+  }
+}
+
+function handleLogout(usersPath: string): Response {
+  const headers = new Headers();
+  headers.set('Set-Cookie', 'session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+  headers.set('Location', '/');
+  return new Response(null, { status: 302, headers });
+}
+
+function parseCookies(cookieHeader: string): Record<string, string> {
+  return cookieHeader.split(';').reduce((acc, cookie) => {
+    const [key, value] = cookie.split('=').map(c => c.trim());
+    if (key && value) acc[key] = value;
+    return acc;
+  }, {} as Record<string, string>);
+}

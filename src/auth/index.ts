@@ -37,6 +37,37 @@ export async function handleAuth(request: Request, env: Env, url: URL, usersPath
         const id = env.USER.idFromName(provider.name + ':' + profile.id);
         const stub = env.USER.get(id);
 
+        // Fetch and Store Avatar
+        if (profile.picture) {
+          try {
+            const picRes = await fetch(profile.picture);
+            if (picRes.ok) {
+              const picBlob = await picRes.arrayBuffer();
+              await stub.fetch('http://do/images/avatar', {
+                method: 'PUT',
+                headers: { 'Content-Type': picRes.headers.get('Content-Type') || 'image/jpeg' },
+                body: picBlob,
+              });
+              // Update profile.picture to point to our worker
+              profile.picture = usersPath + 'me/avatar';
+            }
+          } catch (e) {
+            console.error('Failed to fetch avatar', e);
+          }
+        }
+
+        // Store Provider Icon
+        const providerSvg = provider.getIcon();
+
+        if (providerSvg) {
+          await stub.fetch('http://do/images/provider-icon', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'image/svg+xml' },
+            body: providerSvg,
+          });
+          (profile as any).provider_icon = usersPath + 'me/provider-icon';
+        }
+
         await stub.fetch('http://do/credentials', {
           method: 'POST',
           body: JSON.stringify({
@@ -55,8 +86,9 @@ export async function handleAuth(request: Request, env: Env, url: URL, usersPath
         const session = (await sessionRes.json()) as any;
 
         // Set cookie and redirect home
+        const doId = id.toString();
         const headers = new Headers();
-        headers.set('Set-Cookie', `session_id=${session.sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        headers.set('Set-Cookie', `session_id=${session.sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
         headers.set('Location', '/');
 
         return new Response(null, { status: 302, headers });

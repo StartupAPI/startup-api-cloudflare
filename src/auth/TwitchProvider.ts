@@ -17,6 +17,14 @@ export class TwitchProvider extends OAuthProvider {
     return `https://id.twitch.tv/oauth2/authorize?${params.toString()}`;
   }
 
+  getIcon(): string {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#9146FF" stroke="white" stroke-width="1"/>
+      <path d="M7 6H6v10h2v3l3-3h3l4-4V6H7zm9 6l-2 2h-3l-2 2v-2H8V7h8v5z" fill="white"/>
+      <path d="M14 8.5h1.5v2H14V8.5zm-3 0h1.5v2H11v-2z" fill="white"/>
+    </svg>`;
+  }
+
   async getToken(code: string): Promise<OAuthTokenResponse> {
     const params = new URLSearchParams({
       client_id: this.clientId,

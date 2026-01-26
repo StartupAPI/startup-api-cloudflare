@@ -46,6 +46,12 @@ export class UserDO implements DurableObject {
         expires_at INTEGER,
         meta TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS images (
+        key TEXT PRIMARY KEY,
+        value BLOB,
+        mime_type TEXT
+      );
     `);
   }
 
@@ -69,9 +75,76 @@ export class UserDO implements DurableObject {
       return this.addCredential(request);
     } else if (path === '/sessions' && method === 'POST') {
       return this.createSession(request);
+    } else if (path === '/validate-session' && method === 'POST') {
+      return this.validateSession(request);
+    } else if (path.startsWith('/images/') && method === 'GET') {
+      const key = path.replace('/images/', '');
+      return this.getImage(key);
+    } else if (path.startsWith('/images/') && method === 'PUT') {
+      const key = path.replace('/images/', '');
+      return this.storeImage(request, key);
     }
 
     return new Response('Not Found', { status: 404 });
+  }
+
+  async getImage(key: string): Promise<Response> {
+    const result = this.sql.exec('SELECT value, mime_type FROM images WHERE key = ?', key);
+    const row = result.next().value as any;
+
+    if (!row) {
+      return new Response('Not Found', { status: 404 });
+    }
+
+    const headers = new Headers();
+    headers.set('Content-Type', row.mime_type);
+    // Convert ArrayBuffer/Uint8Array to Response body
+    return new Response(row.value, { headers });
+  }
+
+  async storeImage(request: Request, key: string): Promise<Response> {
+    const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
+    const buffer = await request.arrayBuffer();
+
+    this.sql.exec('INSERT OR REPLACE INTO images (key, value, mime_type) VALUES (?, ?, ?)', key, buffer, contentType);
+    return Response.json({ success: true });
+  }
+
+  /**
+   * Validates a session ID and returns the user profile if valid.
+   *
+   * @param request - The HTTP request containing the sessionId.
+   * @returns A Promise resolving to the session status and user profile.
+   */
+  async validateSession(request: Request): Promise<Response> {
+    const { sessionId } = (await request.json()) as { sessionId: string };
+    
+    // Check session
+    const sessionResult = this.sql.exec('SELECT * FROM sessions WHERE id = ?', sessionId);
+    const session = sessionResult.next().value as any;
+
+    if (!session) {
+      return Response.json({ valid: false }, { status: 401 });
+    }
+
+    if (session.expires_at < Date.now()) {
+      return Response.json({ valid: false, error: 'Expired' }, { status: 401 });
+    }
+
+    // Get latest profile data
+    const credsResult = this.sql.exec('SELECT profile_data, provider FROM credentials ORDER BY updated_at DESC LIMIT 1');
+    const creds = credsResult.next().value as any;
+    
+    let profile = {};
+    if (creds && creds.profile_data) {
+        try {
+            profile = JSON.parse(creds.profile_data as string);
+            // Add provider info for the UI icon
+            (profile as any).provider = creds.provider;
+        } catch (e) {}
+    }
+
+    return Response.json({ valid: true, profile });
   }
 
   /**

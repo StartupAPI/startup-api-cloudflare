@@ -3,6 +3,7 @@ class PowerStrip extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this.basePath = this.detectBasePath();
+    this.user = null;
   }
 
   detectBasePath() {
@@ -16,15 +17,7 @@ class PowerStrip extends HTMLElement {
     if (script && script.src) {
       try {
         const url = new URL(script.src);
-        // Get the directory of the script
-        const path = url.pathname.substring(0, url.pathname.lastIndexOf('/'));
-        // If the path ends with /users, we want to go up one level if the intended API root is distinct,
-        // but based on the request "read the path which was used to load power-strip.js file",
-        // we should likely use that directory as the base or the root it implies.
-        // Assuming the script is served from `USERS_PATH` (e.g. /users/), and auth routes are relative to that or root.
-        // The user asked to use the path as a prefix.
-        // If script is at /users/power-strip.js, base is /users
-        return path;
+        return url.pathname.substring(0, url.pathname.lastIndexOf('/'));
       } catch (e) {
         console.error('Failed to parse script URL', e);
       }
@@ -32,14 +25,63 @@ class PowerStrip extends HTMLElement {
     return '';
   }
 
-  connectedCallback() {
+  async connectedCallback() {
+    await this.fetchUser();
     this.render();
     this.addEventListeners();
+  }
+
+  async fetchUser() {
+    try {
+      const res = await fetch(`${this.basePath}/me`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.valid) {
+          this.user = data.profile;
+        }
+      }
+    } catch (e) {
+      // Not logged in or error
+    }
+  }
+
+  getProviderIcon(provider) {
+    if (provider === 'google') {
+      return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285F4" stroke="white" stroke-width="1"/><path d="M17.64 12.2c0-.41-.03-.81-.1-1.21H12v2.3h3.16c-.14.73-.57 1.35-1.19 1.79v1.48h1.92c1.12-1.03 1.75-2.55 1.75-4.36z" fill="white"/><path d="M12 18c1.62 0 2.98-.54 3.97-1.46l-1.92-1.48c-.54.37-1.23.59-2.05.59-1.57 0-2.91-1.06-3.39-2.48H6.65v1.53C7.64 16.69 9.68 18 12 18z" fill="white"/><path d="M8.61 13.17c-.12-.37-.19-.76-.19-1.17s.07-.8.19-1.17V9.3H6.65c-.41.81-.65 1.73-.65 2.7s.24 1.89.65 2.7l1.96-1.53z" fill="white"/><path d="M12 8.35c.88 0 1.67.3 2.3.91l1.73-1.73C14.98 6.51 13.62 6 12 6c-2.32 0-4.36 1.31-5.35 3.3L8.61 10.83c.48-1.42 1.82-2.48 3.39-2.48z" fill="white"/></svg>`;
+    } else if (provider === 'twitch') {
+      return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#9146FF" stroke="white" stroke-width="1"/><path d="M7 6H6v10h2v3l3-3h3l4-4V6H7zm9 6l-2 2h-3l-2 2v-2H8V7h8v5z" fill="white"/><path d="M14 8.5h1.5v2H14V8.5zm-3 0h1.5v2H11v-2z" fill="white"/></svg>`;
+    }
+    return '';
   }
 
   render() {
     const googleLink = `${this.basePath}/auth/google`;
     const twitchLink = `${this.basePath}/auth/twitch`;
+    const logoutLink = `${this.basePath}/logout`;
+
+    let content = '';
+
+    if (this.user) {
+      const providerIcon = this.getProviderIcon(this.user.provider);
+      content = `
+          <div class="user-profile">
+            <div class="avatar-container">
+                <img src="${this.user.picture}" alt="${this.user.name}" title="${this.user.name}" class="avatar" width="16" height="16" />
+                <div class="provider-badge ${this.user.provider}">
+                    ${providerIcon}
+                </div>
+            </div>
+            <span class="user-name">${this.user.name}</span>
+            <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
+          </div>
+        `;
+    } else {
+      content = `
+          <a class="trigger" id="login-trigger" title="Login" role="button" href="javascript:void(0)">
+            Login
+          </a>
+        `;
+    }
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -48,20 +90,28 @@ class PowerStrip extends HTMLElement {
           font-family: system-ui, -apple-system, sans-serif;
         }
         
-        /* Main Container Styling */
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
         .container {
           display: flex;
           align-items: center;
-          gap: 4px;
-          padding: 0.3rem;
+          gap: 0.25rem;
+          height: 1.3rem;
+          padding: 0.0625rem;
+          animation: fadeIn 0.4s ease-out;
+          background-color: rgba(255, 255, 255, 0.8);
+          border-radius: 0 0 0 0.3rem;
+          box-shadow: 0 0.0625rem 0.1875rem rgba(0,0,0,0.1);
         }
 
-        /* Trigger (Login link) Styling */
         .trigger {
            cursor: pointer;
-           padding: 2px 6px;
+           padding: 0.125rem 0.375rem;
            transition: background-color 0.2s;
-           border-radius: 4px;
+           border-radius: 0.25rem;
            font-size: 0.9rem;
            font-weight: 500;
            color: #444;
@@ -71,44 +121,102 @@ class PowerStrip extends HTMLElement {
         .trigger:hover {
             background-color: rgba(0, 0, 0, 0.05);
             text-decoration: underline;
-            color: #1a73e8; /* Standard-ish blue for links on hover */
+            color: #1a73e8;
         }
 
-        svg.bolt {
-          width: 1rem;
-          height: 1rem;
-          fill: #ffcc00; 
-          filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.5));
+        svg.bolt, ::slotted(svg) {
+          width: 1rem !important;
+          height: 1rem !important;
+          fill: #ffcc00 !important; 
+          filter: drop-shadow(0.0625rem 0.0625rem 0.0625rem rgba(0, 0, 0, 0.5));
           flex-shrink: 0;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.125rem;
+        }
+
+        .avatar-container {
+            position: relative;
+            width: 1.1rem;
+            height: 1.1rem;
+        }
+
+        .avatar {
+            width: 1.1rem;
+            height: 1.1rem;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .provider-badge {
+            position: absolute;
+            bottom: -0.0625rem;
+            right: -0.0625rem;
+            width: 0.5rem;
+            height: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .provider-badge svg {
+            width: 0.5rem;
+            height: 0.5rem;
+        }
+
+        .provider-badge.google { color: #3c4043; }
+        .provider-badge.twitch { color: #9146FF; }
+
+        .user-name {
+            font-size: 0.9rem;
+            color: #333;
+            max-width: 15rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        @media (max-width: 25rem) {
+            .user-name {
+                display: none;
+            }
+        }
+
+        .logout-btn:hover {
+            color: #d93025; /* Reddish color for logout hover */
         }
 
         /* Dialog Styling */
         dialog {
           border: none;
-          border-radius: 12px;
+          border-radius: 0.75rem;
           padding: 0;
-          box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+          box-shadow: 0 0.625rem 1.5625rem rgba(0,0,0,0.2);
           background: white;
           color: #333;
-          max-width: 320px;
+          max-width: 20rem;
           width: 90%;
           overflow: hidden;
         }
 
         dialog::backdrop {
           background: rgba(0, 0, 0, 0.5);
-          backdrop-filter: blur(2px);
+          backdrop-filter: blur(0.125rem);
         }
 
         .dialog-content {
-            padding: 24px;
+            padding: 1.5rem;
         }
 
         .dialog-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 1.25rem;
         }
         
         .dialog-title {
@@ -128,8 +236,8 @@ class PowerStrip extends HTMLElement {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 24px;
-            height: 24px;
+            width: 1.5rem;
+            height: 1.5rem;
             border-radius: 50%;
             transition: background-color 0.2s, color 0.2s;
         }
@@ -142,18 +250,18 @@ class PowerStrip extends HTMLElement {
         .auth-buttons {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 0.75rem;
         }
 
         .auth-btn {
-            padding: 12px 16px;
+            padding: 0.75rem 1rem;
             border: 1px solid #ddd;
-            border-radius: 6px;
+            border-radius: 0.375rem;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 12px;
+            gap: 0.75rem;
             font-weight: 500;
             font-size: 1rem;
             transition: all 0.2s ease;
@@ -163,8 +271,8 @@ class PowerStrip extends HTMLElement {
         }
 
         .auth-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transform: translateY(-0.0625rem);
+            box-shadow: 0 0.125rem 0.3125rem rgba(0,0,0,0.05);
         }
 
         .auth-btn:active {
@@ -172,8 +280,8 @@ class PowerStrip extends HTMLElement {
         }
 
         .auth-btn svg {
-            width: 20px;
-            height: 20px;
+            width: 1.25rem;
+            height: 1.25rem;
         }
 
         .auth-btn.google {
@@ -197,12 +305,8 @@ class PowerStrip extends HTMLElement {
       </style>
       
       <div class="container">
-        <svg class="bolt" viewBox="0 0 24 24">
-          <path d="M7 2v11h3v9l7-12h-4l4-8z"/>
-        </svg>
-        <a class="trigger" id="login-trigger" title="Login" role="button" href="javascript:void(0)">
-          Login
-        </a>
+        ${content}
+        <slot></slot>
       </div>
 
       <dialog id="login-dialog">
@@ -213,11 +317,11 @@ class PowerStrip extends HTMLElement {
             </div>
             <div class="auth-buttons">
                 <a href="${googleLink}" class="auth-btn google">
-                    <svg viewBox="0 0 24 24" style="fill:currentColor;"><path d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.389-7.439-7.574s3.345-7.574 7.439-7.574c2.33 0 3.891.989 4.785 1.849l3.254-3.138C18.189 1.186 15.479 0 12.24 0c-6.635 0-12 5.365-12 12s5.365 12 12 12c6.926 0 11.52-4.869 11.52-11.726 0-.788-.085-1.39-.189-1.989H12.24z"/></svg>
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#4285F4" stroke="white" stroke-width="1"/><path d="M17.64 12.2c0-.41-.03-.81-.1-1.21H12v2.3h3.16c-.14.73-.57 1.35-1.19 1.79v1.48h1.92c1.12-1.03 1.75-2.55 1.75-4.36z" fill="white"/><path d="M12 18c1.62 0 2.98-.54 3.97-1.46l-1.92-1.48c-.54.37-1.23.59-2.05.59-1.57 0-2.91-1.06-3.39-2.48H6.65v1.53C7.64 16.69 9.68 18 12 18z" fill="white"/><path d="M8.61 13.17c-.12-.37-.19-.76-.19-1.17s.07-.8.19-1.17V9.3H6.65c-.41.81-.65 1.73-.65 2.7s.24 1.89.65 2.7l1.96-1.53z" fill="white"/><path d="M12 8.35c.88 0 1.67.3 2.3.91l1.73-1.73C14.98 6.51 13.62 6 12 6c-2.32 0-4.36 1.31-5.35 3.3L8.61 10.83c.48-1.42 1.82-2.48 3.39-2.48z" fill="white"/></svg>
                     Continue with Google
                 </a>
                 <a href="${twitchLink}" class="auth-btn twitch">
-                    <svg viewBox="0 0 24 24" style="fill:currentColor;"><path d="M2.149 0L.537 4.119v16.836h5.731V24h3.224l3.045-3.045h4.657l6.269-6.269V0H2.149zm19.164 13.612l-3.582 3.582H12l-3.045 3.045v-3.045H4.119V2.149h17.194v11.463z"/></svg>
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#9146FF" stroke="white" stroke-width="1"/><path d="M7 6H6v10h2v3l3-3h3l4-4V6H7zm9 6l-2 2h-3l-2 2v-2H8V7h8v5z" fill="white"/><path d="M14 8.5h1.5v2H14V8.5zm-3 0h1.5v2H11v-2z" fill="white"/></svg>
                     Continue with Twitch
                 </a>
             </div>
@@ -231,15 +335,16 @@ class PowerStrip extends HTMLElement {
     const dialog = this.shadowRoot.getElementById('login-dialog');
     const closeBtn = this.shadowRoot.getElementById('close-dialog');
 
-    trigger.addEventListener('click', () => {
-      dialog.showModal();
-    });
+    if (trigger) {
+      trigger.addEventListener('click', () => {
+        dialog.showModal();
+      });
+    }
 
     closeBtn.addEventListener('click', () => {
       dialog.close();
     });
 
-    // Close on click outside
     dialog.addEventListener('click', (e) => {
       const rect = dialog.getBoundingClientRect();
       const isInDialog =
