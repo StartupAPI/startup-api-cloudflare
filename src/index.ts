@@ -44,7 +44,7 @@ export default {
     }
 
     if (url.pathname === usersPath + 'logout') {
-      return handleLogout(usersPath);
+      return handleLogout(request, env, usersPath);
     }
 
     // Intercept requests to usersPath and serve them from the public/users directory.
@@ -130,7 +130,28 @@ async function handleMeImage(request: Request, env: Env, type: string): Promise<
   }
 }
 
-function handleLogout(usersPath: string): Response {
+async function handleLogout(request: Request, env: Env, usersPath: string): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (cookieHeader) {
+    const cookies = parseCookies(cookieHeader);
+    const sessionCookie = cookies['session_id'];
+
+    if (sessionCookie && sessionCookie.includes(':')) {
+      const [sessionId, doId] = sessionCookie.split(':');
+      try {
+        const id = env.USER.idFromString(doId);
+        const stub = env.USER.get(id);
+        await stub.fetch('http://do/sessions', {
+          method: 'DELETE',
+          body: JSON.stringify({ sessionId }),
+        });
+      } catch (e) {
+        console.error('Error deleting session:', e);
+        // Continue to clear cookie even if DO call fails
+      }
+    }
+  }
+
   const headers = new Headers();
   headers.set('Set-Cookie', 'session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
   headers.set('Location', '/');

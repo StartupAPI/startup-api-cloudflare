@@ -75,6 +75,8 @@ export class UserDO implements DurableObject {
       return this.addCredential(request);
     } else if (path === '/sessions' && method === 'POST') {
       return this.createSession(request);
+    } else if (path === '/sessions' && method === 'DELETE') {
+      return this.deleteSession(request);
     } else if (path === '/validate-session' && method === 'POST') {
       return this.validateSession(request);
     } else if (path.startsWith('/images/') && method === 'GET') {
@@ -234,5 +236,17 @@ export class UserDO implements DurableObject {
     this.sql.exec('INSERT INTO sessions (id, created_at, expires_at) VALUES (?, ?, ?)', sessionId, now, expiresAt);
 
     return Response.json({ sessionId, expiresAt });
+  }
+
+  /**
+   * Deletes a login session.
+   *
+   * @param request - The HTTP request containing the sessionId.
+   * @returns A Promise resolving to a JSON response indicating success.
+   */
+  async deleteSession(request: Request): Promise<Response> {
+    const { sessionId } = (await request.json()) as { sessionId: string };
+    this.sql.exec('DELETE FROM sessions WHERE id = ?', sessionId);
+    return Response.json({ success: true });
   }
 }

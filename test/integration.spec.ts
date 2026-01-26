@@ -71,4 +71,37 @@ describe('Integration Tests', () => {
     const buffer = await res.arrayBuffer();
     expect(new Uint8Array(buffer)).toEqual(imageData);
   });
+
+  it('should logout and invalidate session', async () => {
+    // 1. Manually set up a UserDO with a session
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+    const doId = id.toString();
+
+    // Create session
+    const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
+    const { sessionId } = await sessionRes.json() as any;
+
+    // 2. Call /logout with the cookie
+    const logoutRes = await SELF.fetch('http://example.com/users/logout', {
+        headers: {
+            'Cookie': `session_id=${sessionId}:${doId}`
+        },
+        redirect: 'manual' // Don't follow the redirect to /
+    });
+
+    expect(logoutRes.status).toBe(302);
+    expect(logoutRes.headers.get('Location')).toBe('/');
+    // Check Set-Cookie clears the session
+    const setCookie = logoutRes.headers.get('Set-Cookie');
+    expect(setCookie).toContain('session_id=;');
+
+    // 3. Verify session is actually deleted in DO
+    const validRes = await stub.fetch('http://do/validate-session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+    const validData: any = await validRes.json();
+    expect(validData.valid).toBe(false);
+  });
 });
