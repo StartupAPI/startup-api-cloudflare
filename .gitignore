@@ -165,3 +165,7 @@ dist
 .env*
 !.env.example
 .wrangler/
+
+# Mac folder index
+
+.DS_Store
