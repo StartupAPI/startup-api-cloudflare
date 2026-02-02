@@ -13,7 +13,7 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 
 - TypeScript strict mode
 - Single quotes, trailing comma
-- Use prettier for formatting after each prompt
+- Run `npm run format` to format the code after each prompt
 
 ## Script rules
 
@@ -23,3 +23,4 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 ## Worker implementation
 
 - Internal worker routes all start with ${usersPath}, make sure to always prefix them
+- Never override .env and .dev.vars files

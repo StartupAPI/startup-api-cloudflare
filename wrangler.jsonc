@@ -26,6 +26,10 @@
         "name": "ACCOUNT",
         "class_name": "AccountDO",
       },
+      {
+        "name": "SYSTEM",
+        "class_name": "SystemDO",
+      },
     ],
   },
   "migrations": [
@@ -36,6 +40,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["AccountDO"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["SystemDO"],
     },
   ],
   "env": {
@@ -55,6 +63,10 @@
           {
             "name": "ACCOUNT",
             "class_name": "AccountDO",
+          },
+          {
+            "name": "SYSTEM",
+            "class_name": "SystemDO",
           },
         ],
       },
