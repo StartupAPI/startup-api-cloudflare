@@ -67,4 +67,27 @@ describe('UserDO Durable Object', () => {
     validData = await validRes.json();
     expect(validData.valid).toBe(false);
   });
+
+  it('should manage memberships', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+
+    const accountId = 'account-456';
+    const role = 1;
+
+    // Add membership
+    let res = await stub.fetch('http://do/memberships', {
+      method: 'POST',
+      body: JSON.stringify({ account_id: accountId, role, is_current: true }),
+    });
+    expect(res.status).toBe(200);
+
+    // Get memberships
+    res = await stub.fetch('http://do/memberships');
+    const memberships: any[] = await res.json();
+    expect(memberships).toHaveLength(1);
+    expect(memberships[0].account_id).toBe(accountId);
+    expect(memberships[0].role).toBe(role);
+    expect(memberships[0].is_current).toBe(1);
+  });
 });

@@ -22,12 +22,20 @@
         "name": "USER",
         "class_name": "UserDO",
       },
+      {
+        "name": "ACCOUNT",
+        "class_name": "AccountDO",
+      },
     ],
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["UserDO"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["AccountDO"],
     },
   ],
   "env": {
@@ -43,6 +51,10 @@
           {
             "name": "USER",
             "class_name": "UserDO",
+          },
+          {
+            "name": "ACCOUNT",
+            "class_name": "AccountDO",
           },
         ],
       },
