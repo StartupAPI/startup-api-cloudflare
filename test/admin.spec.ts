@@ -11,7 +11,7 @@ describe('Admin Administration', () => {
     // Create session
     const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    
+
     // Add profile data (not admin email)
     await userStub.fetch('http://do/credentials', {
       method: 'POST',
@@ -33,7 +33,7 @@ describe('Admin Administration', () => {
   });
 
   it('should allow access to admin users', async () => {
-    // 1. Create an admin user
+    // 1. Get an admin user ID from environment
     const userId = env.USER.idFromName('admin');
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
@@ -41,8 +41,8 @@ describe('Admin Administration', () => {
     // Create session
     const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    
-    // Add profile data (matching configured admin email)
+
+    // Add profile data
     await userStub.fetch('http://do/credentials', {
       method: 'POST',
       body: JSON.stringify({
@@ -62,6 +62,38 @@ describe('Admin Administration', () => {
     expect(res.status).toBe(200);
     const users = (await res.json()) as any[];
     expect(Array.isArray(users)).toBe(true);
+  });
+
+  it('should serve admin dashboard at /users/admin/', async () => {
+    // 1. Get an admin user ID from environment
+    const userId = env.USER.idFromName('admin');
+    const userStub = env.USER.get(userId);
+    const userIdStr = userId.toString();
+
+    // Create session
+    const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
+    const { sessionId } = (await sessionRes.json()) as any;
+
+    // Add profile data
+    await userStub.fetch('http://do/credentials', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'test',
+        subject_id: 'admin123',
+        profile_data: { email: 'admin@example.com' },
+      }),
+    });
+
+    const cookieHeader = `session_id=${sessionId}:${userIdStr}`;
+
+    // 2. Access admin dashboard
+    const res = await SELF.fetch('http://example.com/users/admin/', {
+      headers: { Cookie: cookieHeader },
+    });
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<title>Admin Dashboard</title>');
   });
 
   it('SystemDO should list users and accounts', async () => {

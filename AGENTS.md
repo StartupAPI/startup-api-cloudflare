@@ -23,3 +23,4 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 ## Worker implementation
 
 - Internal worker routes all start with ${usersPath}, make sure to always prefix them
+- Never override .env and .dev.vars files

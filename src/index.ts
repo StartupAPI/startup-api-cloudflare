@@ -101,7 +101,6 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string): Promise<Response> {
-  // Verify Admin (Simple email check for now)
   const user = await getUserFromSession(request, env);
   if (!user || !isAdmin(user, env)) {
     return new Response('Forbidden', { status: 403 });
@@ -109,6 +108,13 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 
   const url = new URL(request.url);
   const path = url.pathname.replace(usersPath + 'admin', '');
+
+  if (path === '/' || path === '') {
+    url.pathname = '/users/admin/';
+    const newRequest = new Request(url.toString(), request);
+    newRequest.headers.set('x-skip-worker', 'true');
+    return env.ASSETS.fetch(newRequest);
+  }
 
   const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
 
