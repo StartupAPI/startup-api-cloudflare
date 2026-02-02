@@ -85,12 +85,45 @@ export class AccountDO implements DurableObject {
     const { user_id, role } = (await request.json()) as { user_id: string; role: number };
     const now = Date.now();
 
+    // Update Account DO
     this.sql.exec('INSERT OR REPLACE INTO members (user_id, role, joined_at) VALUES (?, ?, ?)', user_id, role, now);
+
+    // Sync with User DO
+    try {
+      const userStub = this.env.USER.get(this.env.USER.idFromString(user_id));
+      await userStub.fetch('http://do/memberships', {
+        method: 'POST',
+        body: JSON.stringify({
+          account_id: this.state.id.toString(),
+          role,
+          is_current: false, // Default to false when added by Account
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to sync membership to UserDO', e);
+      // We might want to rollback or retry, but for now we log.
+      // In a real system, we'd use a queue or reliable workflow.
+    }
+
     return Response.json({ success: true });
   }
 
   async removeMember(userId: string): Promise<Response> {
     this.sql.exec('DELETE FROM members WHERE user_id = ?', userId);
+
+    // Sync with User DO
+    try {
+      const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
+      await userStub.fetch('http://do/memberships', {
+        method: 'DELETE',
+        body: JSON.stringify({
+          account_id: this.state.id.toString(),
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to sync membership removal to UserDO', e);
+    }
+
     return Response.json({ success: true });
   }
 }

@@ -91,6 +91,10 @@ export class UserDO implements DurableObject {
       return this.getMemberships();
     } else if (path === '/memberships' && method === 'POST') {
       return this.addMembership(request);
+    } else if (path === '/memberships' && method === 'DELETE') {
+      return this.deleteMembership(request);
+    } else if (path === '/switch-account' && method === 'POST') {
+      return this.switchAccount(request);
     } else if (path.startsWith('/images/') && method === 'GET') {
       const key = path.replace('/images/', '');
       return this.getImage(key);
@@ -286,5 +290,35 @@ export class UserDO implements DurableObject {
       is_current ? 1 : 0,
     );
     return Response.json({ success: true });
+  }
+
+  async deleteMembership(request: Request): Promise<Response> {
+    const { account_id } = (await request.json()) as { account_id: string };
+    this.sql.exec('DELETE FROM memberships WHERE account_id = ?', account_id);
+    return Response.json({ success: true });
+  }
+
+  async switchAccount(request: Request): Promise<Response> {
+    const { account_id } = (await request.json()) as { account_id: string };
+
+    // Verify membership exists
+    const result = this.sql.exec('SELECT account_id FROM memberships WHERE account_id = ?', account_id);
+    const membership = result.next().value;
+
+    if (!membership) {
+      return new Response('Membership not found', { status: 404 });
+    }
+
+    try {
+      this.state.storage.transactionSync(() => {
+        // Unset current
+        this.sql.exec('UPDATE memberships SET is_current = 0');
+        // Set new current
+        this.sql.exec('UPDATE memberships SET is_current = 1 WHERE account_id = ?', account_id);
+      });
+      return Response.json({ success: true });
+    } catch (e: any) {
+      return new Response(e.message, { status: 500 });
+    }
   }
 }
