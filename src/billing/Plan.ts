@@ -43,7 +43,7 @@ export class Plan {
     this.capabilities = config.capabilities || {};
     this.downgrade_to_slug = config.downgrade_to_slug;
     this.grace_period = config.grace_period || 0;
-    this.schedules = (config.schedules || []).map(s => new PaymentSchedule(s));
+    this.schedules = (config.schedules || []).map((s) => new PaymentSchedule(s));
     this.account_activate_hook = config.account_activate_hook;
     this.account_deactivate_hook = config.account_deactivate_hook;
   }
@@ -67,6 +67,6 @@ export class Plan {
   }
 
   getDefaultSchedule(): PaymentSchedule | undefined {
-    return this.schedules.find(s => s.is_default) || this.schedules[0];
+    return this.schedules.find((s) => s.is_default) || this.schedules[0];
   }
 }

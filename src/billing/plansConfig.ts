@@ -8,9 +8,7 @@ const plans: PlanConfig[] = [
       can_access_basic: true,
       can_access_pro: false,
     },
-    schedules: [
-      { charge_amount: 0, charge_period: 30, is_default: true }
-    ]
+    schedules: [{ charge_amount: 0, charge_period: 30, is_default: true }],
   },
   {
     slug: 'pro',
@@ -23,9 +21,9 @@ const plans: PlanConfig[] = [
     grace_period: 7,
     schedules: [
       { charge_amount: 2900, charge_period: 30, is_default: true }, // $29.00 / month
-      { charge_amount: 29000, charge_period: 365 } // $290.00 / year
-    ]
-  }
+      { charge_amount: 29000, charge_period: 365 }, // $290.00 / year
+    ],
+  },
 ];
 
 export function initPlans() {

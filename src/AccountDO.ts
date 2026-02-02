@@ -161,7 +161,7 @@ export class AccountDO implements DurableObject {
 
   private setBillingState(state: any) {
     this.state.storage.transactionSync(() => {
-        this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(state));
+      this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(state));
     });
   }
 
@@ -187,13 +187,13 @@ export class AccountDO implements DurableObject {
     // Call hook if changing plans (simplification)
     if (currentState.plan_slug !== plan_slug) {
       if (currentState.plan_slug) {
-         const oldPlan = Plan.get(currentState.plan_slug);
-         if (oldPlan?.account_deactivate_hook) {
-             await oldPlan.account_deactivate_hook(this.state.id.toString());
-         }
+        const oldPlan = Plan.get(currentState.plan_slug);
+        if (oldPlan?.account_deactivate_hook) {
+          await oldPlan.account_deactivate_hook(this.state.id.toString());
+        }
       }
       if (plan.account_activate_hook) {
-          await plan.account_activate_hook(this.state.id.toString());
+        await plan.account_activate_hook(this.state.id.toString());
       }
     }
 
@@ -209,7 +209,7 @@ export class AccountDO implements DurableObject {
       plan_slug,
       status: 'active',
       schedule_idx,
-      next_billing_date: Date.now() + (plan.schedules[schedule_idx]?.charge_period || 30) * 24 * 60 * 60 * 1000
+      next_billing_date: Date.now() + (plan.schedules[schedule_idx]?.charge_period || 30) * 24 * 60 * 60 * 1000,
     };
 
     this.setBillingState(newState);
@@ -222,22 +222,22 @@ export class AccountDO implements DurableObject {
     const currentPlan = Plan.get(currentState.plan_slug);
 
     if (!currentPlan) {
-        return new Response('No active plan', { status: 400 });
+      return new Response('No active plan', { status: 400 });
     }
 
     await this.paymentEngine.cancelRecurring(this.state.id.toString());
 
     // Downgrade logic (immediate or scheduled - simplification: scheduled if downgrade_to_slug exists)
     // For this prototype, we'll mark it as canceled and set the next plan if applicable.
-    
+
     const newState = {
-        ...currentState,
-        status: 'canceled',
-        next_plan_slug: currentPlan.downgrade_to_slug
+      ...currentState,
+      status: 'canceled',
+      next_plan_slug: currentPlan.downgrade_to_slug,
     };
-    
+
     this.setBillingState(newState);
-    
+
     return Response.json({ success: true, state: newState });
   }
 }

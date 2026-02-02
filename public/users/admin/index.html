@@ -125,7 +125,13 @@
 
     <section id="users-section">
       <h2>Users</h2>
-      <form class="search-bar" onsubmit="event.preventDefault(); searchUsers()">
+      <form
+        class="search-bar"
+        onsubmit="
+          event.preventDefault();
+          searchUsers();
+        "
+      >
         <input type="text" id="user-search" placeholder="Search users by name or email..." />
         <button type="submit">Search</button>
       </form>
@@ -148,7 +154,13 @@
 
     <section id="accounts-section">
       <h2>Accounts</h2>
-      <form class="search-bar" onsubmit="event.preventDefault(); searchAccounts()">
+      <form
+        class="search-bar"
+        onsubmit="
+          event.preventDefault();
+          searchAccounts();
+        "
+      >
         <input type="text" id="account-search" placeholder="Search accounts by name..." />
         <button type="submit">Search</button>
       </form>

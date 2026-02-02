@@ -123,21 +123,25 @@ class PowerStrip extends HTMLElement {
     if (providers.length > 0 && providers[0] !== '') {
       if (this.user) {
         const providerIcon = this.getProviderIcon(this.user.provider);
-        const currentAccount = this.accounts.find(a => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
+        const currentAccount = this.accounts.find((a) => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
         const accountName = currentAccount ? currentAccount.name : 'No Account';
-        
+
         let switchButton = '';
         if (this.accounts.length > 1) {
-            switchButton = `<button class="trigger switch-btn" id="switch-account-trigger" title="Switch Account">Switch</button>`;
-            
-            const accountList = this.accounts.map(acc => `
+          switchButton = `<button class="trigger switch-btn" id="switch-account-trigger" title="Switch Account">Switch</button>`;
+
+          const accountList = this.accounts
+            .map(
+              (acc) => `
                 <button class="account-item ${acc.is_current ? 'active' : ''}" data-id="${acc.account_id}">
                     <span class="account-name">${acc.name}</span>
                     ${acc.is_current ? '<span class="current-badge">Current</span>' : ''}
                 </button>
-            `).join('');
+            `,
+            )
+            .join('');
 
-            accountSwitcher = `
+          accountSwitcher = `
               <dialog id="account-dialog">
                 <div class="dialog-content">
                     <div class="dialog-header">
@@ -490,54 +494,54 @@ class PowerStrip extends HTMLElement {
     }
 
     if (closeLoginBtn) {
-        closeLoginBtn.addEventListener('click', () => {
+      closeLoginBtn.addEventListener('click', () => {
         loginDialog.close();
-        });
+      });
     }
 
     if (loginDialog) {
-        loginDialog.addEventListener('click', (e) => {
+      loginDialog.addEventListener('click', (e) => {
         const rect = loginDialog.getBoundingClientRect();
         const isInDialog =
-            rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+          rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
         if (!isInDialog) {
-            loginDialog.close();
+          loginDialog.close();
         }
-        });
+      });
     }
 
     // Account Switcher Logic
     const switchTrigger = this.shadowRoot.getElementById('switch-account-trigger');
     const accountDialog = this.shadowRoot.getElementById('account-dialog');
     const closeAccountBtn = this.shadowRoot.getElementById('close-account-dialog');
-    
-    if (switchTrigger && accountDialog) {
-        switchTrigger.addEventListener('click', () => {
-            accountDialog.showModal();
-        });
-        
-        if (closeAccountBtn) {
-            closeAccountBtn.addEventListener('click', () => {
-                accountDialog.close();
-            });
-        }
-        
-        accountDialog.addEventListener('click', (e) => {
-            const rect = accountDialog.getBoundingClientRect();
-            const isInDialog =
-                rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
-            if (!isInDialog) {
-                accountDialog.close();
-            }
-        });
 
-        const accountItems = this.shadowRoot.querySelectorAll('.account-item');
-        accountItems.forEach(item => {
-            item.addEventListener('click', () => {
-                const accountId = item.getAttribute('data-id');
-                this.switchAccount(accountId);
-            });
+    if (switchTrigger && accountDialog) {
+      switchTrigger.addEventListener('click', () => {
+        accountDialog.showModal();
+      });
+
+      if (closeAccountBtn) {
+        closeAccountBtn.addEventListener('click', () => {
+          accountDialog.close();
         });
+      }
+
+      accountDialog.addEventListener('click', (e) => {
+        const rect = accountDialog.getBoundingClientRect();
+        const isInDialog =
+          rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+        if (!isInDialog) {
+          accountDialog.close();
+        }
+      });
+
+      const accountItems = this.shadowRoot.querySelectorAll('.account-item');
+      accountItems.forEach((item) => {
+        item.addEventListener('click', () => {
+          const accountId = item.getAttribute('data-id');
+          this.switchAccount(accountId);
+        });
+      });
     }
   }
 }
