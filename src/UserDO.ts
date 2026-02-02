@@ -54,6 +54,12 @@ export class UserDO implements DurableObject {
         value BLOB,
         mime_type TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS memberships (
+        account_id TEXT PRIMARY KEY,
+        role INTEGER,
+        is_current INTEGER
+      );
     `);
   }
 
@@ -81,6 +87,10 @@ export class UserDO implements DurableObject {
       return this.deleteSession(request);
     } else if (path === '/validate-session' && method === 'POST') {
       return this.validateSession(request);
+    } else if (path === '/memberships' && method === 'GET') {
+      return this.getMemberships();
+    } else if (path === '/memberships' && method === 'POST') {
+      return this.addMembership(request);
     } else if (path.startsWith('/images/') && method === 'GET') {
       const key = path.replace('/images/', '');
       return this.getImage(key);
@@ -249,6 +259,32 @@ export class UserDO implements DurableObject {
   async deleteSession(request: Request): Promise<Response> {
     const { sessionId } = (await request.json()) as { sessionId: string };
     this.sql.exec('DELETE FROM sessions WHERE id = ?', sessionId);
+    return Response.json({ success: true });
+  }
+
+  async getMemberships(): Promise<Response> {
+    const result = this.sql.exec('SELECT account_id, role, is_current FROM memberships');
+    const memberships = Array.from(result);
+    return Response.json(memberships);
+  }
+
+  async addMembership(request: Request): Promise<Response> {
+    const { account_id, role, is_current } = (await request.json()) as {
+      account_id: string;
+      role: number;
+      is_current?: boolean;
+    };
+
+    if (is_current) {
+      this.sql.exec('UPDATE memberships SET is_current = 0');
+    }
+
+    this.sql.exec(
+      'INSERT OR REPLACE INTO memberships (account_id, role, is_current) VALUES (?, ?, ?)',
+      account_id,
+      role,
+      is_current ? 1 : 0,
+    );
     return Response.json({ success: true });
   }
 }

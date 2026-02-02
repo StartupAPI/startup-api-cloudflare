@@ -1,10 +1,11 @@
 import { handleAuth } from './auth/index';
 import { injectPowerStrip } from './PowerStrip';
 import { UserDO } from './UserDO';
+import { AccountDO } from './AccountDO';
 
 const DEFAULT_USERS_PATH = '/users/';
 
-export { UserDO };
+export { UserDO, AccountDO };
 
 import type { StartupAPIEnv } from './StartupAPIEnv';
 
@@ -100,11 +101,33 @@ async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response>
 
   try {
     const id = env.USER.idFromString(doId);
-    const stub = env.USER.get(id);
-    return await stub.fetch('http://do/validate-session', {
+    const userStub = env.USER.get(id);
+    const validateRes = await userStub.fetch('http://do/validate-session', {
       method: 'POST',
       body: JSON.stringify({ sessionId }),
     });
+
+    if (!validateRes.ok) return validateRes;
+
+    const data = (await validateRes.json()) as any;
+
+    // Fetch memberships to find current account
+    const membershipsRes = await userStub.fetch('http://do/memberships');
+    const memberships = (await membershipsRes.json()) as any[];
+    const currentMembership = memberships.find((m) => m.is_current) || memberships[0];
+
+    if (currentMembership) {
+      const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
+      const accountStub = env.ACCOUNT.get(accountId);
+      const accountInfoRes = await accountStub.fetch('http://do/info');
+      if (accountInfoRes.ok) {
+        data.account = await accountInfoRes.json();
+        data.account.id = currentMembership.account_id;
+        data.account.role = currentMembership.role;
+      }
+    }
+
+    return Response.json(data);
   } catch (e) {
     return new Response('Unauthorized', { status: 401 });
   }

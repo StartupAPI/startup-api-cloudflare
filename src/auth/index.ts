@@ -83,6 +83,45 @@ export async function handleAuth(request: Request, env: StartupAPIEnv, url: URL,
           }),
         });
 
+        // Ensure user has at least one account
+        const membershipsRes = await stub.fetch('http://do/memberships');
+        const memberships = (await membershipsRes.json()) as any[];
+
+        if (memberships.length === 0) {
+          // Create a personal account
+          const accountId = env.ACCOUNT.newUniqueId();
+          const accountStub = env.ACCOUNT.get(accountId);
+          const accountIdStr = accountId.toString();
+
+          // Initialize account info
+          await accountStub.fetch('http://do/info', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: `${profile.name || profile.id}'s Account`,
+              personal: true,
+            }),
+          });
+
+          // Add user as ADMIN to the account
+          await accountStub.fetch('http://do/members', {
+            method: 'POST',
+            body: JSON.stringify({
+              user_id: id.toString(),
+              role: 1, // ADMIN
+            }),
+          });
+
+          // Add membership to user
+          await stub.fetch('http://do/memberships', {
+            method: 'POST',
+            body: JSON.stringify({
+              account_id: accountIdStr,
+              role: 1, // ADMIN
+              is_current: true,
+            }),
+          });
+        }
+
         // Create Session
         const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
         const session = (await sessionRes.json()) as any;
