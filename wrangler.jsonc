@@ -20,31 +20,31 @@
     "bindings": [
       {
         "name": "USER",
-        "class_name": "UserDO"
+        "class_name": "UserDO",
       },
       {
         "name": "ACCOUNT",
-        "class_name": "AccountDO"
+        "class_name": "AccountDO",
       },
       {
         "name": "SYSTEM",
-        "class_name": "SystemDO"
-      }
-    ]
+        "class_name": "SystemDO",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["UserDO"]
+      "new_sqlite_classes": ["UserDO"],
     },
     {
       "tag": "v2",
-      "new_sqlite_classes": ["AccountDO"]
+      "new_sqlite_classes": ["AccountDO"],
     },
     {
       "tag": "v3",
-      "new_sqlite_classes": ["SystemDO"]
-    }
+      "new_sqlite_classes": ["SystemDO"],
+    },
   ],
   "env": {
     "preview": {
@@ -52,24 +52,24 @@
       "assets": {
         "directory": "./public",
         "run_worker_first": true,
-        "binding": "ASSETS"
+        "binding": "ASSETS",
       },
       "durable_objects": {
         "bindings": [
           {
             "name": "USER",
-            "class_name": "UserDO"
+            "class_name": "UserDO",
           },
           {
             "name": "ACCOUNT",
-            "class_name": "AccountDO"
+            "class_name": "AccountDO",
           },
           {
             "name": "SYSTEM",
-            "class_name": "SystemDO"
-          }
-        ]
-      }
-    }
-  }
+            "class_name": "SystemDO",
+          },
+        ],
+      },
+    },
+  },
 }

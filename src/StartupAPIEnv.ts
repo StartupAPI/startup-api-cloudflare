@@ -1,4 +1,4 @@
-type StartupAPIConfigOptions = {
+export type StartupAPIEnv = {
   ORIGIN_URL: URL;
   USERS_PATH: string;
   AUTH_ORIGIN: string;
@@ -6,8 +6,6 @@ type StartupAPIConfigOptions = {
   GOOGLE_CLIENT_SECRET: string;
   TWITCH_CLIENT_ID: string;
   TWITCH_CLIENT_SECRET: string;
-  ADMIN_EMAILS?: string;
+  ADMIN_IDS: string;
   SYSTEM: DurableObjectNamespace;
-};
-
-export type StartupAPIEnv = StartupAPIConfigOptions | Env;
+} & Env;

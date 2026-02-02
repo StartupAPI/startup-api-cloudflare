@@ -34,7 +34,7 @@ describe('Admin Administration', () => {
 
   it('should allow access to admin users', async () => {
     // 1. Create an admin user
-    const userId = env.USER.newUniqueId();
+    const userId = env.USER.idFromName('admin');
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
 

@@ -118,7 +118,7 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
     return systemStub.fetch(new Request('http://do' + path + url.search, request));
   } else if (path === '/impersonate' && request.method === 'POST') {
     const { userId } = (await request.json()) as { userId: string };
-    
+
     // Create a session for the target user
     const targetUserStub = env.USER.get(env.USER.idFromString(userId));
     const sessionRes = await targetUserStub.fetch('http://do/sessions', { method: 'POST' });
@@ -127,7 +127,7 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
     const doId = userId;
     const headers = new Headers();
     headers.set('Set-Cookie', `session_id=${sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-    
+
     return Response.json({ success: true }, { headers });
   }
 
@@ -156,7 +156,12 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv): Promise
     if (!validateRes.ok) return null;
 
     const data = (await validateRes.json()) as any;
-    if (data.valid) return data.profile;
+    if (data.valid) {
+      return {
+        ...data.profile,
+        id: doId,
+      };
+    }
   } catch (e) {
     return null;
   }
@@ -164,11 +169,10 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv): Promise
 }
 
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
-  if (!env.ADMIN_EMAILS) return false;
-  const adminEmails = env.ADMIN_EMAILS.split(',').map((e) => e.trim());
-  return adminEmails.includes(user.email);
+  if (!env.ADMIN_IDS) return false;
+  const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim());
+  return adminIds.includes(user.id);
 }
-
 
 async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
@@ -361,7 +365,7 @@ async function handleSwitchAccount(request: Request, env: StartupAPIEnv): Promis
     });
 
     if (!switchRes.ok) {
-        return switchRes;
+      return switchRes;
     }
 
     return Response.json({ success: true });
