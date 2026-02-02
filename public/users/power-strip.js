@@ -4,6 +4,7 @@ class PowerStrip extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.basePath = this.detectBasePath();
     this.user = null;
+    this.accounts = [];
   }
 
   detectBasePath() {
@@ -38,10 +39,35 @@ class PowerStrip extends HTMLElement {
         const data = await res.json();
         if (data.valid) {
           this.user = data.profile;
+          // Fetch accounts if logged in
+          const accountsRes = await fetch(`${this.basePath}/me/accounts`);
+          if (accountsRes.ok) {
+            this.accounts = await accountsRes.json();
+          }
         }
       }
     } catch (e) {
       // Not logged in or error
+    }
+  }
+
+  async switchAccount(accountId) {
+    try {
+      const res = await fetch(`${this.basePath}/me/accounts/switch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ account_id: accountId }),
+      });
+
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        console.error('Failed to switch account');
+      }
+    } catch (e) {
+      console.error('Error switching account', e);
     }
   }
 
@@ -92,10 +118,40 @@ class PowerStrip extends HTMLElement {
     }
 
     let content = '';
+    let accountSwitcher = '';
 
     if (providers.length > 0 && providers[0] !== '') {
       if (this.user) {
         const providerIcon = this.getProviderIcon(this.user.provider);
+        const currentAccount = this.accounts.find(a => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
+        const accountName = currentAccount ? currentAccount.name : 'No Account';
+        
+        let switchButton = '';
+        if (this.accounts.length > 1) {
+            switchButton = `<button class="trigger switch-btn" id="switch-account-trigger" title="Switch Account">Switch</button>`;
+            
+            const accountList = this.accounts.map(acc => `
+                <button class="account-item ${acc.is_current ? 'active' : ''}" data-id="${acc.account_id}">
+                    <span class="account-name">${acc.name}</span>
+                    ${acc.is_current ? '<span class="current-badge">Current</span>' : ''}
+                </button>
+            `).join('');
+
+            accountSwitcher = `
+              <dialog id="account-dialog">
+                <div class="dialog-content">
+                    <div class="dialog-header">
+                        <h2 class="dialog-title">Switch Account</h2>
+                        <button class="close-btn" id="close-account-dialog" aria-label="Close">&times;</button>
+                    </div>
+                    <div class="account-list">
+                        ${accountList}
+                    </div>
+                </div>
+              </dialog>
+            `;
+        }
+
         content = `
             <div class="user-profile">
               <div class="avatar-container">
@@ -104,7 +160,11 @@ class PowerStrip extends HTMLElement {
                       ${providerIcon}
                   </div>
               </div>
-              <span class="user-name">${this.user.name}</span>
+              <div class="user-info">
+                  <span class="user-name">${this.user.name}</span>
+                  <span class="account-label">${accountName}</span>
+              </div>
+              ${switchButton}
               <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
             </div>
           `;
@@ -147,15 +207,22 @@ class PowerStrip extends HTMLElement {
            padding: 0.125rem 0.375rem;
            transition: background-color 0.2s;
            border-radius: 0.25rem;
-           font-size: 0.9rem;
+           font-size: 0.8rem;
            font-weight: 500;
            color: #444;
            text-decoration: none;
+           border: none;
+           background: transparent;
+           line-height: inherit;
         }
 
         .trigger:hover {
             background-color: rgba(0, 0, 0, 0.05);
             text-decoration: underline;
+            color: #1a73e8;
+        }
+        
+        .switch-btn {
             color: #1a73e8;
         }
 
@@ -206,17 +273,34 @@ class PowerStrip extends HTMLElement {
         .provider-badge.google { color: #3c4043; }
         .provider-badge.twitch { color: #9146FF; }
 
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            line-height: 1;
+            justify-content: center;
+        }
+
         .user-name {
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             color: #333;
-            max-width: 15rem;
+            max-width: 10rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 600;
+        }
+        
+        .account-label {
+            font-size: 0.65rem;
+            color: #666;
+            max-width: 10rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         @media (max-width: 25rem) {
-            .user-name {
+            .user-info {
                 display: none;
             }
         }
@@ -333,6 +417,44 @@ class PowerStrip extends HTMLElement {
             background-color: #7d2ee6;
             border-color: #7d2ee6;
         }
+        
+        /* Account Switcher Styling */
+        .account-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
+        .account-item {
+            padding: 0.75rem;
+            border: 1px solid #eee;
+            border-radius: 0.375rem;
+            background: white;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s;
+            font-size: 1rem;
+        }
+        
+        .account-item:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .account-item.active {
+            border-color: #1a73e8;
+            background-color: #e8f0fe;
+        }
+        
+        .current-badge {
+            font-size: 0.75rem;
+            background: #1a73e8;
+            color: white;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.75rem;
+        }
       </style>
       
       <div class="container">
@@ -351,32 +473,72 @@ class PowerStrip extends HTMLElement {
             </div>
         </div>
       </dialog>
+      
+      ${accountSwitcher}
     `;
   }
 
   addEventListeners() {
-    const trigger = this.shadowRoot.getElementById('login-trigger');
-    const dialog = this.shadowRoot.getElementById('login-dialog');
-    const closeBtn = this.shadowRoot.getElementById('close-dialog');
+    const loginTrigger = this.shadowRoot.getElementById('login-trigger');
+    const loginDialog = this.shadowRoot.getElementById('login-dialog');
+    const closeLoginBtn = this.shadowRoot.getElementById('close-dialog');
 
-    if (trigger) {
-      trigger.addEventListener('click', () => {
-        dialog.showModal();
+    if (loginTrigger) {
+      loginTrigger.addEventListener('click', () => {
+        loginDialog.showModal();
       });
     }
 
-    closeBtn.addEventListener('click', () => {
-      dialog.close();
-    });
+    if (closeLoginBtn) {
+        closeLoginBtn.addEventListener('click', () => {
+        loginDialog.close();
+        });
+    }
 
-    dialog.addEventListener('click', (e) => {
-      const rect = dialog.getBoundingClientRect();
-      const isInDialog =
-        rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
-      if (!isInDialog) {
-        dialog.close();
-      }
-    });
+    if (loginDialog) {
+        loginDialog.addEventListener('click', (e) => {
+        const rect = loginDialog.getBoundingClientRect();
+        const isInDialog =
+            rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+        if (!isInDialog) {
+            loginDialog.close();
+        }
+        });
+    }
+
+    // Account Switcher Logic
+    const switchTrigger = this.shadowRoot.getElementById('switch-account-trigger');
+    const accountDialog = this.shadowRoot.getElementById('account-dialog');
+    const closeAccountBtn = this.shadowRoot.getElementById('close-account-dialog');
+    
+    if (switchTrigger && accountDialog) {
+        switchTrigger.addEventListener('click', () => {
+            accountDialog.showModal();
+        });
+        
+        if (closeAccountBtn) {
+            closeAccountBtn.addEventListener('click', () => {
+                accountDialog.close();
+            });
+        }
+        
+        accountDialog.addEventListener('click', (e) => {
+            const rect = accountDialog.getBoundingClientRect();
+            const isInDialog =
+                rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+            if (!isInDialog) {
+                accountDialog.close();
+            }
+        });
+
+        const accountItems = this.shadowRoot.querySelectorAll('.account-item');
+        accountItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const accountId = item.getAttribute('data-id');
+                this.switchAccount(accountId);
+            });
+        });
+    }
   }
 }
 
