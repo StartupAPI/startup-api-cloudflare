@@ -13,11 +13,14 @@
     "start": "wrangler dev",
     "preview": "wrangler dev --env preview",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage --coverage.provider=istanbul",
     "cf-typegen": "wrangler types",
     "format": "npx prettier . --write"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.12.4",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "@vitest/coverage-v8": "^3.2.4",
     "typescript": "^5.5.2",
     "vitest": "~3.2.0",
     "wrangler": "^4.60.0"
