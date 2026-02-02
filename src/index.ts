@@ -2,10 +2,11 @@ import { handleAuth } from './auth/index';
 import { injectPowerStrip } from './PowerStrip';
 import { UserDO } from './UserDO';
 import { AccountDO } from './AccountDO';
+import { SystemDO } from './SystemDO';
 
 const DEFAULT_USERS_PATH = '/users/';
 
-export { UserDO, AccountDO };
+export { UserDO, AccountDO, SystemDO };
 
 import type { StartupAPIEnv } from './StartupAPIEnv';
 
@@ -58,6 +59,11 @@ export default {
       return handleLogout(request, env, usersPath);
     }
 
+    // Admin Routes
+    if (url.pathname.startsWith(usersPath + 'admin/')) {
+      return handleAdmin(request, env, usersPath);
+    }
+
     // Intercept requests to usersPath and serve them from the public/users directory.
     // This allows us to serve our own scripts and assets.
     if (url.pathname.startsWith(usersPath)) {
@@ -93,6 +99,76 @@ export default {
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
+
+async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string): Promise<Response> {
+  // Verify Admin (Simple email check for now)
+  const user = await getUserFromSession(request, env);
+  if (!user || !isAdmin(user, env)) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const url = new URL(request.url);
+  const path = url.pathname.replace(usersPath + 'admin', '');
+
+  const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+
+  if (path.startsWith('/users')) {
+    return systemStub.fetch(new Request('http://do' + path + url.search, request));
+  } else if (path.startsWith('/accounts')) {
+    return systemStub.fetch(new Request('http://do' + path + url.search, request));
+  } else if (path === '/impersonate' && request.method === 'POST') {
+    const { userId } = (await request.json()) as { userId: string };
+    
+    // Create a session for the target user
+    const targetUserStub = env.USER.get(env.USER.idFromString(userId));
+    const sessionRes = await targetUserStub.fetch('http://do/sessions', { method: 'POST' });
+    const { sessionId } = (await sessionRes.json()) as any;
+
+    const doId = userId;
+    const headers = new Headers();
+    headers.set('Set-Cookie', `session_id=${sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+    
+    return Response.json({ success: true }, { headers });
+  }
+
+  return new Response('Not Found', { status: 404 });
+}
+
+async function getUserFromSession(request: Request, env: StartupAPIEnv): Promise<any> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return null;
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies['session_id'];
+
+  if (!sessionCookie || !sessionCookie.includes(':')) return null;
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const validateRes = await userStub.fetch('http://do/validate-session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+
+    if (!validateRes.ok) return null;
+
+    const data = (await validateRes.json()) as any;
+    if (data.valid) return data.profile;
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+function isAdmin(user: any, env: StartupAPIEnv): boolean {
+  if (!env.ADMIN_EMAILS) return false;
+  const adminEmails = env.ADMIN_EMAILS.split(',').map((e) => e.trim());
+  return adminEmails.includes(user.email);
+}
+
 
 async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');

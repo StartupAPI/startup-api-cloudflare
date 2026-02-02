@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 2rem; max-width: 1200px; margin: 0 auto; background: #f9f9f9; }
+        h1, h2 { color: #333; }
+        section { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        .search-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        input[type="text"] { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; flex-grow: 1; }
+        button { padding: 0.5rem 1rem; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #1557b0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #eee; }
+        th { background: #f0f0f0; }
+        .actions { display: flex; gap: 0.5rem; }
+        .secondary-btn { background: #eee; color: #333; }
+        .secondary-btn:hover { background: #e0e0e0; }
+        #toast { position: fixed; bottom: 1rem; right: 1rem; padding: 1rem; background: #333; color: white; border-radius: 4px; opacity: 0; transition: opacity 0.3s; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 2rem; border-radius: 8px; width: 400px; }
+        .modal h3 { margin-top: 0; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        .form-group input, .form-group select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem; }
+    </style>
+</head>
+<body>
+    <h1>StartupAPI Admin</h1>
+
+    <section id="users-section">
+        <h2>Users</h2>
+        <div class="search-bar">
+            <input type="text" id="user-search" placeholder="Search users by name or email...">
+            <button onclick="searchUsers()">Search</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Provider</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="users-table">
+                <!-- Users -->
+            </tbody>
+        </table>
+    </section>
+
+    <section id="accounts-section">
+        <h2>Accounts</h2>
+        <div class="search-bar">
+            <input type="text" id="account-search" placeholder="Search accounts by name...">
+            <button onclick="searchAccounts()">Search</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Plan</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="accounts-table">
+                <!-- Accounts -->
+            </tbody>
+        </table>
+    </section>
+
+    <div id="toast"></div>
+
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="modal">
+        <div class="modal-content">
+            <h3>Edit User</h3>
+            <input type="hidden" id="edit-user-id">
+            <div class="form-group">
+                <label for="edit-user-name">Name</label>
+                <input type="text" id="edit-user-name">
+            </div>
+            <div class="form-group">
+                <label for="edit-user-email">Email</label>
+                <input type="text" id="edit-user-email">
+            </div>
+            <div class="modal-actions">
+                <button class="secondary-btn" onclick="closeModal('edit-user-modal')">Cancel</button>
+                <button onclick="saveUser()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Account Modal -->
+    <div id="edit-account-modal" class="modal">
+        <div class="modal-content">
+            <h3>Edit Account</h3>
+            <input type="hidden" id="edit-account-id">
+            <div class="form-group">
+                <label for="edit-account-name">Name</label>
+                <input type="text" id="edit-account-name">
+            </div>
+            <div class="form-group">
+                <label for="edit-account-status">Status</label>
+                <select id="edit-account-status">
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="canceled">Canceled</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="edit-account-plan">Plan</label>
+                <select id="edit-account-plan">
+                    <option value="free">Free</option>
+                    <option value="pro">Pro</option>
+                    <option value="enterprise">Enterprise</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="secondary-btn" onclick="closeModal('edit-account-modal')">Cancel</button>
+                <button onclick="saveAccount()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/users/admin';
+
+        async function fetchAPI(endpoint, options = {}) {
+            try {
+                const res = await fetch(`${API_BASE}${endpoint}`, options);
+                if (res.status === 403) {
+                    showToast('Access Denied. Admin privileges required.');
+                    return null;
+                }
+                if (!res.ok) throw new Error('Request failed');
+                return await res.json();
+            } catch (e) {
+                showToast(e.message);
+                return null;
+            }
+        }
+
+        async function searchUsers() {
+            const query = document.getElementById('user-search').value;
+            const users = await fetchAPI(`/users?q=${encodeURIComponent(query)}`);
+            if (users) renderUsers(users);
+        }
+
+        async function searchAccounts() {
+            const query = document.getElementById('account-search').value;
+            const accounts = await fetchAPI(`/accounts?q=${encodeURIComponent(query)}`);
+            if (accounts) renderAccounts(accounts);
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('users-table');
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td>${u.id.substring(0, 8)}...</td>
+                    <td>${u.name || '-'}</td>
+                    <td>${u.email || '-'}</td>
+                    <td>${u.provider || '-'}</td>
+                    <td>${new Date(u.created_at).toLocaleDateString()}</td>
+                    <td class="actions">
+                        <button class="secondary-btn" onclick='openEditUser(${JSON.stringify(u)})'>Edit</button>
+                        <button onclick="impersonate('${u.id}')">Impersonate</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderAccounts(accounts) {
+            const tbody = document.getElementById('accounts-table');
+            tbody.innerHTML = accounts.map(a => `
+                <tr>
+                    <td>${a.id.substring(0, 8)}...</td>
+                    <td>${a.name || '-'}</td>
+                    <td>${a.status || '-'}</td>
+                    <td>${a.plan || '-'}</td>
+                    <td>${new Date(a.created_at).toLocaleDateString()}</td>
+                    <td class="actions">
+                         <button class="secondary-btn" onclick='openEditAccount(${JSON.stringify(a)})'>Edit</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function impersonate(userId) {
+            if (!confirm('Are you sure you want to log in as this user?')) return;
+            
+            const res = await fetch(`${API_BASE}/impersonate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId })
+            });
+
+            if (res.ok) {
+                window.location.href = '/';
+            } else {
+                showToast('Impersonation failed');
+            }
+        }
+
+        function openEditUser(user) {
+            document.getElementById('edit-user-id').value = user.id;
+            document.getElementById('edit-user-name').value = user.name || '';
+            document.getElementById('edit-user-email').value = user.email || '';
+            document.getElementById('edit-user-modal').style.display = 'flex';
+        }
+
+        function openEditAccount(account) {
+            document.getElementById('edit-account-id').value = account.id;
+            document.getElementById('edit-account-name').value = account.name || '';
+            document.getElementById('edit-account-status').value = account.status || 'active';
+            document.getElementById('edit-account-plan').value = account.plan || 'free';
+            document.getElementById('edit-account-modal').style.display = 'flex';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        async function saveUser() {
+            const id = document.getElementById('edit-user-id').value;
+            const name = document.getElementById('edit-user-name').value;
+            const email = document.getElementById('edit-user-email').value;
+
+            const res = await fetch(`${API_BASE}/users/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email })
+            });
+
+            if (res.ok) {
+                showToast('User updated');
+                closeModal('edit-user-modal');
+                searchUsers();
+            } else {
+                showToast('Update failed');
+            }
+        }
+
+        async function saveAccount() {
+            const id = document.getElementById('edit-account-id').value;
+            const name = document.getElementById('edit-account-name').value;
+            const status = document.getElementById('edit-account-status').value;
+            const plan = document.getElementById('edit-account-plan').value;
+
+            const res = await fetch(`${API_BASE}/accounts/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, status, plan })
+            });
+
+            if (res.ok) {
+                showToast('Account updated');
+                closeModal('edit-account-modal');
+                searchAccounts();
+            } else {
+                showToast('Update failed');
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.style.opacity = 1;
+            setTimeout(() => toast.style.opacity = 0, 3000);
+        }
+
+        // Initial load
+        searchUsers();
+        searchAccounts();
+    </script>
+</body>
+</html>

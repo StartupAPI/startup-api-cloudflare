@@ -83,6 +83,18 @@ export async function handleAuth(request: Request, env: StartupAPIEnv, url: URL,
           }),
         });
 
+        // Register User in SystemDO
+        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+        await systemStub.fetch('http://do/users', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: id.toString(),
+            name: profile.name || profile.id,
+            email: profile.email,
+            provider: provider.name,
+          }),
+        });
+
         // Ensure user has at least one account
         const membershipsRes = await stub.fetch('http://do/memberships');
         const memberships = (await membershipsRes.json()) as any[];
@@ -99,6 +111,17 @@ export async function handleAuth(request: Request, env: StartupAPIEnv, url: URL,
             body: JSON.stringify({
               name: `${profile.name || profile.id}'s Account`,
               personal: true,
+            }),
+          });
+
+          // Register Account in SystemDO
+          await systemStub.fetch('http://do/accounts', {
+            method: 'POST',
+            body: JSON.stringify({
+              id: accountIdStr,
+              name: `${profile.name || profile.id}'s Account`,
+              status: 'active',
+              plan: 'free',
             }),
           });
 
