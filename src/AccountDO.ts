@@ -5,6 +5,9 @@ import type { StartupAPIEnv } from './StartupAPIEnv';
  * This class handles account-specific data, settings, and memberships.
  */
 export class AccountDO implements DurableObject {
+  static ROLE_USER = 0;
+  static ROLE_ADMIN = 1;
+
   state: DurableObjectState;
   env: StartupAPIEnv;
   sql: SqlStorage;

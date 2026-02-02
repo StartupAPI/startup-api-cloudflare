@@ -95,6 +95,8 @@ export class UserDO implements DurableObject {
       return this.deleteMembership(request);
     } else if (path === '/switch-account' && method === 'POST') {
       return this.switchAccount(request);
+    } else if (path === '/current-account' && method === 'GET') {
+      return this.getCurrentAccount();
     } else if (path.startsWith('/images/') && method === 'GET') {
       const key = path.replace('/images/', '');
       return this.getImage(key);
@@ -320,5 +322,22 @@ export class UserDO implements DurableObject {
     } catch (e: any) {
       return new Response(e.message, { status: 500 });
     }
+  }
+
+  async getCurrentAccount(): Promise<Response> {
+    const result = this.sql.exec('SELECT account_id, role FROM memberships WHERE is_current = 1');
+    const membership = result.next().value;
+
+    if (!membership) {
+      // Fallback: Return the first membership if no current is set
+      const fallback = this.sql.exec('SELECT account_id, role FROM memberships LIMIT 1');
+      const fallbackMembership = fallback.next().value;
+      if (fallbackMembership) {
+        return Response.json(fallbackMembership);
+      }
+      return new Response(null, { status: 404 });
+    }
+
+    return Response.json(membership);
   }
 }
