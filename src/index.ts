@@ -46,6 +46,14 @@ export default {
       return handleMeImage(request, env, 'provider-icon');
     }
 
+    if (url.pathname === usersPath + 'me/accounts') {
+      return handleMyAccounts(request, env);
+    }
+
+    if (url.pathname === usersPath + 'me/accounts/switch' && request.method === 'POST') {
+      return handleSwitchAccount(request, env);
+    }
+
     if (url.pathname === usersPath + 'logout') {
       return handleLogout(request, env, usersPath);
     }
@@ -192,4 +200,96 @@ function parseCookies(cookieHeader: string): Record<string, string> {
     },
     {} as Record<string, string>,
   );
+}
+
+async function handleMyAccounts(request: Request, env: StartupAPIEnv): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies['session_id'];
+
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const validateRes = await userStub.fetch('http://do/validate-session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+
+    if (!validateRes.ok) return validateRes;
+
+    // Fetch memberships
+    const membershipsRes = await userStub.fetch('http://do/memberships');
+    const memberships = (await membershipsRes.json()) as any[];
+
+    const accounts = await Promise.all(
+      memberships.map(async (m) => {
+        const accountId = env.ACCOUNT.idFromString(m.account_id);
+        const accountStub = env.ACCOUNT.get(accountId);
+        const infoRes = await accountStub.fetch('http://do/info');
+        let info = {};
+        if (infoRes.ok) {
+          info = await infoRes.json();
+        }
+        return {
+          ...m,
+          ...info,
+        };
+      }),
+    );
+
+    return Response.json(accounts);
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleSwitchAccount(request: Request, env: StartupAPIEnv): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies['session_id'];
+
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [sessionId, doId] = sessionCookie.split(':');
+  const { account_id } = (await request.json()) as { account_id: string };
+
+  if (!account_id) {
+    return new Response('Missing account_id', { status: 400 });
+  }
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const validateRes = await userStub.fetch('http://do/validate-session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+
+    if (!validateRes.ok) return validateRes;
+
+    const switchRes = await userStub.fetch('http://do/switch-account', {
+      method: 'POST',
+      body: JSON.stringify({ account_id }),
+    });
+
+    if (!switchRes.ok) {
+        return switchRes;
+    }
+
+    return Response.json({ success: true });
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
 }
