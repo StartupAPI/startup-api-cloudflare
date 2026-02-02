@@ -1,7 +1,8 @@
-import type { StartupAPIEnv } from './StartupAPIEnv';
-import { initPlans } from './plansConfig';
-import { Plan } from './Plan';
-import { MockPaymentEngine } from './PaymentEngine';
+import { DurableObject } from 'cloudflare:workers';
+import { initPlans } from './billing/plansConfig';
+import { Plan } from './billing/Plan';
+import { MockPaymentEngine } from './billing/PaymentEngine';
+import { StartupAPIEnv } from './StartupAPIEnv';
 
 /**
  * A Durable Object representing an Account (Tenant).
