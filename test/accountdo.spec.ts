@@ -25,7 +25,7 @@ describe('AccountDO Durable Object', () => {
     const id = env.ACCOUNT.newUniqueId();
     const stub = env.ACCOUNT.get(id);
 
-    const userId = 'user-123';
+    const userId = env.USER.newUniqueId().toString();
     const role = 1; // ADMIN
 
     // Add member
