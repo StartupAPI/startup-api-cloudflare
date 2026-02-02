@@ -1,4 +1,8 @@
-import type { StartupAPIEnv } from './StartupAPIEnv';
+import { DurableObject } from 'cloudflare:workers';
+import { initPlans } from './billing/plansConfig';
+import { Plan } from './billing/Plan';
+import { MockPaymentEngine } from './billing/PaymentEngine';
+import { StartupAPIEnv } from './StartupAPIEnv';
 
 /**
  * A Durable Object representing an Account (Tenant).
@@ -11,11 +15,16 @@ export class AccountDO implements DurableObject {
   state: DurableObjectState;
   env: StartupAPIEnv;
   sql: SqlStorage;
+  paymentEngine: MockPaymentEngine;
 
   constructor(state: DurableObjectState, env: StartupAPIEnv) {
     this.state = state;
     this.env = env;
     this.sql = state.storage.sql;
+    this.paymentEngine = new MockPaymentEngine();
+
+    // Initialize plans
+    initPlans();
 
     // Initialize database schema
     this.sql.exec(`
@@ -48,6 +57,12 @@ export class AccountDO implements DurableObject {
     } else if (path.startsWith('/members/') && method === 'DELETE') {
       const userId = path.replace('/members/', '');
       return this.removeMember(userId);
+    } else if (path === '/billing' && method === 'GET') {
+      return this.getBillingInfo();
+    } else if (path === '/billing/subscribe' && method === 'POST') {
+      return this.subscribe(request);
+    } else if (path === '/billing/cancel' && method === 'POST') {
+      return this.cancelSubscription();
     }
 
     return new Response('Not Found', { status: 404 });
@@ -128,5 +143,101 @@ export class AccountDO implements DurableObject {
     }
 
     return Response.json({ success: true });
+  }
+
+  // Billing Implementation
+
+  private getBillingState(): any {
+    const result = this.sql.exec("SELECT value FROM account_info WHERE key = 'billing'");
+    for (const row of result) {
+      // @ts-ignore
+      return JSON.parse(row.value as string);
+    }
+    return {
+      plan_slug: 'free',
+      status: 'active',
+    };
+  }
+
+  private setBillingState(state: any) {
+    this.state.storage.transactionSync(() => {
+        this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(state));
+    });
+  }
+
+  async getBillingInfo(): Promise<Response> {
+    const state = this.getBillingState();
+    const plan = Plan.get(state.plan_slug);
+    return Response.json({
+      state,
+      plan_details: plan,
+    });
+  }
+
+  async subscribe(request: Request): Promise<Response> {
+    const { plan_slug, schedule_idx = 0 } = (await request.json()) as { plan_slug: string; schedule_idx?: number };
+    const plan = Plan.get(plan_slug);
+
+    if (!plan) {
+      return new Response('Plan not found', { status: 400 });
+    }
+
+    const currentState = this.getBillingState();
+
+    // Call hook if changing plans (simplification)
+    if (currentState.plan_slug !== plan_slug) {
+      if (currentState.plan_slug) {
+         const oldPlan = Plan.get(currentState.plan_slug);
+         if (oldPlan?.account_deactivate_hook) {
+             await oldPlan.account_deactivate_hook(this.state.id.toString());
+         }
+      }
+      if (plan.account_activate_hook) {
+          await plan.account_activate_hook(this.state.id.toString());
+      }
+    }
+
+    // Setup recurring payment
+    try {
+      await this.paymentEngine.setupRecurring(this.state.id.toString(), plan_slug, schedule_idx);
+    } catch (e: any) {
+      return new Response(`Payment setup failed: ${e.message}`, { status: 500 });
+    }
+
+    const newState = {
+      ...currentState,
+      plan_slug,
+      status: 'active',
+      schedule_idx,
+      next_billing_date: Date.now() + (plan.schedules[schedule_idx]?.charge_period || 30) * 24 * 60 * 60 * 1000
+    };
+
+    this.setBillingState(newState);
+
+    return Response.json({ success: true, state: newState });
+  }
+
+  async cancelSubscription(): Promise<Response> {
+    const currentState = this.getBillingState();
+    const currentPlan = Plan.get(currentState.plan_slug);
+
+    if (!currentPlan) {
+        return new Response('No active plan', { status: 400 });
+    }
+
+    await this.paymentEngine.cancelRecurring(this.state.id.toString());
+
+    // Downgrade logic (immediate or scheduled - simplification: scheduled if downgrade_to_slug exists)
+    // For this prototype, we'll mark it as canceled and set the next plan if applicable.
+    
+    const newState = {
+        ...currentState,
+        status: 'canceled',
+        next_plan_slug: currentPlan.downgrade_to_slug
+    };
+    
+    this.setBillingState(newState);
+    
+    return Response.json({ success: true, state: newState });
   }
 }
