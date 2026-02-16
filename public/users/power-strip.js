@@ -32,6 +32,12 @@ class PowerStrip extends HTMLElement {
     this.addEventListeners();
   }
 
+  async refresh() {
+    await this.fetchUser();
+    this.render();
+    this.addEventListeners();
+  }
+
   async fetchUser() {
     try {
       const res = await fetch(`${this.basePath}/api/me`);

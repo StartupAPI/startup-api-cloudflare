@@ -182,9 +182,13 @@
 
           if (res.ok) {
             showToast('Profile updated successfully');
-            loadProfile(); // Refresh
-            // Optional: refresh power-strip if possible, but a reload might be easier
-            // window.location.reload(); 
+            loadProfile(); // Refresh page content
+            
+            // Refresh power-strip
+            const powerStrip = document.querySelector('power-strip');
+            if (powerStrip && typeof powerStrip.refresh === 'function') {
+              powerStrip.refresh();
+            }
           } else {
             throw new Error('Failed to update profile');
           }
