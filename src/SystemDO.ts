@@ -28,6 +28,20 @@ export class SystemDO implements DurableObject {
         member_count INTEGER DEFAULT 0,
         created_at INTEGER
       );
+
+      CREATE TABLE IF NOT EXISTS credentials (
+        provider TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        access_token TEXT,
+        refresh_token TEXT,
+        expires_at INTEGER,
+        scope TEXT,
+        profile_data TEXT,
+        created_at INTEGER,
+        updated_at INTEGER,
+        PRIMARY KEY (provider, subject_id)
+      );
     `);
   }
 
@@ -39,6 +53,10 @@ export class SystemDO implements DurableObject {
     if (path === '/users') {
       if (method === 'GET') return this.listUsers(url.searchParams);
       if (method === 'POST') return this.registerUser(request);
+    } else if (path === '/resolve-credential') {
+      return this.resolveCredential(url.searchParams);
+    } else if (path === '/credentials' && method === 'POST') {
+      return this.registerCredential(request);
     } else if (path.startsWith('/users/')) {
       const parts = path.split('/');
       const userId = parts[2];
@@ -48,6 +66,11 @@ export class SystemDO implements DurableObject {
         if (subPath === 'memberships') {
           const stub = this.env.USER.get(this.env.USER.idFromString(userId));
           return stub.fetch(new Request('http://do/memberships', request));
+        }
+
+        if (subPath === 'credentials') {
+          if (method === 'GET') return this.listUserCredentials(userId);
+          if (method === 'DELETE') return this.deleteUserCredential(request, userId);
         }
 
         if (method === 'GET') return this.getUser(userId);
@@ -115,6 +138,82 @@ export class SystemDO implements DurableObject {
       };
     });
     return Response.json(users);
+  }
+
+  async resolveCredential(params: URLSearchParams): Promise<Response> {
+    const provider = params.get('provider');
+    const subjectId = params.get('subject_id');
+
+    if (!provider || !subjectId) {
+      return new Response('Missing provider or subject_id', { status: 400 });
+    }
+
+    const result = this.sql.exec('SELECT user_id FROM credentials WHERE provider = ? AND subject_id = ?', provider, subjectId);
+    const row = result.next().value as { user_id: string } | undefined;
+
+    if (!row) {
+      return new Response('Not Found', { status: 404 });
+    }
+
+    return Response.json({ user_id: row.user_id });
+  }
+
+  async registerCredential(request: Request): Promise<Response> {
+    const data = (await request.json()) as any;
+    const { user_id, provider, subject_id, access_token, refresh_token, expires_at, scope, profile_data } = data;
+
+    if (!user_id || !provider || !subject_id) {
+      return new Response('Missing required fields', { status: 400 });
+    }
+
+    const now = Date.now();
+
+    this.sql.exec(
+      `INSERT OR REPLACE INTO credentials 
+      (provider, subject_id, user_id, access_token, refresh_token, expires_at, scope, profile_data, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      provider,
+      subject_id,
+      user_id,
+      access_token,
+      refresh_token,
+      expires_at,
+      scope,
+      JSON.stringify(profile_data),
+      now,
+      now,
+    );
+
+    return Response.json({ success: true });
+  }
+
+  async listUserCredentials(userId: string): Promise<Response> {
+    const result = this.sql.exec('SELECT provider, subject_id, profile_data, created_at FROM credentials WHERE user_id = ?', userId);
+    const credentials = [];
+    for (const row of result) {
+      credentials.push({
+        provider: row.provider,
+        subject_id: row.subject_id,
+        profile_data: JSON.parse(row.profile_data as string),
+        created_at: row.created_at,
+      });
+    }
+    return Response.json(credentials);
+  }
+
+  async deleteUserCredential(request: Request, userId: string): Promise<Response> {
+    const { provider } = (await request.json()) as { provider: string };
+
+    // Safeguard: don't delete the last credential
+    const countResult = this.sql.exec('SELECT COUNT(*) as count FROM credentials WHERE user_id = ?', userId);
+    const { count } = countResult.next().value as { count: number };
+
+    if (count <= 1) {
+      return new Response('Cannot delete the last credential', { status: 400 });
+    }
+
+    this.sql.exec('DELETE FROM credentials WHERE user_id = ? AND provider = ?', userId, provider);
+    return Response.json({ success: true });
   }
 
   async getUser(userId: string): Promise<Response> {

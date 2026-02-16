@@ -29,19 +29,6 @@ export class UserDO implements DurableObject {
         value TEXT
       );
       
-      CREATE TABLE IF NOT EXISTS credentials (
-        provider TEXT NOT NULL,
-        subject_id TEXT NOT NULL,
-        access_token TEXT,
-        refresh_token TEXT,
-        expires_at INTEGER,
-        scope TEXT,
-        profile_data TEXT,
-        created_at INTEGER,
-        updated_at INTEGER,
-        PRIMARY KEY (provider)
-      );
-
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         created_at INTEGER,
@@ -81,8 +68,6 @@ export class UserDO implements DurableObject {
       return this.updateProfile(request);
     } else if (path === '/credentials' && method === 'GET') {
       return this.listCredentials();
-    } else if (path === '/credentials' && method === 'POST') {
-      return this.addCredential(request);
     } else if (path === '/credentials' && method === 'DELETE') {
       return this.deleteCredential(request);
     } else if (path === '/sessions' && method === 'POST') {
@@ -109,7 +94,6 @@ export class UserDO implements DurableObject {
       return this.storeImage(request, key);
     } else if (path === '/delete' && method === 'POST') {
       this.sql.exec('DELETE FROM profile');
-      this.sql.exec('DELETE FROM credentials');
       this.sql.exec('DELETE FROM sessions');
       this.sql.exec('DELETE FROM images');
       this.sql.exec('DELETE FROM memberships');
@@ -162,17 +146,20 @@ export class UserDO implements DurableObject {
       return Response.json({ valid: false, error: 'Expired' }, { status: 401 });
     }
 
-    // Get latest profile data from credentials
-    const credsResult = this.sql.exec(
-      'SELECT profile_data, provider, subject_id FROM credentials ORDER BY updated_at DESC LIMIT 1',
-    );
-    const creds = credsResult.next().value as any;
-
+    // Get latest profile data from SystemDO credentials
+    const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+    const credsRes = await systemStub.fetch(`http://do/users/${this.state.id.toString()}/credentials`);
+    
     let profile: Record<string, any> = {};
-    if (creds && creds.profile_data) {
-      try {
-        profile = JSON.parse(creds.profile_data as string);
-      } catch (e) {}
+    let latestCreds: any = null;
+
+    if (credsRes.ok) {
+      const credentials = await credsRes.json() as any[];
+      // Get the most recently updated credential
+      latestCreds = credentials.sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))[0];
+      if (latestCreds && latestCreds.profile_data) {
+        profile = latestCreds.profile_data;
+      }
     }
 
     // Merge with custom profile data
@@ -186,9 +173,9 @@ export class UserDO implements DurableObject {
 
     // Ensure the ID and provider info are set
     profile.id = this.state.id.toString();
-    if (creds) {
-      profile.provider = creds.provider;
-      profile.subject_id = creds.subject_id;
+    if (latestCreds) {
+      profile.provider = latestCreds.provider;
+      profile.subject_id = latestCreds.subject_id;
     }
 
     return Response.json({ valid: true, profile });
@@ -231,67 +218,18 @@ export class UserDO implements DurableObject {
     }
   }
 
-  /**
-   * Adds or updates OAuth2 credentials for a specific provider.
-   *
-   * @param request - The HTTP request containing the credential details.
-   * @returns A Promise resolving to a success or error response.
-   */
-  async addCredential(request: Request): Promise<Response> {
-    const data = (await request.json()) as any;
-    const { provider, subject_id, access_token, refresh_token, expires_at, scope, profile_data } = data;
-
-    if (!provider || !subject_id) {
-      return new Response('Missing provider or subject_id', { status: 400 });
-    }
-
-    const now = Date.now();
-
-    this.sql.exec(
-      `INSERT OR REPLACE INTO credentials 
-      (provider, subject_id, access_token, refresh_token, expires_at, scope, profile_data, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      provider,
-      subject_id,
-      access_token,
-      refresh_token,
-      expires_at,
-      scope,
-      JSON.stringify(profile_data),
-      now,
-      now,
-    );
-
-    return Response.json({ success: true });
-  }
-
   async listCredentials(): Promise<Response> {
-    const result = this.sql.exec('SELECT provider, subject_id, profile_data, created_at FROM credentials');
-    const credentials = [];
-    for (const row of result) {
-      credentials.push({
-        provider: row.provider,
-        subject_id: row.subject_id,
-        profile_data: JSON.parse(row.profile_data as string),
-        created_at: row.created_at,
-      });
-    }
-    return Response.json(credentials);
+    const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+    return await systemStub.fetch(`http://do/users/${this.state.id.toString()}/credentials`);
   }
 
   async deleteCredential(request: Request): Promise<Response> {
-    const { provider } = (await request.json()) as { provider: string };
-
-    // Prevent deleting the last credential
-    const countResult = this.sql.exec('SELECT COUNT(*) as count FROM credentials');
-    const { count } = countResult.next().value as { count: number };
-
-    if (count <= 1) {
-      return new Response('Cannot delete the last credential', { status: 400 });
-    }
-
-    this.sql.exec('DELETE FROM credentials WHERE provider = ?', provider);
-    return Response.json({ success: true });
+    const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+    const body = await request.text();
+    return await systemStub.fetch(`http://do/users/${this.state.id.toString()}/credentials`, {
+      method: 'DELETE',
+      body,
+    });
   }
 
   /**

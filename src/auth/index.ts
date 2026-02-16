@@ -42,29 +42,44 @@ export async function handleAuth(
         const token = await provider.getToken(code);
         const profile = await provider.getUserProfile(token.access_token);
 
-        // Check if user is already logged in (to link account)
-        const cookieHeader = request.headers.get('Cookie');
-        let existingUserDoId: string | null = null;
-        if (cookieHeader) {
-          const cookies = cookieHeader.split(';').reduce(
-            (acc, cookie) => {
-              const [key, value] = cookie.split('=').map((c) => c.trim());
-              if (key && value) acc[key] = value;
-              return acc;
-            },
-            {} as Record<string, string>,
-          );
-          const sessionCookieEncrypted = cookies['session_id'];
-          if (sessionCookieEncrypted) {
-            const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-            if (sessionCookie && sessionCookie.includes(':')) {
-              existingUserDoId = sessionCookie.split(':')[1];
+        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+
+        // 1. Try to resolve existing user by credential
+        const resolveRes = await systemStub.fetch(
+          `http://do/resolve-credential?provider=${provider.name}&subject_id=${profile.id}`,
+        );
+
+        let userIdStr: string | null = null;
+
+        if (resolveRes.ok) {
+          const resolveData = (await resolveRes.json()) as { user_id: string };
+          userIdStr = resolveData.user_id;
+        } else {
+          // 2. Not found, check if user is already logged in (to link account)
+          const cookieHeader = request.headers.get('Cookie');
+          if (cookieHeader) {
+            const cookies = cookieHeader.split(';').reduce(
+              (acc, cookie) => {
+                const [key, value] = cookie.split('=').map((c) => c.trim());
+                if (key && value) acc[key] = value;
+                return acc;
+              },
+              {} as Record<string, string>,
+            );
+            const sessionCookieEncrypted = cookies['session_id'];
+            if (sessionCookieEncrypted) {
+              const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+              if (sessionCookie && sessionCookie.includes(':')) {
+                userIdStr = sessionCookie.split(':')[1];
+              }
             }
           }
         }
 
-        const id = existingUserDoId ? env.USER.idFromString(existingUserDoId) : env.USER.idFromName(provider.name + ':' + profile.id);
+        const isNewUser = !userIdStr;
+        const id = userIdStr ? env.USER.idFromString(userIdStr) : env.USER.newUniqueId();
         const stub = env.USER.get(id);
+        userIdStr = id.toString();
 
         // Fetch and Store Avatar
         if (profile.picture) {
@@ -97,9 +112,11 @@ export async function handleAuth(
           (profile as any).provider_icon = usersPath + 'me/provider-icon';
         }
 
-        await stub.fetch('http://do/credentials', {
+        // Register credential in SystemDO
+        await systemStub.fetch('http://do/credentials', {
           method: 'POST',
           body: JSON.stringify({
+            user_id: userIdStr,
             provider: provider.name,
             subject_id: profile.id,
             access_token: token.access_token,
@@ -110,9 +127,7 @@ export async function handleAuth(
           }),
         });
 
-        // Register User in SystemDO
-        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-        const userIdStr = id.toString();
+        // Register User in SystemDO index
         await systemStub.fetch('http://do/users', {
           method: 'POST',
           body: JSON.stringify({
@@ -178,11 +193,10 @@ export async function handleAuth(
         const session = (await sessionRes.json()) as any;
 
         // Set cookie and redirect
-        const doId = id.toString();
-        const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${doId}`);
+        const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${userIdStr}`);
         const headers = new Headers();
         headers.set('Set-Cookie', `session_id=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-        headers.set('Location', existingUserDoId ? usersPath + 'profile.html' : '/');
+        headers.set('Location', !isNewUser ? usersPath + 'profile.html' : '/');
 
         return new Response(null, { status: 302, headers });
       } catch (e: any) {

@@ -12,9 +12,9 @@ The following diagram illustrates how different Durable Objects interact within 
 erDiagram
     SystemDO ||--o{ UserDO : indexes
     SystemDO ||--o{ AccountDO : indexes
+    SystemDO ||--o{ Credential : "has many"
     
     UserDO ||--o{ Session : owns
-    UserDO ||--o{ Credential : "has many"
     UserDO }|--o{ AccountDO : "belongs to (Memberships)"
 
     AccountDO ||--o{ Member : "contains (Users)"
@@ -23,7 +23,6 @@ erDiagram
     UserDO {
         string id PK
         table profile "key-value"
-        table credentials "OAuth providers"
         table sessions "active logins"
         table memberships "account links"
     }
@@ -38,6 +37,7 @@ erDiagram
     SystemDO {
         table users "search index"
         table accounts "search index"
+        table credentials "OAuth providers"
     }
 ```
 

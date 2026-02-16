@@ -19,16 +19,18 @@ describe('Integration Tests', () => {
     const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
 
-    // Add some credentials/profile data
-    const credsRes = await stub.fetch('http://do/credentials', {
+    // Add some credentials/profile data via SystemDO
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    const credsRes = await systemStub.fetch('http://do/credentials', {
       method: 'POST',
       body: JSON.stringify({
+        user_id: id.toString(),
         provider: 'test-provider',
         subject_id: '123',
         profile_data: { name: 'Integration Tester' },
       }),
     });
-    await credsRes.json(); // Drain body
+    expect(credsRes.status).toBe(200);
 
     // 2. Fetch /api/me with the cookie
     const doId = id.toString();
@@ -54,10 +56,12 @@ describe('Integration Tests', () => {
     const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
 
-    // Add initial credentials
-    await stub.fetch('http://do/credentials', {
+    // Add initial credentials via SystemDO
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.fetch('http://do/credentials', {
       method: 'POST',
       body: JSON.stringify({
+        user_id: id.toString(),
         provider: 'test-provider',
         subject_id: '123',
         profile_data: { name: 'Original Name' },
@@ -100,18 +104,21 @@ describe('Integration Tests', () => {
     const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
 
-    // Add two credentials
-    await stub.fetch('http://do/credentials', {
+    // Add two credentials via SystemDO
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.fetch('http://do/credentials', {
       method: 'POST',
       body: JSON.stringify({
+        user_id: id.toString(),
         provider: 'google',
         subject_id: 'g123',
         profile_data: { email: 'google@example.com' },
       }),
     });
-    await stub.fetch('http://do/credentials', {
+    await systemStub.fetch('http://do/credentials', {
       method: 'POST',
       body: JSON.stringify({
+        user_id: id.toString(),
         provider: 'twitch',
         subject_id: 't123',
         profile_data: { email: 'twitch@example.com' },
