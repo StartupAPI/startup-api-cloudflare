@@ -30,7 +30,11 @@ export default {
 
     const url = new URL(request.url);
     const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
-    const cookieManager = new CookieManager(env.COOKIE_SECRET || 'dev-secret');
+
+    if (!env.COOKIE_SECRET) {
+      throw new Error('COOKIE_SECRET environment variable is required');
+    }
+    const cookieManager = new CookieManager(env.COOKIE_SECRET);
 
     // Handle OAuth Routes
     if (url.pathname.startsWith(usersPath + 'auth/')) {
