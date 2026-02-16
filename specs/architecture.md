@@ -12,9 +12,10 @@ The following diagram illustrates how different Durable Objects interact within 
 erDiagram
     SystemDO ||--o{ UserDO : indexes
     SystemDO ||--o{ AccountDO : indexes
-    SystemDO ||--o{ Credential : "has many"
+    SystemDO ||--o{ CredentialDO : indexes
     
     UserDO ||--o{ Session : owns
+    UserDO ||--o{ CredentialDO : "identified by"
     UserDO }|--o{ AccountDO : "belongs to (Memberships)"
 
     AccountDO ||--o{ Member : "contains (Users)"
@@ -37,7 +38,12 @@ erDiagram
     SystemDO {
         table users "search index"
         table accounts "search index"
-        table credentials "OAuth providers"
+        table user_credentials "user -> credentials map"
+    }
+
+    CredentialDO {
+        string id PK "provider:subject_id"
+        table credential "OAuth details"
     }
 ```
 
@@ -45,9 +51,10 @@ erDiagram
 
 ### 1. Durable Objects
 
-- **UserDO**: Represents a unique user. Stores profile information, OAuth credentials, active sessions, and account memberships.
+- **UserDO**: Represents a unique user. Stores profile information, active sessions, and account memberships.
 - **AccountDO**: Represents a tenant (organization or team). Manages account-level metadata, member lists (User IDs and roles), and billing/subscription state.
-- **SystemDO**: Acts as a global directory and search index. It maintains a list of all users and accounts to support administrative search and listing features.
+- **CredentialDO**: Stores individual OAuth credentials. Each instance is identified by `provider:subject_id`, ensuring that a specific login method uniquely points to a single user.
+- **SystemDO**: Acts as a global directory and search index. It maintains a list of all users, accounts, and the mapping between users and their `CredentialDO` instances.
 
 ### 2. Authentication Flow
 

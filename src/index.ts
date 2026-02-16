@@ -3,11 +3,12 @@ import { injectPowerStrip } from './PowerStrip';
 import { UserDO } from './UserDO';
 import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
+import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
 
 const DEFAULT_USERS_PATH = '/users/';
 
-export { UserDO, AccountDO, SystemDO };
+export { UserDO, AccountDO, SystemDO, CredentialDO };
 
 import type { StartupAPIEnv } from './StartupAPIEnv';
 

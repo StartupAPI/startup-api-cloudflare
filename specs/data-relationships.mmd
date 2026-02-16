@@ -1,11 +1,12 @@
 erDiagram
     SystemDO ||--o{ UserDO : indexes
     SystemDO ||--o{ AccountDO : indexes
-    SystemDO ||--o{ Credential : "has many"
+    SystemDO ||--o{ CredentialDO : indexes
     
     UserDO ||--o{ Session : owns
     UserDO ||--o{ Image : "has profile/provider icons"
     UserDO }|--o{ AccountDO : "belongs to (Memberships)"
+    UserDO ||--o{ CredentialDO : "identified by"
 
     AccountDO ||--o{ Member : "contains (Users)"
     AccountDO ||--o{ BillingState : "has one"
@@ -27,7 +28,12 @@ erDiagram
     SystemDO {
         table users "search index"
         table accounts "search index"
-        table credentials "OAuth providers mapping"
+        table user_credentials "mapping: user -> credentials"
+    }
+
+    CredentialDO {
+        string id PK "provider:subject_id"
+        table credential "OAuth details"
     }
 
     Member {
