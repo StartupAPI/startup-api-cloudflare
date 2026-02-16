@@ -42,8 +42,28 @@ export async function handleAuth(
         const token = await provider.getToken(code);
         const profile = await provider.getUserProfile(token.access_token);
 
-        // Store in UserDO
-        const id = env.USER.idFromName(provider.name + ':' + profile.id);
+        // Check if user is already logged in (to link account)
+        const cookieHeader = request.headers.get('Cookie');
+        let existingUserDoId: string | null = null;
+        if (cookieHeader) {
+          const cookies = cookieHeader.split(';').reduce(
+            (acc, cookie) => {
+              const [key, value] = cookie.split('=').map((c) => c.trim());
+              if (key && value) acc[key] = value;
+              return acc;
+            },
+            {} as Record<string, string>,
+          );
+          const sessionCookieEncrypted = cookies['session_id'];
+          if (sessionCookieEncrypted) {
+            const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+            if (sessionCookie && sessionCookie.includes(':')) {
+              existingUserDoId = sessionCookie.split(':')[1];
+            }
+          }
+        }
+
+        const id = existingUserDoId ? env.USER.idFromString(existingUserDoId) : env.USER.idFromName(provider.name + ':' + profile.id);
         const stub = env.USER.get(id);
 
         // Fetch and Store Avatar
@@ -157,12 +177,12 @@ export async function handleAuth(
         const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
         const session = (await sessionRes.json()) as any;
 
-        // Set cookie and redirect home
+        // Set cookie and redirect
         const doId = id.toString();
         const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${doId}`);
         const headers = new Headers();
         headers.set('Set-Cookie', `session_id=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-        headers.set('Location', '/');
+        headers.set('Location', existingUserDoId ? usersPath + 'profile.html' : '/');
 
         return new Response(null, { status: 302, headers });
       } catch (e: any) {

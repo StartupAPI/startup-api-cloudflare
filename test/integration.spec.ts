@@ -91,6 +91,66 @@ describe('Integration Tests', () => {
     expect(meData.profile.name).toBe('Updated Name');
   });
 
+  it('should list and delete credentials with safeguard', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+    const doId = id.toString();
+
+    // Create session
+    const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
+    const { sessionId } = (await sessionRes.json()) as any;
+
+    // Add two credentials
+    await stub.fetch('http://do/credentials', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'google',
+        subject_id: 'g123',
+        profile_data: { email: 'google@example.com' },
+      }),
+    });
+    await stub.fetch('http://do/credentials', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'twitch',
+        subject_id: 't123',
+        profile_data: { email: 'twitch@example.com' },
+      }),
+    });
+
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${doId}`);
+
+    // List credentials
+    const listRes = await SELF.fetch('http://example.com/users/api/me/credentials', {
+      headers: { Cookie: `session_id=${encryptedCookie}` },
+    });
+    const credentials = (await listRes.json()) as any[];
+    expect(credentials.length).toBe(2);
+
+    // Delete one
+    const deleteRes = await SELF.fetch('http://example.com/users/api/me/credentials', {
+      method: 'DELETE',
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ provider: 'twitch' }),
+    });
+    expect(deleteRes.status).toBe(200);
+
+    // Try to delete the last one
+    const deleteLastRes = await SELF.fetch('http://example.com/users/api/me/credentials', {
+      method: 'DELETE',
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ provider: 'google' }),
+    });
+    expect(deleteLastRes.status).toBe(400);
+    expect(await deleteLastRes.text()).toBe('Cannot delete the last credential');
+  });
+
   it('should serve avatar image from /me/avatar', async () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);

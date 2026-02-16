@@ -62,6 +62,14 @@ export default {
         return handleUpdateProfile(request, env, cookieManager);
       }
 
+      if (apiPath === '/me/credentials') {
+        if (request.method === 'GET') {
+          return handleListCredentials(request, env, cookieManager);
+        } else if (request.method === 'DELETE') {
+          return handleDeleteCredential(request, env, cookieManager);
+        }
+      }
+
       if (apiPath === '/stop-impersonation' && request.method === 'POST') {
         const cookieHeader = request.headers.get('Cookie');
         const cookies = parseCookies(cookieHeader || '');
@@ -350,6 +358,72 @@ async function handleUpdateProfile(
     const body = await request.text();
     return await userStub.fetch('http://do/profile', {
       method: 'POST',
+      body,
+    });
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleListCredentials(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookieEncrypted = cookies['session_id'];
+
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    return await userStub.fetch('http://do/credentials');
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleDeleteCredential(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookieEncrypted = cookies['session_id'];
+
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const body = await request.text();
+    return await userStub.fetch('http://do/credentials', {
+      method: 'DELETE',
       body,
     });
   } catch (e) {

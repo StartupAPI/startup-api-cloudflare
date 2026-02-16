@@ -79,8 +79,12 @@ export class UserDO implements DurableObject {
       return this.getProfile();
     } else if (path === '/profile' && method === 'POST') {
       return this.updateProfile(request);
+    } else if (path === '/credentials' && method === 'GET') {
+      return this.listCredentials();
     } else if (path === '/credentials' && method === 'POST') {
       return this.addCredential(request);
+    } else if (path === '/credentials' && method === 'DELETE') {
+      return this.deleteCredential(request);
     } else if (path === '/sessions' && method === 'POST') {
       return this.createSession(request);
     } else if (path === '/sessions' && method === 'DELETE') {
@@ -258,6 +262,35 @@ export class UserDO implements DurableObject {
       now,
     );
 
+    return Response.json({ success: true });
+  }
+
+  async listCredentials(): Promise<Response> {
+    const result = this.sql.exec('SELECT provider, subject_id, profile_data, created_at FROM credentials');
+    const credentials = [];
+    for (const row of result) {
+      credentials.push({
+        provider: row.provider,
+        subject_id: row.subject_id,
+        profile_data: JSON.parse(row.profile_data as string),
+        created_at: row.created_at,
+      });
+    }
+    return Response.json(credentials);
+  }
+
+  async deleteCredential(request: Request): Promise<Response> {
+    const { provider } = (await request.json()) as { provider: string };
+
+    // Prevent deleting the last credential
+    const countResult = this.sql.exec('SELECT COUNT(*) as count FROM credentials');
+    const { count } = countResult.next().value as { count: number };
+
+    if (count <= 1) {
+      return new Response('Cannot delete the last credential', { status: 400 });
+    }
+
+    this.sql.exec('DELETE FROM credentials WHERE provider = ?', provider);
     return Response.json({ success: true });
   }
 
