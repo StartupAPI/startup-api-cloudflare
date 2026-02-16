@@ -1,7 +1,10 @@
 import { env, SELF } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
+import { CookieManager } from '../src/CookieManager';
 
 describe('Account Switching Integration', () => {
+  const cookieManager = new CookieManager(env.SESSION_SECRET);
+
   it('should list accounts and switch between them', async () => {
     // 1. Setup User and Session
     const userId = env.USER.newUniqueId();
@@ -10,7 +13,7 @@ describe('Account Switching Integration', () => {
 
     const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    const cookieHeader = `session_id=${sessionId}:${userIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
 
     // 2. Setup Accounts
     // Account 1 (Personal)

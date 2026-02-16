@@ -1,7 +1,10 @@
 import { env, SELF } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
+import { CookieManager } from '../src/CookieManager';
 
 describe('Integration Tests', () => {
+  const cookieManager = new CookieManager(env.SESSION_SECRET);
+
   it('should return 401 for /api/me without cookie', async () => {
     const res = await SELF.fetch('http://example.com/users/api/me');
     expect(res.status).toBe(401);
@@ -29,9 +32,10 @@ describe('Integration Tests', () => {
 
     // 2. Fetch /api/me with the cookie
     const doId = id.toString();
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${doId}`);
     const res = await SELF.fetch('http://example.com/users/api/me', {
       headers: {
-        Cookie: `session_id=${sessionId}:${doId}`,
+        Cookie: `session_id=${encryptedCookie}`,
       },
     });
 
@@ -60,9 +64,10 @@ describe('Integration Tests', () => {
 
     // Fetch image via worker
     const doId = id.toString();
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${doId}`);
     const res = await SELF.fetch('http://example.com/users/me/avatar', {
       headers: {
-        Cookie: `session_id=${sessionId}:${doId}`,
+        Cookie: `session_id=${encryptedCookie}`,
       },
     });
 
@@ -83,9 +88,10 @@ describe('Integration Tests', () => {
     const { sessionId } = (await sessionRes.json()) as any;
 
     // 2. Call /logout with the cookie
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${doId}`);
     const logoutRes = await SELF.fetch('http://example.com/users/logout', {
       headers: {
-        Cookie: `session_id=${sessionId}:${doId}`,
+        Cookie: `session_id=${encryptedCookie}`,
       },
       redirect: 'manual', // Don't follow the redirect to /
     });

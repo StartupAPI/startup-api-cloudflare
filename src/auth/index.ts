@@ -3,8 +3,15 @@ import type { StartupAPIEnv } from '../StartupAPIEnv';
 import { GoogleProvider } from './GoogleProvider';
 import { TwitchProvider } from './TwitchProvider';
 import { OAuthProvider } from './OAuthProvider';
+import { CookieManager } from '../CookieManager';
 
-export async function handleAuth(request: Request, env: StartupAPIEnv, url: URL, usersPath: string): Promise<Response> {
+export async function handleAuth(
+  request: Request,
+  env: StartupAPIEnv,
+  url: URL,
+  usersPath: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const path = url.pathname;
   const authPath = usersPath + 'auth';
 
@@ -152,8 +159,9 @@ export async function handleAuth(request: Request, env: StartupAPIEnv, url: URL,
 
         // Set cookie and redirect home
         const doId = id.toString();
+        const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${doId}`);
         const headers = new Headers();
-        headers.set('Set-Cookie', `session_id=${session.sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        headers.set('Set-Cookie', `session_id=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
         headers.set('Location', '/');
 
         return new Response(null, { status: 302, headers });

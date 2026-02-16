@@ -3,6 +3,7 @@ import { injectPowerStrip } from './PowerStrip';
 import { UserDO } from './UserDO';
 import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
+import { CookieManager } from './CookieManager';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -27,20 +28,26 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
+    if (!env.ORIGIN_URL || !env.SESSION_SECRET) {
+      return env.ASSETS.fetch(request);
+    }
+
     const url = new URL(request.url);
     const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
 
+    const cookieManager = new CookieManager(env.SESSION_SECRET);
+
     // Handle OAuth Routes
     if (url.pathname.startsWith(usersPath + 'auth/')) {
-      return handleAuth(request, env, url, usersPath);
+      return handleAuth(request, env, url, usersPath, cookieManager);
     }
 
     if (url.pathname === usersPath + 'me/avatar') {
-      return handleMeImage(request, env, 'avatar');
+      return handleMeImage(request, env, 'avatar', cookieManager);
     }
 
     if (url.pathname === usersPath + 'me/provider-icon') {
-      return handleMeImage(request, env, 'provider-icon');
+      return handleMeImage(request, env, 'provider-icon', cookieManager);
     }
 
     // Handle API Routes
@@ -48,41 +55,47 @@ export default {
       const apiPath = url.pathname.replace(usersPath + 'api/', '/');
 
       if (apiPath === '/me') {
-        return handleMe(request, env);
+        return handleMe(request, env, cookieManager);
       }
 
       if (apiPath === '/stop-impersonation' && request.method === 'POST') {
         const cookieHeader = request.headers.get('Cookie');
         const cookies = parseCookies(cookieHeader || '');
-        const backupSession = cookies['backup_session_id'];
+        const backupSessionEncrypted = cookies['backup_session_id'];
 
-        if (!backupSession) {
+        if (!backupSessionEncrypted) {
           return new Response('No impersonation session found', { status: 400 });
         }
 
+        const backupSession = await cookieManager.decrypt(backupSessionEncrypted);
+        if (!backupSession) {
+          return new Response('Invalid backup session', { status: 400 });
+        }
+
         const headers = new Headers();
-        headers.set('Set-Cookie', `session_id=${backupSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        const newSessionIdEncrypted = await cookieManager.encrypt(backupSession);
+        headers.set('Set-Cookie', `session_id=${newSessionIdEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
         headers.append('Set-Cookie', `backup_session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
 
         return Response.json({ success: true }, { headers });
       }
 
       if (apiPath === '/me/accounts') {
-        return handleMyAccounts(request, env);
+        return handleMyAccounts(request, env, cookieManager);
       }
 
       if (apiPath === '/me/accounts/switch' && request.method === 'POST') {
-        return handleSwitchAccount(request, env);
+        return handleSwitchAccount(request, env, cookieManager);
       }
     }
 
     if (url.pathname === usersPath + 'logout') {
-      return handleLogout(request, env, usersPath);
+      return handleLogout(request, env, usersPath, cookieManager);
     }
 
     // Admin Routes
     if (url.pathname.startsWith(usersPath + 'admin/')) {
-      return handleAdmin(request, env, usersPath);
+      return handleAdmin(request, env, usersPath, cookieManager);
     }
 
     // Intercept requests to usersPath and serve them from the public/users directory.
@@ -121,8 +134,13 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string): Promise<Response> {
-  const user = await getUserFromSession(request, env);
+async function handleAdmin(
+  request: Request,
+  env: StartupAPIEnv,
+  usersPath: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
   if (!user || !isAdmin(user, env)) {
     return new Response('Forbidden', { status: 403 });
   }
@@ -155,7 +173,7 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
       // Get current session to backup
       const cookieHeader = request.headers.get('Cookie');
       const cookies = parseCookies(cookieHeader || '');
-      const currentSession = cookies['session_id'];
+      const currentSessionEncrypted = cookies['session_id'];
 
       // Create a session for the target user
       const targetUserStub = env.USER.get(env.USER.idFromString(userId));
@@ -163,10 +181,17 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
       const { sessionId } = (await sessionRes.json()) as any;
 
       const doId = userId;
+      const sessionValue = `${sessionId}:${doId}`;
+      const encryptedSession = await cookieManager.encrypt(sessionValue);
+
       const headers = new Headers();
-      headers.set('Set-Cookie', `session_id=${sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-      if (currentSession) {
-        headers.append('Set-Cookie', `backup_session_id=${currentSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+      headers.set('Set-Cookie', `session_id=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+      if (currentSessionEncrypted) {
+        const decryptedCurrentSession = await cookieManager.decrypt(currentSessionEncrypted);
+        if (decryptedCurrentSession) {
+          const encryptedBackup = await cookieManager.encrypt(decryptedCurrentSession);
+          headers.append('Set-Cookie', `backup_session_id=${encryptedBackup}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        }
       }
 
       return Response.json({ success: true }, { headers });
@@ -176,13 +201,20 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
   return new Response('Not Found', { status: 404 });
 }
 
-async function getUserFromSession(request: Request, env: StartupAPIEnv): Promise<any> {
+async function getUserFromSession(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<any> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return null;
 
   const cookies = parseCookies(cookieHeader);
-  const sessionCookie = cookies['session_id'];
+  const sessionCookieEncrypted = cookies['session_id'];
 
+  if (!sessionCookieEncrypted) return null;
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
   if (!sessionCookie || !sessionCookie.includes(':')) return null;
 
   const [sessionId, doId] = sessionCookie.split(':');
@@ -212,7 +244,7 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv): Promise
 
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
   if (!env.ADMIN_IDS) return false;
-  const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim());
+  const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim()).filter(Boolean);
   return (
     adminIds.includes(user.id) ||
     (user.email && adminIds.includes(user.email)) ||
@@ -221,13 +253,22 @@ function isAdmin(user: any, env: StartupAPIEnv): boolean {
   );
 }
 
-async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response> {
+async function handleMe(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
   const cookies = parseCookies(cookieHeader);
-  const sessionCookie = cookies['session_id'];
+  const sessionCookieEncrypted = cookies['session_id'];
 
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
   if (!sessionCookie || !sessionCookie.includes(':')) {
     return new Response('Unauthorized', { status: 401 });
   }
@@ -270,13 +311,23 @@ async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response>
   }
 }
 
-async function handleMeImage(request: Request, env: StartupAPIEnv, type: string): Promise<Response> {
+async function handleMeImage(
+  request: Request,
+  env: StartupAPIEnv,
+  type: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
   const cookies = parseCookies(cookieHeader);
-  const sessionCookie = cookies['session_id'];
+  const sessionCookieEncrypted = cookies['session_id'];
 
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
   if (!sessionCookie || !sessionCookie.includes(':')) {
     return new Response('Unauthorized', { status: 401 });
   }
@@ -292,24 +343,32 @@ async function handleMeImage(request: Request, env: StartupAPIEnv, type: string)
   }
 }
 
-async function handleLogout(request: Request, env: StartupAPIEnv, usersPath: string): Promise<Response> {
+async function handleLogout(
+  request: Request,
+  env: StartupAPIEnv,
+  usersPath: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (cookieHeader) {
     const cookies = parseCookies(cookieHeader);
-    const sessionCookie = cookies['session_id'];
+    const sessionCookieEncrypted = cookies['session_id'];
 
-    if (sessionCookie && sessionCookie.includes(':')) {
-      const [sessionId, doId] = sessionCookie.split(':');
-      try {
-        const id = env.USER.idFromString(doId);
-        const stub = env.USER.get(id);
-        await stub.fetch('http://do/sessions', {
-          method: 'DELETE',
-          body: JSON.stringify({ sessionId }),
-        });
-      } catch (e) {
-        console.error('Error deleting session:', e);
-        // Continue to clear cookie even if DO call fails
+    if (sessionCookieEncrypted) {
+      const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+      if (sessionCookie && sessionCookie.includes(':')) {
+        const [sessionId, doId] = sessionCookie.split(':');
+        try {
+          const id = env.USER.idFromString(doId);
+          const stub = env.USER.get(id);
+          await stub.fetch('http://do/sessions', {
+            method: 'DELETE',
+            body: JSON.stringify({ sessionId }),
+          });
+        } catch (e) {
+          console.error('Error deleting session:', e);
+          // Continue to clear cookie even if DO call fails
+        }
       }
     }
   }
@@ -331,13 +390,22 @@ function parseCookies(cookieHeader: string): Record<string, string> {
   );
 }
 
-async function handleMyAccounts(request: Request, env: StartupAPIEnv): Promise<Response> {
+async function handleMyAccounts(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
   const cookies = parseCookies(cookieHeader);
-  const sessionCookie = cookies['session_id'];
+  const sessionCookieEncrypted = cookies['session_id'];
 
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
   if (!sessionCookie || !sessionCookie.includes(':')) {
     return new Response('Unauthorized', { status: 401 });
   }
@@ -380,13 +448,22 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv): Promise<R
   }
 }
 
-async function handleSwitchAccount(request: Request, env: StartupAPIEnv): Promise<Response> {
+async function handleSwitchAccount(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
   const cookies = parseCookies(cookieHeader);
-  const sessionCookie = cookies['session_id'];
+  const sessionCookieEncrypted = cookies['session_id'];
 
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
   if (!sessionCookie || !sessionCookie.includes(':')) {
     return new Response('Unauthorized', { status: 401 });
   }
