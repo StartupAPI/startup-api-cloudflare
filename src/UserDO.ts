@@ -168,7 +168,7 @@ export class UserDO implements DurableObject {
         // Get the most recently updated credential
         latestCreds = credentials.sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))[0];
         if (latestCreds && latestCreds.profile_data) {
-          profile = latestCreds.profile_data;
+          profile = { ...latestCreds.profile_data };
         }
       }
     }
@@ -238,14 +238,15 @@ export class UserDO implements DurableObject {
   async listCredentials(): Promise<Response> {
     const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials');
     const credentials = [];
-    for (const row of result) {
-      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
-      const res = await stub.fetch(`http://do/resolve?subject_id=${row.subject_id}`);
+    const rows = Array.from(result);
+    console.log(`[UserDO] Found ${rows.length} credential mappings in local DB`);
+    for (const row of rows) {
+      const id = this.env.CREDENTIAL.idFromName(`${row.provider}:${row.subject_id}`);
+      const stub = this.env.CREDENTIAL.get(id);
+      const res = await stub.fetch(`http://do/`);
+      console.log(`[UserDO] Fetching ${row.provider}:${row.subject_id} result: ${res.status}`);
       if (res.ok) {
-        credentials.push({
-          provider: row.provider,
-          ...(await res.json() as any)
-        });
+        credentials.push(await res.json());
       }
     }
     return Response.json(credentials);
@@ -263,8 +264,8 @@ export class UserDO implements DurableObject {
 
     const cred = all.find(c => c.provider === provider);
     if (cred) {
-      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(cred.provider));
-      await stub.fetch(`http://do/?subject_id=${cred.subject_id}`, { method: 'DELETE' });
+      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(`${cred.provider}:${cred.subject_id}`));
+      await stub.fetch('http://do/', { method: 'DELETE' });
       this.sql.exec('DELETE FROM user_credentials WHERE provider = ? AND subject_id = ?', cred.provider, cred.subject_id);
     }
 
