@@ -1,7 +1,10 @@
 import { env, SELF } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
+import { CookieManager } from '../src/CookieManager';
 
 describe('Admin Administration', () => {
+  const cookieManager = new CookieManager(env.COOKIE_SECRET || 'dev-secret');
+
   it('should deny access to non-admin users', async () => {
     // 1. Create a normal user
     const userId = env.USER.newUniqueId();
@@ -22,7 +25,7 @@ describe('Admin Administration', () => {
       }),
     });
 
-    const cookieHeader = `session_id=${sessionId}:${userIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
 
     // 2. Try to access admin route
     const res = await SELF.fetch('http://example.com/users/admin/api/users', {
@@ -52,7 +55,7 @@ describe('Admin Administration', () => {
       }),
     });
 
-    const cookieHeader = `session_id=${sessionId}:${userIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
 
     // 2. Access admin route
     const res = await SELF.fetch('http://example.com/users/admin/api/users', {
@@ -84,7 +87,7 @@ describe('Admin Administration', () => {
       }),
     });
 
-    const cookieHeader = `session_id=${sessionId}:${userIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
 
     // 2. Access admin dashboard
     const res = await SELF.fetch('http://example.com/users/admin/', {
@@ -142,7 +145,7 @@ describe('Admin Administration', () => {
     const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
 
-    const cookieHeader = `session_id=${sessionId}:${userIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
 
     // 2. Create a new account
     const accountName = 'New Admin Account';
@@ -187,7 +190,7 @@ describe('Admin Administration', () => {
 
     const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    const cookieHeader = `session_id=${sessionId}:${adminIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create a target user who will be the owner
     const ownerId = env.USER.newUniqueId();
@@ -240,7 +243,7 @@ describe('Admin Administration', () => {
 
     const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    const cookieHeader = `session_id=${sessionId}:${adminIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create an account
     const createRes = await SELF.fetch('http://example.com/users/admin/api/accounts', {
@@ -298,7 +301,7 @@ describe('Admin Administration', () => {
 
     const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    const cookieHeader = `session_id=${sessionId}:${adminIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create an account
     const createRes = await SELF.fetch('http://example.com/users/admin/api/accounts', {
@@ -361,7 +364,7 @@ describe('Admin Administration', () => {
 
     const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    const cookieHeader = `session_id=${sessionId}:${adminIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create an account
     const createRes = await SELF.fetch('http://example.com/users/admin/api/accounts', {
@@ -403,7 +406,7 @@ describe('Admin Administration', () => {
 
     const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    const cookieHeader = `session_id=${sessionId}:${adminIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create a user to delete
     const userId = env.USER.newUniqueId();
@@ -446,7 +449,7 @@ describe('Admin Administration', () => {
 
     const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    const cookieHeader = `session_id=${sessionId}:${adminIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create an account with an owner
     const ownerId = env.USER.newUniqueId();
@@ -487,7 +490,8 @@ describe('Admin Administration', () => {
 
     const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId: adminSessionId } = (await sessionRes.json()) as any;
-    const adminCookie = `session_id=${adminSessionId}:${adminIdStr}`;
+    const encryptedAdminSession = await cookieManager.encrypt(`${adminSessionId}:${adminIdStr}`);
+    const adminCookie = `session_id=${encryptedAdminSession}`;
 
     // 2. Impersonate another user
     const targetUserId = env.USER.newUniqueId().toString();
@@ -501,13 +505,19 @@ describe('Admin Administration', () => {
     });
 
     const setCookie = impRes.headers.get('Set-Cookie');
-    expect(setCookie).toContain('backup_session_id=' + adminSessionId);
+    expect(setCookie).toContain('backup_session_id=');
 
     // Get the new session cookie
     const cookies = impRes.headers.getSetCookie();
     const impCookie = cookies.find((c) => c.startsWith('session_id='));
-    const backupCookie = cookies.find((c) => c.startsWith('backup_session_id='));
-    const combinedCookie = `${impCookie}; ${backupCookie}`;
+    const backupCookieStr = cookies.find((c) => c.startsWith('backup_session_id='));
+    const backupCookieValue = backupCookieStr?.split(';')[0].split('=')[1];
+    
+    // Verify backup session contains the original session info
+    const decryptedBackup = await cookieManager.decrypt(backupCookieValue!);
+    expect(decryptedBackup).toBe(`${adminSessionId}:${adminIdStr}`);
+
+    const combinedCookie = `${impCookie}; ${backupCookieStr}`;
 
     // 3. Stop impersonation
     const stopRes = await SELF.fetch('http://example.com/users/api/stop-impersonation', {
@@ -517,8 +527,11 @@ describe('Admin Administration', () => {
 
     expect(stopRes.status).toBe(200);
     const stopSetCookie = stopRes.headers.getSetCookie();
-    const restoredSession = stopSetCookie.find((c) => c.startsWith('session_id=' + adminSessionId));
-    expect(restoredSession).toBeDefined();
+    const restoredSessionCookie = stopSetCookie.find((c) => c.startsWith('session_id='));
+    const restoredSessionValue = restoredSessionCookie?.split(';')[0].split('=')[1];
+    const decryptedRestored = await cookieManager.decrypt(restoredSessionValue!);
+    expect(decryptedRestored).toBe(`${adminSessionId}:${adminIdStr}`);
+
     const deletedBackup = stopSetCookie.find((c) => c.startsWith('backup_session_id=;'));
     expect(deletedBackup).toBeDefined();
   });
@@ -531,7 +544,7 @@ describe('Admin Administration', () => {
     const userStub = env.USER.get(adminId);
     const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
     const { sessionId } = (await sessionRes.json()) as any;
-    const cookieHeader = `session_id=${sessionId}:${adminIdStr}`;
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Try to impersonate themselves
     const res = await SELF.fetch('http://example.com/users/admin/api/impersonate', {
