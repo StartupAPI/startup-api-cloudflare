@@ -55,78 +55,6 @@ export class UserDO extends DurableObject {
   }
 
   /**
-   * Handles incoming HTTP requests to the Durable Object.
-   * Routes requests to the appropriate handler based on path and method.
-   *
-   * @param request - The incoming HTTP request.
-   * @returns A Promise resolving to the HTTP response.
-   */
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
-
-    if (path === '/profile' && method === 'GET') {
-      return Response.json(await this.getProfile());
-    } else if (path === '/profile' && method === 'POST') {
-      return Response.json(await this.updateProfile(await request.json()));
-    } else if (path === '/credentials' && method === 'GET') {
-      return Response.json(await this.listCredentials());
-    } else if (path === '/credentials' && method === 'POST') {
-      const { provider, subject_id } = await request.json() as any;
-      return Response.json(await this.addCredential(provider, subject_id));
-    } else if (path === '/credentials' && method === 'DELETE') {
-      const { provider } = await request.json() as any;
-      return Response.json(await this.deleteCredential(provider));
-    } else if (path === '/sessions' && method === 'POST') {
-      return Response.json(await this.createSession());
-    } else if (path === '/sessions' && method === 'DELETE') {
-      const { sessionId } = await request.json() as any;
-      return Response.json(await this.deleteSession(sessionId));
-    } else if (path === '/validate-session' && method === 'POST') {
-      const { sessionId } = await request.json() as any;
-      return Response.json(await this.validateSession(sessionId));
-    } else if (path === '/memberships' && method === 'GET') {
-      return Response.json(await this.getMemberships());
-    } else if (path === '/memberships' && method === 'POST') {
-      const { account_id, role, is_current } = await request.json() as any;
-      return Response.json(await this.addMembership(account_id, role, is_current));
-    } else if (path === '/memberships' && method === 'DELETE') {
-      const { account_id } = await request.json() as any;
-      return Response.json(await this.deleteMembership(account_id));
-    } else if (path === '/switch-account' && method === 'POST') {
-      const { account_id } = await request.json() as any;
-      return Response.json(await this.switchAccount(account_id));
-    } else if (path === '/current-account' && method === 'GET') {
-      return Response.json(await this.getCurrentAccount());
-    } else if (path.startsWith('/images/') && method === 'GET') {
-      const key = path.replace('/images/', '');
-      const image = await this.getImage(key);
-      if (!image) return new Response('Not Found', { status: 404 });
-      return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
-    } else if (path.startsWith('/images/') && method === 'PUT') {
-      const key = path.replace('/images/', '');
-      const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
-      return Response.json(await this.storeImage(key, await request.arrayBuffer(), contentType));
-    } else if (path === '/delete' && method === 'POST') {
-      return Response.json(await this.delete());
-    }
-
-    return new Response('Not Found', { status: 404 });
-  }
-
-  async getImage(key: string) {
-    const result = this.sql.exec('SELECT value, mime_type FROM images WHERE key = ?', key);
-    const row = result.next().value as any;
-    return row || null;
-  }
-
-  async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
-    this.sql.exec('INSERT OR REPLACE INTO images (key, value, mime_type) VALUES (?, ?, ?)', key, value, mime_type);
-    return { success: true };
-  }
-
-  /**
    * Validates a session ID and returns the user profile if valid.
    *
    * @param sessionId - The sessionId to validate.
@@ -342,6 +270,17 @@ export class UserDO extends DurableObject {
     }
 
     return membership;
+  }
+
+  async getImage(key: string) {
+    const result = this.sql.exec('SELECT value, mime_type FROM images WHERE key = ?', key);
+    const row = result.next().value as any;
+    return row || null;
+  }
+
+  async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
+    this.sql.exec('INSERT OR REPLACE INTO images (key, value, mime_type) VALUES (?, ?, ?)', key, value, mime_type);
+    return { success: true };
   }
 
   async delete() {

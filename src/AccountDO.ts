@@ -38,41 +38,6 @@ export class AccountDO extends DurableObject {
     `);
   }
 
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
-
-    try {
-      if (path === '/info' && method === 'GET') {
-        return Response.json(await this.getInfo());
-      } else if (path === '/info' && method === 'POST') {
-        return Response.json(await this.updateInfo(await request.json()));
-      } else if (path === '/members' && method === 'GET') {
-        return Response.json(await this.getMembers());
-      } else if (path === '/members' && method === 'POST') {
-        const { user_id, role } = await request.json() as any;
-        return Response.json(await this.addMember(user_id, role));
-      } else if (path.startsWith('/members/') && method === 'DELETE') {
-        const userId = path.replace('/members/', '');
-        return Response.json(await this.removeMember(userId));
-      } else if (path === '/billing' && method === 'GET') {
-        return Response.json(await this.getBillingInfo());
-      } else if (path === '/billing/subscribe' && method === 'POST') {
-        const { plan_slug, schedule_idx } = await request.json() as any;
-        return Response.json(await this.subscribe(plan_slug, schedule_idx));
-      } else if (path === '/billing/cancel' && method === 'POST') {
-        return Response.json(await this.cancelSubscription());
-      } else if (path === '/delete' && method === 'POST') {
-        return Response.json(await this.delete());
-      }
-    } catch (e: any) {
-      return new Response(e.message, { status: 400 });
-    }
-
-    return new Response('Not Found', { status: 404 });
-  }
-
   async getInfo() {
     const result = this.sql.exec('SELECT key, value FROM account_info');
     const info: Record<string, any> = {};
