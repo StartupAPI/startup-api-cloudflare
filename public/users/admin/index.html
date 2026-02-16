@@ -373,6 +373,7 @@
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <img src="${u.picture || ''}" style="width: 24px; height: 24px; border-radius: 50%;" onerror="this.style.display='none'">
                         ${u.name || '-'}
+                        ${u.is_admin ? '<span style="background: #d93025; color: white; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: bold;">Admin</span>' : ''}
                       </div>
                     </td>
                     <td>${u.email || '-'}</td>

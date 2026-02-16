@@ -102,7 +102,18 @@ export class SystemDO implements DurableObject {
     sql += ' ORDER BY created_at DESC LIMIT 50';
 
     const result = this.sql.exec(sql, ...args);
-    const users = Array.from(result);
+    const users = Array.from(result).map((u: any) => {
+      const adminIds = (this.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
+      const isAdmin =
+        adminIds.includes(u.id) ||
+        (u.email && adminIds.includes(u.email)) ||
+        (u.provider && u.id && adminIds.includes(`${u.provider}:${u.id}`)); // This might be wrong if u.id is DO ID now.
+
+      return {
+        ...u,
+        is_admin: isAdmin,
+      };
+    });
     return Response.json(users);
   }
 
