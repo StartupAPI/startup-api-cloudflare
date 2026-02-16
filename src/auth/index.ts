@@ -42,17 +42,14 @@ export async function handleAuth(
         const token = await provider.getToken(code);
         const profile = await provider.getUserProfile(token.access_token);
 
-        const credStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName(provider.name));
+        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
 
         // 1. Try to resolve existing user by credential
-        const resolveRes = await credStub.fetch(
-          `http://do/resolve?subject_id=${profile.id}`,
-        );
+        const resolveData = await systemStub.resolveCredential(provider.name, profile.id);
 
         let userIdStr: string | null = null;
 
-        if (resolveRes.ok) {
-          const resolveData = (await resolveRes.json()) as { user_id: string };
+        if (resolveData) {
           userIdStr = resolveData.user_id;
         } else {
           // 2. Not found, check if user is already logged in (to link account)
@@ -87,11 +84,7 @@ export async function handleAuth(
             const picRes = await fetch(profile.picture);
             if (picRes.ok) {
               const picBlob = await picRes.arrayBuffer();
-              await stub.fetch('http://do/images/avatar', {
-                method: 'PUT',
-                headers: { 'Content-Type': picRes.headers.get('Content-Type') || 'image/jpeg' },
-                body: picBlob,
-              });
+              await stub.storeImage('avatar', picBlob, picRes.headers.get('Content-Type') || 'image/jpeg');
               // Update profile.picture to point to our worker
               profile.picture = usersPath + 'me/avatar';
             }
@@ -104,55 +97,38 @@ export async function handleAuth(
         const providerSvg = provider.getIcon();
 
         if (providerSvg) {
-          await stub.fetch('http://do/images/provider-icon', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'image/svg+xml' },
-            body: providerSvg,
-          });
+          const encoder = new TextEncoder();
+          await stub.storeImage('provider-icon', encoder.encode(providerSvg), 'image/svg+xml');
           (profile as any).provider_icon = usersPath + 'me/provider-icon';
         }
 
-        // Register credential in provider-specific CredentialDO
-        await credStub.fetch('http://do/', {
-          method: 'PUT',
-          body: JSON.stringify({
-            user_id: userIdStr,
-            provider: provider.name,
-            subject_id: profile.id,
-            access_token: token.access_token,
-            refresh_token: token.refresh_token,
-            expires_at: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
-            scope: token.scope,
-            profile_data: profile,
-          }),
+        // Register credential in provider-specific CredentialDO (via SystemDO)
+        await systemStub.registerCredential({
+          user_id: userIdStr,
+          provider: provider.name,
+          subject_id: profile.id,
+          access_token: token.access_token,
+          refresh_token: token.refresh_token,
+          expires_at: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
+          scope: token.scope,
+          profile_data: profile,
         });
 
         // Register credential mapping in UserDO
-        await stub.fetch('http://do/credentials', {
-          method: 'POST',
-          body: JSON.stringify({
-            provider: provider.name,
-            subject_id: profile.id,
-          }),
-        });
+        await stub.addCredential(provider.name, profile.id);
 
         // Register User in SystemDO index (Only for new users)
-        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
         if (isNewUser) {
-          await systemStub.fetch('http://do/users', {
-            method: 'POST',
-            body: JSON.stringify({
-              id: userIdStr,
-              name: profile.name || userIdStr,
-              email: profile.email,
-              provider: provider.name,
-            }),
+          await systemStub.registerUser({
+            id: userIdStr,
+            name: profile.name || userIdStr,
+            email: profile.email,
+            provider: provider.name,
           });
         }
 
         // Ensure user has at least one account
-        const membershipsRes = await stub.fetch('http://do/memberships');
-        const memberships = (await membershipsRes.json()) as any[];
+        const memberships = await stub.getMemberships();
 
         if (memberships.length === 0) {
           // Create a personal account
@@ -161,48 +137,28 @@ export async function handleAuth(
           const accountIdStr = accountId.toString();
 
           // Initialize account info
-          await accountStub.fetch('http://do/info', {
-            method: 'POST',
-            body: JSON.stringify({
-              name: `${profile.name || userIdStr}'s Account`,
-              personal: true,
-            }),
+          await accountStub.updateInfo({
+            name: `${profile.name || userIdStr}'s Account`,
+            personal: true,
           });
 
           // Register Account in SystemDO
-          await systemStub.fetch('http://do/accounts', {
-            method: 'POST',
-            body: JSON.stringify({
-              id: accountIdStr,
-              name: `${profile.name || profile.id}'s Account`,
-              status: 'active',
-              plan: 'free',
-            }),
+          await systemStub.registerAccount({
+            id: accountIdStr,
+            name: `${profile.name || profile.id}'s Account`,
+            status: 'active',
+            plan: 'free',
           });
 
           // Add user as ADMIN to the account
-          await accountStub.fetch('http://do/members', {
-            method: 'POST',
-            body: JSON.stringify({
-              user_id: id.toString(),
-              role: 1, // ADMIN
-            }),
-          });
+          await accountStub.addMember(id.toString(), 1);
 
           // Add membership to user
-          await stub.fetch('http://do/memberships', {
-            method: 'POST',
-            body: JSON.stringify({
-              account_id: accountIdStr,
-              role: 1, // ADMIN
-              is_current: true,
-            }),
-          });
+          await stub.addMembership(accountIdStr, 1, true);
         }
 
         // Create Session
-        const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
-        const session = (await sessionRes.json()) as any;
+        const session = await stub.createSession();
 
         // Set cookie and redirect
         const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${userIdStr}`);

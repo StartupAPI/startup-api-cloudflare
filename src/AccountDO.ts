@@ -8,18 +8,15 @@ import { StartupAPIEnv } from './StartupAPIEnv';
  * A Durable Object representing an Account (Tenant).
  * This class handles account-specific data, settings, and memberships.
  */
-export class AccountDO implements DurableObject {
+export class AccountDO extends DurableObject {
   static ROLE_USER = 0;
   static ROLE_ADMIN = 1;
 
-  state: DurableObjectState;
-  env: StartupAPIEnv;
   sql: SqlStorage;
   paymentEngine: MockPaymentEngine;
 
   constructor(state: DurableObjectState, env: StartupAPIEnv) {
-    this.state = state;
-    this.env = env;
+    super(state, env);
     this.sql = state.storage.sql;
     this.paymentEngine = new MockPaymentEngine();
 
@@ -46,81 +43,65 @@ export class AccountDO implements DurableObject {
     const path = url.pathname;
     const method = request.method;
 
-    if (path === '/info' && method === 'GET') {
-      return this.getInfo();
-    } else if (path === '/info' && method === 'POST') {
-      return this.updateInfo(request);
-    } else if (path === '/members' && method === 'GET') {
-      return this.getMembers();
-    } else if (path === '/members' && method === 'POST') {
-      return this.addMember(request);
-    } else if (path.startsWith('/members/') && method === 'DELETE') {
-      const userId = path.replace('/members/', '');
-      return this.removeMember(userId);
-    } else if (path === '/billing' && method === 'GET') {
-      return this.getBillingInfo();
-    } else if (path === '/billing/subscribe' && method === 'POST') {
-      return this.subscribe(request);
-    } else if (path === '/billing/cancel' && method === 'POST') {
-      return this.cancelSubscription();
-    } else if (path === '/delete' && method === 'POST') {
-      // Get all members to notify their UserDOs
-      const members = Array.from(this.sql.exec('SELECT user_id FROM members'));
-      for (const member of members as any[]) {
-        try {
-          const userStub = this.env.USER.get(this.env.USER.idFromString(member.user_id));
-          await userStub.fetch('http://do/memberships', {
-            method: 'DELETE',
-            body: JSON.stringify({
-              account_id: this.state.id.toString(),
-            }),
-          });
-        } catch (e) {
-          console.error(`Failed to notify UserDO ${member.user_id} of account deletion`, e);
-        }
+    try {
+      if (path === '/info' && method === 'GET') {
+        return Response.json(await this.getInfo());
+      } else if (path === '/info' && method === 'POST') {
+        return Response.json(await this.updateInfo(await request.json()));
+      } else if (path === '/members' && method === 'GET') {
+        return Response.json(await this.getMembers());
+      } else if (path === '/members' && method === 'POST') {
+        const { user_id, role } = await request.json() as any;
+        return Response.json(await this.addMember(user_id, role));
+      } else if (path.startsWith('/members/') && method === 'DELETE') {
+        const userId = path.replace('/members/', '');
+        return Response.json(await this.removeMember(userId));
+      } else if (path === '/billing' && method === 'GET') {
+        return Response.json(await this.getBillingInfo());
+      } else if (path === '/billing/subscribe' && method === 'POST') {
+        const { plan_slug, schedule_idx } = await request.json() as any;
+        return Response.json(await this.subscribe(plan_slug, schedule_idx));
+      } else if (path === '/billing/cancel' && method === 'POST') {
+        return Response.json(await this.cancelSubscription());
+      } else if (path === '/delete' && method === 'POST') {
+        return Response.json(await this.delete());
       }
-
-      this.sql.exec('DELETE FROM account_info');
-      this.sql.exec('DELETE FROM members');
-      return Response.json({ success: true });
+    } catch (e: any) {
+      return new Response(e.message, { status: 400 });
     }
 
     return new Response('Not Found', { status: 404 });
   }
 
-  async getInfo(): Promise<Response> {
+  async getInfo() {
     const result = this.sql.exec('SELECT key, value FROM account_info');
     const info: Record<string, any> = {};
     for (const row of result) {
       // @ts-ignore
       info[row.key] = JSON.parse(row.value as string);
     }
-    return Response.json(info);
+    return info;
   }
 
-  async updateInfo(request: Request): Promise<Response> {
-    const data = (await request.json()) as Record<string, any>;
-
+  async updateInfo(data: Record<string, any>) {
     try {
-      this.state.storage.transactionSync(() => {
+      this.ctx.storage.transactionSync(() => {
         for (const [key, value] of Object.entries(data)) {
           this.sql.exec('INSERT OR REPLACE INTO account_info (key, value) VALUES (?, ?)', key, JSON.stringify(value));
         }
       });
-      return Response.json({ success: true });
+      return { success: true };
     } catch (e: any) {
-      return new Response(e.message, { status: 500 });
+      throw new Error(e.message);
     }
   }
 
-  async getMembers(): Promise<Response> {
+  async getMembers() {
     const result = this.sql.exec('SELECT user_id, role, joined_at FROM members');
-    const members = Array.from(result);
-    return Response.json(members);
+    return Array.from(result);
   }
 
-  async addMember(request: Request): Promise<Response> {
-    const { user_id, role } = (await request.json()) as { user_id: string; role: number };
+  async addMember(user_id: string, role: number) {
     const now = Date.now();
 
     // Update Account DO
@@ -129,7 +110,7 @@ export class AccountDO implements DurableObject {
     // Update SystemDO index
     try {
       const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
-      await systemStub.fetch(`http://do/accounts/${this.state.id.toString()}/increment-members`, { method: 'POST' });
+      await systemStub.incrementMemberCount(this.ctx.id.toString());
     } catch (e) {
       console.error('Failed to update member count in SystemDO', e);
     }
@@ -137,30 +118,21 @@ export class AccountDO implements DurableObject {
     // Sync with User DO
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(user_id));
-      await userStub.fetch('http://do/memberships', {
-        method: 'POST',
-        body: JSON.stringify({
-          account_id: this.state.id.toString(),
-          role,
-          is_current: false, // Default to false when added by Account
-        }),
-      });
+      await userStub.addMembership(this.ctx.id.toString(), role, false);
     } catch (e) {
       console.error('Failed to sync membership to UserDO', e);
-      // We might want to rollback or retry, but for now we log.
-      // In a real system, we'd use a queue or reliable workflow.
     }
 
-    return Response.json({ success: true });
+    return { success: true };
   }
 
-  async removeMember(userId: string): Promise<Response> {
+  async removeMember(userId: string) {
     this.sql.exec('DELETE FROM members WHERE user_id = ?', userId);
 
     // Update SystemDO index
     try {
       const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
-      await systemStub.fetch(`http://do/accounts/${this.state.id.toString()}/decrement-members`, { method: 'POST' });
+      await systemStub.decrementMemberCount(this.ctx.id.toString());
     } catch (e) {
       console.error('Failed to update member count in SystemDO', e);
     }
@@ -168,17 +140,29 @@ export class AccountDO implements DurableObject {
     // Sync with User DO
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
-      await userStub.fetch('http://do/memberships', {
-        method: 'DELETE',
-        body: JSON.stringify({
-          account_id: this.state.id.toString(),
-        }),
-      });
+      await userStub.deleteMembership(this.ctx.id.toString());
     } catch (e) {
       console.error('Failed to sync membership removal to UserDO', e);
     }
 
-    return Response.json({ success: true });
+    return { success: true };
+  }
+
+  async delete() {
+    // Get all members to notify their UserDOs
+    const members = Array.from(this.sql.exec('SELECT user_id FROM members'));
+    for (const member of members as any[]) {
+      try {
+        const userStub = this.env.USER.get(this.env.USER.idFromString(member.user_id));
+        await userStub.deleteMembership(this.ctx.id.toString());
+      } catch (e) {
+        console.error(`Failed to notify UserDO ${member.user_id} of account deletion`, e);
+      }
+    }
+
+    this.sql.exec('DELETE FROM account_info');
+    this.sql.exec('DELETE FROM members');
+    return { success: true };
   }
 
   // Billing Implementation
@@ -196,26 +180,25 @@ export class AccountDO implements DurableObject {
   }
 
   private setBillingState(state: any) {
-    this.state.storage.transactionSync(() => {
+    this.ctx.storage.transactionSync(() => {
       this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(state));
     });
   }
 
-  async getBillingInfo(): Promise<Response> {
+  async getBillingInfo() {
     const state = this.getBillingState();
     const plan = Plan.get(state.plan_slug);
-    return Response.json({
+    return {
       state,
       plan_details: plan,
-    });
+    };
   }
 
-  async subscribe(request: Request): Promise<Response> {
-    const { plan_slug, schedule_idx = 0 } = (await request.json()) as { plan_slug: string; schedule_idx?: number };
+  async subscribe(plan_slug: string, schedule_idx: number = 0) {
     const plan = Plan.get(plan_slug);
 
     if (!plan) {
-      return new Response('Plan not found', { status: 400 });
+      throw new Error('Plan not found');
     }
 
     const currentState = this.getBillingState();
@@ -225,19 +208,19 @@ export class AccountDO implements DurableObject {
       if (currentState.plan_slug) {
         const oldPlan = Plan.get(currentState.plan_slug);
         if (oldPlan?.account_deactivate_hook) {
-          await oldPlan.account_deactivate_hook(this.state.id.toString());
+          await oldPlan.account_deactivate_hook(this.ctx.id.toString());
         }
       }
       if (plan.account_activate_hook) {
-        await plan.account_activate_hook(this.state.id.toString());
+        await plan.account_activate_hook(this.ctx.id.toString());
       }
     }
 
     // Setup recurring payment
     try {
-      await this.paymentEngine.setupRecurring(this.state.id.toString(), plan_slug, schedule_idx);
+      await this.paymentEngine.setupRecurring(this.ctx.id.toString(), plan_slug, schedule_idx);
     } catch (e: any) {
-      return new Response(`Payment setup failed: ${e.message}`, { status: 500 });
+      throw new Error(`Payment setup failed: ${e.message}`);
     }
 
     const newState = {
@@ -250,18 +233,18 @@ export class AccountDO implements DurableObject {
 
     this.setBillingState(newState);
 
-    return Response.json({ success: true, state: newState });
+    return { success: true, state: newState };
   }
 
-  async cancelSubscription(): Promise<Response> {
+  async cancelSubscription() {
     const currentState = this.getBillingState();
     const currentPlan = Plan.get(currentState.plan_slug);
 
     if (!currentPlan) {
-      return new Response('No active plan', { status: 400 });
+      throw new Error('No active plan');
     }
 
-    await this.paymentEngine.cancelRecurring(this.state.id.toString());
+    await this.paymentEngine.cancelRecurring(this.ctx.id.toString());
 
     // Downgrade logic (immediate or scheduled - simplification: scheduled if downgrade_to_slug exists)
     // For this prototype, we'll mark it as canceled and set the next plan if applicable.
@@ -274,6 +257,6 @@ export class AccountDO implements DurableObject {
 
     this.setBillingState(newState);
 
-    return Response.json({ success: true, state: newState });
+    return { success: true, state: newState };
   }
 }

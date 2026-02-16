@@ -5,14 +5,11 @@ import { StartupAPIEnv } from './StartupAPIEnv';
  * A Durable Object representing all OAuth credentials for a specific provider.
  * Each instance is identified by the provider name (e.g., "google", "twitch").
  */
-export class CredentialDO implements DurableObject {
-  state: DurableObjectState;
-  env: StartupAPIEnv;
+export class CredentialDO extends DurableObject {
   sql: SqlStorage;
 
   constructor(state: DurableObjectState, env: StartupAPIEnv) {
-    this.state = state;
-    this.env = env;
+    super(state, env);
     this.sql = state.storage.sql;
 
     this.sql.exec(`
@@ -31,70 +28,47 @@ export class CredentialDO implements DurableObject {
     `);
   }
 
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
+  async get(subjectId: string) {
+    const result = this.sql.exec('SELECT * FROM credentials WHERE subject_id = ?', subjectId);
+    const row = result.next().value as any;
+    if (!row) return null;
+    
+    row.profile_data = JSON.parse(row.profile_data);
+    return row;
+  }
 
-    if (path === '/resolve' && method === 'GET') {
-      const subjectId = url.searchParams.get('subject_id');
-      if (!subjectId) return new Response('Missing subject_id', { status: 400 });
-
-      const result = this.sql.exec('SELECT * FROM credentials WHERE subject_id = ?', subjectId);
-      const row = result.next().value as any;
-      if (!row) return new Response('Not Found', { status: 404 });
-      
-      row.profile_data = JSON.parse(row.profile_data);
-      return Response.json(row);
+  async list(userId: string) {
+    const result = this.sql.exec('SELECT * FROM credentials WHERE user_id = ?', userId);
+    const credentials = [];
+    for (const row of result) {
+      (row as any).profile_data = JSON.parse((row as any).profile_data);
+      credentials.push(row);
     }
+    return credentials;
+  }
 
-    if (path === '/list' && method === 'GET') {
-      const userId = url.searchParams.get('user_id');
-      if (!userId) return new Response('Missing user_id', { status: 400 });
+  async put(data: any) {
+    const now = Date.now();
 
-      const result = this.sql.exec('SELECT * FROM credentials WHERE user_id = ?', userId);
-      const credentials = [];
-      for (const row of result) {
-        (row as any).profile_data = JSON.parse((row as any).profile_data);
-        credentials.push(row);
-      }
-      return Response.json(credentials);
-    }
+    this.sql.exec(
+      `INSERT OR REPLACE INTO credentials 
+      (subject_id, user_id, access_token, refresh_token, expires_at, scope, profile_data, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      data.subject_id,
+      data.user_id,
+      data.access_token,
+      data.refresh_token,
+      data.expires_at,
+      data.scope,
+      JSON.stringify(data.profile_data),
+      data.created_at || now,
+      now
+    );
+    return { success: true };
+  }
 
-    if (method === 'PUT') {
-      const data = await request.json() as any;
-      const now = Date.now();
-
-      this.sql.exec(
-        `INSERT OR REPLACE INTO credentials 
-        (subject_id, user_id, access_token, refresh_token, expires_at, scope, profile_data, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        data.subject_id,
-        data.user_id,
-        data.access_token,
-        data.refresh_token,
-        data.expires_at,
-        data.scope,
-        JSON.stringify(data.profile_data),
-        data.created_at || now,
-        now
-      );
-      return Response.json({ success: true });
-    }
-
-    if (method === 'DELETE') {
-      const subjectId = url.searchParams.get('subject_id');
-      if (subjectId) {
-        this.sql.exec('DELETE FROM credentials WHERE subject_id = ?', subjectId);
-      } else {
-        const userId = url.searchParams.get('user_id');
-        if (userId) {
-          this.sql.exec('DELETE FROM credentials WHERE user_id = ?', userId);
-        }
-      }
-      return Response.json({ success: true });
-    }
-
-    return new Response('Method Not Allowed', { status: 405 });
+  async delete(subjectId: string) {
+    this.sql.exec('DELETE FROM credentials WHERE subject_id = ?', subjectId);
+    return { success: true };
   }
 }
