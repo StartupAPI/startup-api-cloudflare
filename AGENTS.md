@@ -24,6 +24,7 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 
 - Internal worker routes all start with `${usersPath}`, make sure to always prefix them
 - Never override `.env` and `.dev.vars` files
+- When calling DurableObjects from Workers or other DurableObjects, always use RPC instead of fetch()
 
 ## API
 
