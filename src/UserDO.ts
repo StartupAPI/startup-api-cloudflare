@@ -158,22 +158,33 @@ export class UserDO implements DurableObject {
       return Response.json({ valid: false, error: 'Expired' }, { status: 401 });
     }
 
-    // Get latest profile data
+    // Get latest profile data from credentials
     const credsResult = this.sql.exec(
       'SELECT profile_data, provider, subject_id FROM credentials ORDER BY updated_at DESC LIMIT 1',
     );
     const creds = credsResult.next().value as any;
 
-    let profile = {};
+    let profile: Record<string, any> = {};
     if (creds && creds.profile_data) {
       try {
         profile = JSON.parse(creds.profile_data as string);
-        // Ensure the ID is our internal DO ID
-        (profile as any).id = this.state.id.toString();
-        // Add provider info for the UI icon
-        (profile as any).provider = creds.provider;
-        (profile as any).subject_id = creds.subject_id;
       } catch (e) {}
+    }
+
+    // Merge with custom profile data
+    const customProfileResult = this.sql.exec('SELECT key, value FROM profile');
+    for (const row of customProfileResult) {
+      try {
+        // @ts-ignore
+        profile[row.key] = JSON.parse(row.value as string);
+      } catch (e) {}
+    }
+
+    // Ensure the ID and provider info are set
+    profile.id = this.state.id.toString();
+    if (creds) {
+      profile.provider = creds.provider;
+      profile.subject_id = creds.subject_id;
     }
 
     return Response.json({ valid: true, profile });

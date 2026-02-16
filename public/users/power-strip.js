@@ -196,6 +196,7 @@ class PowerStrip extends HTMLElement {
               <div class="user-info">
                   <span class="user-name">${this.user.profile.name}</span>
               </div>
+              <a href="${this.basePath}/profile.html" class="trigger profile-btn" title="Edit Profile">Profile</a>
               <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
             </div>
           `;

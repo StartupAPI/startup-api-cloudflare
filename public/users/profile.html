@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>User Profile</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        padding: 2rem;
+        max-width: 600px;
+        margin: 0 auto;
+        background: #f9f9f9;
+      }
+      h1 {
+        color: #333;
+      }
+      section {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+      }
+      .form-group {
+        margin-bottom: 1.5rem;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #555;
+      }
+      .form-group input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+        font-size: 1rem;
+      }
+      .form-group input:disabled {
+        background: #f0f0f0;
+        color: #888;
+      }
+      button {
+        padding: 0.75rem 1.5rem;
+        background: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 500;
+      }
+      button:hover {
+        background: #1557b0;
+      }
+      .avatar-section {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+      }
+      .avatar-large {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 3px solid white;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+      #toast {
+        position: fixed;
+        bottom: 1rem;
+        right: 1rem;
+        padding: 1rem;
+        background: #333;
+        color: white;
+        border-radius: 4px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        z-index: 10000;
+      }
+      .back-link {
+        display: inline-block;
+        margin-bottom: 1rem;
+        color: #1a73e8;
+        text-decoration: none;
+      }
+      .back-link:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <power-strip providers="google,twitch" style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem;">
+      <svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="#ffcc00"/></svg>
+    </power-strip>
+    <script src="/users/power-strip.js" async></script>
+
+    <a href="/" class="back-link">← Back to Home</a>
+    <h1>Edit Profile</h1>
+
+    <section>
+      <div class="avatar-section">
+        <img id="profile-picture" class="avatar-large" src="" alt="Profile Picture" style="display: none;" />
+        <div>
+          <h2 id="display-name" style="margin: 0; color: #333;">Loading...</h2>
+          <p id="display-email" style="margin: 0.25rem 0 0 0; color: #666;"></p>
+        </div>
+      </div>
+
+      <form id="profile-form">
+        <div class="form-group">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" placeholder="Your Name" required />
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" disabled title="Email is managed by your login provider" />
+        </div>
+        <button type="submit">Save Changes</button>
+      </form>
+    </section>
+
+    <div id="toast"></div>
+
+    <script>
+      const API_BASE = '/users/api';
+
+      async function loadProfile() {
+        try {
+          const res = await fetch(`${API_BASE}/me`);
+          if (!res.ok) {
+              if (res.status === 401) {
+                  window.location.href = '/';
+                  return;
+              }
+              throw new Error('Failed to load profile');
+          }
+          const data = await res.json();
+          if (data.valid && data.profile) {
+            const p = data.profile;
+            document.getElementById('name').value = p.name || '';
+            document.getElementById('email').value = p.email || '';
+            document.getElementById('display-name').textContent = p.name || 'Anonymous';
+            document.getElementById('display-email').textContent = p.email || '';
+            
+            if (p.picture) {
+              const img = document.getElementById('profile-picture');
+              img.src = p.picture;
+              img.style.display = 'block';
+            }
+
+            const emailLabel = document.querySelector('label[for="email"]');
+            if (p.provider) {
+                const providerName = p.provider.charAt(0).toUpperCase() + p.provider.slice(1);
+                emailLabel.textContent = `Email (from ${providerName})`;
+            }
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      }
+
+      document.getElementById('profile-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('name').value;
+
+        try {
+          const res = await fetch(`${API_BASE}/me/profile`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name }),
+          });
+
+          if (res.ok) {
+            showToast('Profile updated successfully');
+            loadProfile(); // Refresh
+            // Optional: refresh power-strip if possible, but a reload might be easier
+            // window.location.reload(); 
+          } else {
+            throw new Error('Failed to update profile');
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      };
+
+      function showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.innerText = msg;
+        toast.style.opacity = 1;
+        setTimeout(() => (toast.style.opacity = 0), 3000);
+      }
+
+      loadProfile();
+    </script>
+  </body>
+</html>

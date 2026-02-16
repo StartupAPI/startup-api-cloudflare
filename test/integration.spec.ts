@@ -45,6 +45,52 @@ describe('Integration Tests', () => {
     expect(data.profile.name).toBe('Integration Tester');
   });
 
+  it('should update user profile via /api/me/profile', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+    const doId = id.toString();
+
+    // Create session
+    const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
+    const { sessionId } = (await sessionRes.json()) as any;
+
+    // Add initial credentials
+    await stub.fetch('http://do/credentials', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'test-provider',
+        subject_id: '123',
+        profile_data: { name: 'Original Name' },
+      }),
+    });
+
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${doId}`);
+
+    // Update profile
+    const updateRes = await SELF.fetch('http://example.com/users/api/me/profile', {
+      method: 'POST',
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: 'Updated Name' }),
+    });
+
+    expect(updateRes.status).toBe(200);
+    const updateData = (await updateRes.json()) as any;
+    expect(updateData.success).toBe(true);
+
+    // Verify update
+    const meRes = await SELF.fetch('http://example.com/users/api/me', {
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+      },
+    });
+
+    const meData = (await meRes.json()) as any;
+    expect(meData.profile.name).toBe('Updated Name');
+  });
+
   it('should serve avatar image from /me/avatar', async () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);

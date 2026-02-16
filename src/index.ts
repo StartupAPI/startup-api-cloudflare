@@ -58,6 +58,10 @@ export default {
         return handleMe(request, env, cookieManager);
       }
 
+      if (apiPath === '/me/profile' && request.method === 'POST') {
+        return handleUpdateProfile(request, env, cookieManager);
+      }
+
       if (apiPath === '/stop-impersonation' && request.method === 'POST') {
         const cookieHeader = request.headers.get('Cookie');
         const cookies = parseCookies(cookieHeader || '');
@@ -306,6 +310,48 @@ async function handleMe(
     }
 
     return Response.json(data);
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleUpdateProfile(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookieEncrypted = cookies['session_id'];
+
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const validateRes = await userStub.fetch('http://do/validate-session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+
+    if (!validateRes.ok) return validateRes;
+
+    const body = await request.text();
+    return await userStub.fetch('http://do/profile', {
+      method: 'POST',
+      body,
+    });
   } catch (e) {
     return new Response('Unauthorized', { status: 401 });
   }
