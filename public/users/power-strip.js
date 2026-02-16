@@ -194,9 +194,8 @@ class PowerStrip extends HTMLElement {
                   </div>
               </div>
               <div class="user-info">
-                  <span class="user-name">${this.user.profile.name}</span>
+                  <a href="${this.basePath}/profile.html" class="user-name" title="Edit Profile">${this.user.profile.name}</a>
               </div>
-              <a href="${this.basePath}/profile.html" class="trigger profile-btn" title="Edit Profile">Profile</a>
               <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
             </div>
           `;
@@ -326,6 +325,13 @@ class PowerStrip extends HTMLElement {
             overflow: hidden;
             text-overflow: ellipsis;
             font-weight: 600;
+            text-decoration: none;
+            display: block;
+        }
+
+        .user-name:hover {
+            text-decoration: underline;
+            color: #1a73e8;
         }
         
         .account-label {
