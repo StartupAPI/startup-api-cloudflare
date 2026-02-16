@@ -2,10 +2,11 @@ import { handleAuth } from './auth/index';
 import { injectPowerStrip } from './PowerStrip';
 import { UserDO } from './UserDO';
 import { AccountDO } from './AccountDO';
+import { SystemDO } from './SystemDO';
 
 const DEFAULT_USERS_PATH = '/users/';
 
-export { UserDO, AccountDO };
+export { UserDO, AccountDO, SystemDO };
 
 import type { StartupAPIEnv } from './StartupAPIEnv';
 
@@ -34,10 +35,6 @@ export default {
       return handleAuth(request, env, url, usersPath);
     }
 
-    if (url.pathname === usersPath + 'me') {
-      return handleMe(request, env);
-    }
-
     if (url.pathname === usersPath + 'me/avatar') {
       return handleMeImage(request, env, 'avatar');
     }
@@ -46,16 +43,46 @@ export default {
       return handleMeImage(request, env, 'provider-icon');
     }
 
-    if (url.pathname === usersPath + 'me/accounts') {
-      return handleMyAccounts(request, env);
-    }
+    // Handle API Routes
+    if (url.pathname.startsWith(usersPath + 'api/')) {
+      const apiPath = url.pathname.replace(usersPath + 'api/', '/');
 
-    if (url.pathname === usersPath + 'me/accounts/switch' && request.method === 'POST') {
-      return handleSwitchAccount(request, env);
+      if (apiPath === '/me') {
+        return handleMe(request, env);
+      }
+
+      if (apiPath === '/stop-impersonation' && request.method === 'POST') {
+        const cookieHeader = request.headers.get('Cookie');
+        const cookies = parseCookies(cookieHeader || '');
+        const backupSession = cookies['backup_session_id'];
+
+        if (!backupSession) {
+          return new Response('No impersonation session found', { status: 400 });
+        }
+
+        const headers = new Headers();
+        headers.set('Set-Cookie', `session_id=${backupSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        headers.append('Set-Cookie', `backup_session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
+
+        return Response.json({ success: true }, { headers });
+      }
+
+      if (apiPath === '/me/accounts') {
+        return handleMyAccounts(request, env);
+      }
+
+      if (apiPath === '/me/accounts/switch' && request.method === 'POST') {
+        return handleSwitchAccount(request, env);
+      }
     }
 
     if (url.pathname === usersPath + 'logout') {
       return handleLogout(request, env, usersPath);
+    }
+
+    // Admin Routes
+    if (url.pathname.startsWith(usersPath + 'admin/')) {
+      return handleAdmin(request, env, usersPath);
     }
 
     // Intercept requests to usersPath and serve them from the public/users directory.
@@ -94,6 +121,106 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
+async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string): Promise<Response> {
+  const user = await getUserFromSession(request, env);
+  if (!user || !isAdmin(user, env)) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const url = new URL(request.url);
+  const path = url.pathname.replace(usersPath + 'admin', '');
+
+  if (path === '/' || path === '') {
+    url.pathname = '/users/admin/';
+    const newRequest = new Request(url.toString(), request);
+    newRequest.headers.set('x-skip-worker', 'true');
+    return env.ASSETS.fetch(newRequest);
+  }
+
+  const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+
+  if (path.startsWith('/api/')) {
+    const apiPath = path.replace('/api/', '');
+    if (apiPath.startsWith('users')) {
+      return systemStub.fetch(new Request('http://do/' + apiPath + url.search, request));
+    } else if (apiPath.startsWith('accounts')) {
+      return systemStub.fetch(new Request('http://do/' + apiPath + url.search, request));
+    } else if (apiPath === 'impersonate' && request.method === 'POST') {
+      const { userId } = (await request.json()) as { userId: string };
+
+      if (user.id === userId) {
+        return new Response('Cannot impersonate yourself', { status: 400 });
+      }
+
+      // Get current session to backup
+      const cookieHeader = request.headers.get('Cookie');
+      const cookies = parseCookies(cookieHeader || '');
+      const currentSession = cookies['session_id'];
+
+      // Create a session for the target user
+      const targetUserStub = env.USER.get(env.USER.idFromString(userId));
+      const sessionRes = await targetUserStub.fetch('http://do/sessions', { method: 'POST' });
+      const { sessionId } = (await sessionRes.json()) as any;
+
+      const doId = userId;
+      const headers = new Headers();
+      headers.set('Set-Cookie', `session_id=${sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+      if (currentSession) {
+        headers.append('Set-Cookie', `backup_session_id=${currentSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+      }
+
+      return Response.json({ success: true }, { headers });
+    }
+  }
+
+  return new Response('Not Found', { status: 404 });
+}
+
+async function getUserFromSession(request: Request, env: StartupAPIEnv): Promise<any> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return null;
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookie = cookies['session_id'];
+
+  if (!sessionCookie || !sessionCookie.includes(':')) return null;
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const validateRes = await userStub.fetch('http://do/validate-session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+
+    if (!validateRes.ok) return null;
+
+    const data = (await validateRes.json()) as any;
+    if (data.valid) {
+      return {
+        id: doId,
+        ...data.profile,
+      };
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+function isAdmin(user: any, env: StartupAPIEnv): boolean {
+  if (!env.ADMIN_IDS) return false;
+  const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim());
+  return (
+    adminIds.includes(user.id) ||
+    (user.email && adminIds.includes(user.email)) ||
+    (user.subject_id && adminIds.includes(user.subject_id)) ||
+    (user.provider && user.subject_id && adminIds.includes(`${user.provider}:${user.subject_id}`))
+  );
+}
+
 async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
@@ -118,6 +245,8 @@ async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response>
     if (!validateRes.ok) return validateRes;
 
     const data = (await validateRes.json()) as any;
+    data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
+    data.is_impersonated = !!cookies['backup_session_id'];
 
     // Fetch memberships to find current account
     const membershipsRes = await userStub.fetch('http://do/memberships');
@@ -239,8 +368,8 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv): Promise<R
           info = await infoRes.json();
         }
         return {
-          ...m,
           ...info,
+          ...m,
         };
       }),
     );
@@ -285,7 +414,7 @@ async function handleSwitchAccount(request: Request, env: StartupAPIEnv): Promis
     });
 
     if (!switchRes.ok) {
-        return switchRes;
+      return switchRes;
     }
 
     return Response.json({ success: true });

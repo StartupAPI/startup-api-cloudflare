@@ -2,8 +2,8 @@ import { env, SELF } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
 
 describe('Integration Tests', () => {
-  it('should return 401 for /me without cookie', async () => {
-    const res = await SELF.fetch('http://example.com/users/me');
+  it('should return 401 for /api/me without cookie', async () => {
+    const res = await SELF.fetch('http://example.com/users/api/me');
     expect(res.status).toBe(401);
   });
 
@@ -27,9 +27,9 @@ describe('Integration Tests', () => {
     });
     await credsRes.json(); // Drain body
 
-    // 2. Fetch /me with the cookie
+    // 2. Fetch /api/me with the cookie
     const doId = id.toString();
-    const res = await SELF.fetch('http://example.com/users/me', {
+    const res = await SELF.fetch('http://example.com/users/api/me', {
       headers: {
         Cookie: `session_id=${sessionId}:${doId}`,
       },

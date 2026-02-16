@@ -53,8 +53,8 @@ describe('Account Switching Integration', () => {
       body: JSON.stringify({ account_id: acc2IdStr, role: 0, is_current: false }),
     });
 
-    // 3. Test GET /users/me/accounts
-    const listRes = await SELF.fetch('http://example.com/users/me/accounts', {
+    // 3. Test GET /users/api/me/accounts
+    const listRes = await SELF.fetch('http://example.com/users/api/me/accounts', {
       headers: { Cookie: cookieHeader },
     });
     expect(listRes.status).toBe(200);
@@ -69,15 +69,15 @@ describe('Account Switching Integration', () => {
     expect(acc2.is_current).toBe(0);
 
     // 4. Test Switch to Account 2
-    const switchRes = await SELF.fetch('http://example.com/users/me/accounts/switch', {
+    const switchRes = await SELF.fetch('http://example.com/users/api/me/accounts/switch', {
       method: 'POST',
       headers: { Cookie: cookieHeader },
       body: JSON.stringify({ account_id: acc2IdStr }),
     });
     expect(switchRes.status).toBe(200);
 
-    // 5. Verify Switch via /users/me
-    const meRes = await SELF.fetch('http://example.com/users/me', {
+    // 5. Verify Switch via /users/api/me
+    const meRes = await SELF.fetch('http://example.com/users/api/me', {
       headers: { Cookie: cookieHeader },
     });
     expect(meRes.status).toBe(200);
@@ -86,7 +86,7 @@ describe('Account Switching Integration', () => {
     expect(meData.account.name).toBe('Team Account');
 
     // 6. Verify List reflects change
-    const listRes2 = await SELF.fetch('http://example.com/users/me/accounts', {
+    const listRes2 = await SELF.fetch('http://example.com/users/api/me/accounts', {
       headers: { Cookie: cookieHeader },
     });
     const accounts2 = (await listRes2.json()) as any[];

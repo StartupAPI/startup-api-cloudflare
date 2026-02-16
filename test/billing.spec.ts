@@ -9,7 +9,7 @@ describe('Billing Logic in AccountDO', () => {
     const res = await stub.fetch('http://do/billing');
     expect(res.status).toBe(200);
     const data: any = await res.json();
-    
+
     expect(data.state.plan_slug).toBe('free');
     expect(data.state.status).toBe('active');
     expect(data.plan_details.slug).toBe('free');
@@ -21,8 +21,8 @@ describe('Billing Logic in AccountDO', () => {
 
     // Subscribe to Pro
     const res = await stub.fetch('http://do/billing/subscribe', {
-        method: 'POST',
-        body: JSON.stringify({ plan_slug: 'pro', schedule_idx: 0 })
+      method: 'POST',
+      body: JSON.stringify({ plan_slug: 'pro', schedule_idx: 0 }),
     });
     expect(res.status).toBe(200);
     const result: any = await res.json();
@@ -42,8 +42,8 @@ describe('Billing Logic in AccountDO', () => {
     const stub = env.ACCOUNT.get(id);
 
     const res = await stub.fetch('http://do/billing/subscribe', {
-        method: 'POST',
-        body: JSON.stringify({ plan_slug: 'invalid-plan' })
+      method: 'POST',
+      body: JSON.stringify({ plan_slug: 'invalid-plan' }),
     });
     expect(res.status).toBe(400);
   });
@@ -54,13 +54,13 @@ describe('Billing Logic in AccountDO', () => {
 
     // Subscribe first
     await stub.fetch('http://do/billing/subscribe', {
-        method: 'POST',
-        body: JSON.stringify({ plan_slug: 'pro' })
+      method: 'POST',
+      body: JSON.stringify({ plan_slug: 'pro' }),
     });
 
     // Cancel
     const res = await stub.fetch('http://do/billing/cancel', {
-        method: 'POST'
+      method: 'POST',
     });
     expect(res.status).toBe(200);
     const result: any = await res.json();

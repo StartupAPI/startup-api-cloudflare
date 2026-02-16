@@ -67,8 +67,8 @@ describe('User-Account Relationship', () => {
     // Verify initial state
     let memRes = await userStub.fetch('http://do/memberships');
     let memberships: any[] = await memRes.json();
-    expect(memberships.find(m => m.account_id === accountId1).is_current).toBe(1);
-    expect(memberships.find(m => m.account_id === accountId2).is_current).toBe(0);
+    expect(memberships.find((m) => m.account_id === accountId1).is_current).toBe(1);
+    expect(memberships.find((m) => m.account_id === accountId2).is_current).toBe(0);
 
     // Switch to Account 2
     const switchRes = await userStub.fetch('http://do/switch-account', {
@@ -80,8 +80,8 @@ describe('User-Account Relationship', () => {
     // Verify state
     memRes = await userStub.fetch('http://do/memberships');
     memberships = await memRes.json();
-    expect(memberships.find(m => m.account_id === accountId1).is_current).toBe(0);
-    expect(memberships.find(m => m.account_id === accountId2).is_current).toBe(1);
+    expect(memberships.find((m) => m.account_id === accountId1).is_current).toBe(0);
+    expect(memberships.find((m) => m.account_id === accountId2).is_current).toBe(1);
   });
 
   it('should retrieve current account', async () => {

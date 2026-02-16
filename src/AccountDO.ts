@@ -63,6 +63,26 @@ export class AccountDO implements DurableObject {
       return this.subscribe(request);
     } else if (path === '/billing/cancel' && method === 'POST') {
       return this.cancelSubscription();
+    } else if (path === '/delete' && method === 'POST') {
+      // Get all members to notify their UserDOs
+      const members = Array.from(this.sql.exec('SELECT user_id FROM members'));
+      for (const member of members as any[]) {
+        try {
+          const userStub = this.env.USER.get(this.env.USER.idFromString(member.user_id));
+          await userStub.fetch('http://do/memberships', {
+            method: 'DELETE',
+            body: JSON.stringify({
+              account_id: this.state.id.toString(),
+            }),
+          });
+        } catch (e) {
+          console.error(`Failed to notify UserDO ${member.user_id} of account deletion`, e);
+        }
+      }
+
+      this.sql.exec('DELETE FROM account_info');
+      this.sql.exec('DELETE FROM members');
+      return Response.json({ success: true });
     }
 
     return new Response('Not Found', { status: 404 });
@@ -106,6 +126,14 @@ export class AccountDO implements DurableObject {
     // Update Account DO
     this.sql.exec('INSERT OR REPLACE INTO members (user_id, role, joined_at) VALUES (?, ?, ?)', user_id, role, now);
 
+    // Update SystemDO index
+    try {
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.fetch(`http://do/accounts/${this.state.id.toString()}/increment-members`, { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to update member count in SystemDO', e);
+    }
+
     // Sync with User DO
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(user_id));
@@ -128,6 +156,14 @@ export class AccountDO implements DurableObject {
 
   async removeMember(userId: string): Promise<Response> {
     this.sql.exec('DELETE FROM members WHERE user_id = ?', userId);
+
+    // Update SystemDO index
+    try {
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.fetch(`http://do/accounts/${this.state.id.toString()}/decrement-members`, { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to update member count in SystemDO', e);
+    }
 
     // Sync with User DO
     try {
@@ -161,7 +197,7 @@ export class AccountDO implements DurableObject {
 
   private setBillingState(state: any) {
     this.state.storage.transactionSync(() => {
-        this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(state));
+      this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(state));
     });
   }
 
@@ -187,13 +223,13 @@ export class AccountDO implements DurableObject {
     // Call hook if changing plans (simplification)
     if (currentState.plan_slug !== plan_slug) {
       if (currentState.plan_slug) {
-         const oldPlan = Plan.get(currentState.plan_slug);
-         if (oldPlan?.account_deactivate_hook) {
-             await oldPlan.account_deactivate_hook(this.state.id.toString());
-         }
+        const oldPlan = Plan.get(currentState.plan_slug);
+        if (oldPlan?.account_deactivate_hook) {
+          await oldPlan.account_deactivate_hook(this.state.id.toString());
+        }
       }
       if (plan.account_activate_hook) {
-          await plan.account_activate_hook(this.state.id.toString());
+        await plan.account_activate_hook(this.state.id.toString());
       }
     }
 
@@ -209,7 +245,7 @@ export class AccountDO implements DurableObject {
       plan_slug,
       status: 'active',
       schedule_idx,
-      next_billing_date: Date.now() + (plan.schedules[schedule_idx]?.charge_period || 30) * 24 * 60 * 60 * 1000
+      next_billing_date: Date.now() + (plan.schedules[schedule_idx]?.charge_period || 30) * 24 * 60 * 60 * 1000,
     };
 
     this.setBillingState(newState);
@@ -222,22 +258,22 @@ export class AccountDO implements DurableObject {
     const currentPlan = Plan.get(currentState.plan_slug);
 
     if (!currentPlan) {
-        return new Response('No active plan', { status: 400 });
+      return new Response('No active plan', { status: 400 });
     }
 
     await this.paymentEngine.cancelRecurring(this.state.id.toString());
 
     // Downgrade logic (immediate or scheduled - simplification: scheduled if downgrade_to_slug exists)
     // For this prototype, we'll mark it as canceled and set the next plan if applicable.
-    
+
     const newState = {
-        ...currentState,
-        status: 'canceled',
-        next_plan_slug: currentPlan.downgrade_to_slug
+      ...currentState,
+      status: 'canceled',
+      next_plan_slug: currentPlan.downgrade_to_slug,
     };
-    
+
     this.setBillingState(newState);
-    
+
     return Response.json({ success: true, state: newState });
   }
 }

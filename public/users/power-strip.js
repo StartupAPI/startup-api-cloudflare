@@ -34,13 +34,17 @@ class PowerStrip extends HTMLElement {
 
   async fetchUser() {
     try {
-      const res = await fetch(`${this.basePath}/me`);
+      const res = await fetch(`${this.basePath}/api/me`);
       if (res.ok) {
         const data = await res.json();
         if (data.valid) {
-          this.user = data.profile;
+          this.user = {
+            profile: data.profile,
+            is_admin: data.is_admin,
+            is_impersonated: data.is_impersonated,
+          };
           // Fetch accounts if logged in
-          const accountsRes = await fetch(`${this.basePath}/me/accounts`);
+          const accountsRes = await fetch(`${this.basePath}/api/me/accounts`);
           if (accountsRes.ok) {
             this.accounts = await accountsRes.json();
           }
@@ -53,7 +57,7 @@ class PowerStrip extends HTMLElement {
 
   async switchAccount(accountId) {
     try {
-      const res = await fetch(`${this.basePath}/me/accounts/switch`, {
+      const res = await fetch(`${this.basePath}/api/me/accounts/switch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -122,22 +126,40 @@ class PowerStrip extends HTMLElement {
 
     if (providers.length > 0 && providers[0] !== '') {
       if (this.user) {
-        const providerIcon = this.getProviderIcon(this.user.provider);
-        const currentAccount = this.accounts.find(a => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
-        const accountName = currentAccount ? currentAccount.name : 'No Account';
-        
+        const providerIcon = this.getProviderIcon(this.user.profile.provider);
+        const currentAccount = this.accounts.find((a) => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
+        const accountName = currentAccount ? (currentAccount.personal ? this.user.profile.name : currentAccount.name) : 'No Account';
+
         let switchButton = '';
+        let accountContainer = '';
+
         if (this.accounts.length > 1) {
-            switchButton = `<button class="trigger switch-btn" id="switch-account-trigger" title="Switch Account">Switch</button>`;
-            
-            const accountList = this.accounts.map(acc => `
+          switchButton = `
+            <button class="trigger switch-btn" id="switch-account-trigger" title="Switch Account">
+              <svg viewBox="0 0 24 24" style="width: 0.8rem; height: 0.8rem; fill: currentColor; display: block;">
+                <path d="M7 10l5 5 5-5z"/>
+              </svg>
+            </button>`;
+
+          accountContainer = `
+            <div class="account-container">
+                <span class="account-label">${accountName}</span>
+                ${switchButton}
+            </div>
+          `;
+
+          const accountList = this.accounts
+            .map(
+              (acc) => `
                 <button class="account-item ${acc.is_current ? 'active' : ''}" data-id="${acc.account_id}">
                     <span class="account-name">${acc.name}</span>
                     ${acc.is_current ? '<span class="current-badge">Current</span>' : ''}
                 </button>
-            `).join('');
+            `,
+            )
+            .join('');
 
-            accountSwitcher = `
+          accountSwitcher = `
               <dialog id="account-dialog">
                 <div class="dialog-content">
                     <div class="dialog-header">
@@ -152,19 +174,28 @@ class PowerStrip extends HTMLElement {
             `;
         }
 
+        const adminLink = this.user.is_admin
+          ? `<a href="${this.basePath}/admin/" class="trigger admin-btn" title="Admin Panel" target="startup-api-admin">Admin</a>`
+          : '';
+
+        const impersonationLink = this.user.is_impersonated
+          ? `<button class="trigger stop-impersonation-btn" id="stop-impersonation-trigger" title="Stop Impersonation">Stop Impersonation</button>`
+          : '';
+
         content = `
             <div class="user-profile">
+              ${adminLink}
+              ${impersonationLink}
+              ${accountContainer}
               <div class="avatar-container">
-                  <img src="${this.user.picture}" alt="${this.user.name}" title="${this.user.name}" class="avatar" width="16" height="16" />
-                  <div class="provider-badge ${this.user.provider}">
+                  <img src="${this.user.profile.picture}" alt="${this.user.profile.name}" title="${this.user.profile.name}" class="avatar" width="16" height="16" />
+                  <div class="provider-badge ${this.user.profile.provider}">
                       ${providerIcon}
                   </div>
               </div>
               <div class="user-info">
-                  <span class="user-name">${this.user.name}</span>
-                  <span class="account-label">${accountName}</span>
+                  <span class="user-name">${this.user.profile.name}</span>
               </div>
-              ${switchButton}
               <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
             </div>
           `;
@@ -280,6 +311,12 @@ class PowerStrip extends HTMLElement {
             justify-content: center;
         }
 
+        .account-container {
+            display: flex;
+            align-items: center;
+            gap: 0;
+        }
+
         .user-name {
             font-size: 0.8rem;
             color: #333;
@@ -291,12 +328,31 @@ class PowerStrip extends HTMLElement {
         }
         
         .account-label {
-            font-size: 0.65rem;
-            color: #666;
+            font-size: 0.8rem;
+            color: #1a73e8;
             max-width: 10rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            font-weight: 500;
+        }
+
+        .switch-btn {
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 1rem;
+            height: 1rem;
+        }
+
+        .admin-btn {
+            color: #d93025 !important;
+        }
+
+        .stop-impersonation-btn {
+            color: #fbbc05 !important;
+            font-weight: bold;
         }
 
         @media (max-width: 25rem) {
@@ -478,6 +534,21 @@ class PowerStrip extends HTMLElement {
     `;
   }
 
+  async stopImpersonation() {
+    try {
+      const res = await fetch(`${this.basePath}/api/stop-impersonation`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        console.error('Failed to stop impersonation');
+      }
+    } catch (e) {
+      console.error('Error stopping impersonation', e);
+    }
+  }
+
   addEventListeners() {
     const loginTrigger = this.shadowRoot.getElementById('login-trigger');
     const loginDialog = this.shadowRoot.getElementById('login-dialog');
@@ -490,54 +561,62 @@ class PowerStrip extends HTMLElement {
     }
 
     if (closeLoginBtn) {
-        closeLoginBtn.addEventListener('click', () => {
+      closeLoginBtn.addEventListener('click', () => {
         loginDialog.close();
-        });
+      });
     }
 
     if (loginDialog) {
-        loginDialog.addEventListener('click', (e) => {
+      loginDialog.addEventListener('click', (e) => {
         const rect = loginDialog.getBoundingClientRect();
         const isInDialog =
-            rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+          rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
         if (!isInDialog) {
-            loginDialog.close();
+          loginDialog.close();
         }
-        });
+      });
+    }
+
+    // Impersonation logic
+    const stopImpersonationTrigger = this.shadowRoot.getElementById('stop-impersonation-trigger');
+    if (stopImpersonationTrigger) {
+      stopImpersonationTrigger.addEventListener('click', () => {
+        this.stopImpersonation();
+      });
     }
 
     // Account Switcher Logic
     const switchTrigger = this.shadowRoot.getElementById('switch-account-trigger');
     const accountDialog = this.shadowRoot.getElementById('account-dialog');
     const closeAccountBtn = this.shadowRoot.getElementById('close-account-dialog');
-    
-    if (switchTrigger && accountDialog) {
-        switchTrigger.addEventListener('click', () => {
-            accountDialog.showModal();
-        });
-        
-        if (closeAccountBtn) {
-            closeAccountBtn.addEventListener('click', () => {
-                accountDialog.close();
-            });
-        }
-        
-        accountDialog.addEventListener('click', (e) => {
-            const rect = accountDialog.getBoundingClientRect();
-            const isInDialog =
-                rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
-            if (!isInDialog) {
-                accountDialog.close();
-            }
-        });
 
-        const accountItems = this.shadowRoot.querySelectorAll('.account-item');
-        accountItems.forEach(item => {
-            item.addEventListener('click', () => {
-                const accountId = item.getAttribute('data-id');
-                this.switchAccount(accountId);
-            });
+    if (switchTrigger && accountDialog) {
+      switchTrigger.addEventListener('click', () => {
+        accountDialog.showModal();
+      });
+
+      if (closeAccountBtn) {
+        closeAccountBtn.addEventListener('click', () => {
+          accountDialog.close();
         });
+      }
+
+      accountDialog.addEventListener('click', (e) => {
+        const rect = accountDialog.getBoundingClientRect();
+        const isInDialog =
+          rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+        if (!isInDialog) {
+          accountDialog.close();
+        }
+      });
+
+      const accountItems = this.shadowRoot.querySelectorAll('.account-item');
+      accountItems.forEach((item) => {
+        item.addEventListener('click', () => {
+          const accountId = item.getAttribute('data-id');
+          this.switchAccount(accountId);
+        });
+      });
     }
   }
 }
