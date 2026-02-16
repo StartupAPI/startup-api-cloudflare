@@ -28,13 +28,14 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
+    if (!env.ORIGIN_URL || !env.SESSION_SECRET) {
+      return env.ASSETS.fetch(request);
+    }
+
     const url = new URL(request.url);
     const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
 
-    if (!env.COOKIE_SECRET) {
-      throw new Error('COOKIE_SECRET environment variable is required');
-    }
-    const cookieManager = new CookieManager(env.COOKIE_SECRET);
+    const cookieManager = new CookieManager(env.SESSION_SECRET);
 
     // Handle OAuth Routes
     if (url.pathname.startsWith(usersPath + 'auth/')) {
@@ -243,7 +244,7 @@ async function getUserFromSession(
 
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
   if (!env.ADMIN_IDS) return false;
-  const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim());
+  const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim()).filter(Boolean);
   return (
     adminIds.includes(user.id) ||
     (user.email && adminIds.includes(user.email)) ||

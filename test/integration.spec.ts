@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { CookieManager } from '../src/CookieManager';
 
 describe('Integration Tests', () => {
-  const cookieManager = new CookieManager(env.COOKIE_SECRET || 'dev-secret');
+  const cookieManager = new CookieManager(env.SESSION_SECRET);
 
   it('should return 401 for /api/me without cookie', async () => {
     const res = await SELF.fetch('http://example.com/users/api/me');

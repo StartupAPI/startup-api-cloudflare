@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { CookieManager } from '../src/CookieManager';
 
 describe('Account Switching Integration', () => {
-  const cookieManager = new CookieManager(env.COOKIE_SECRET || 'dev-secret');
+  const cookieManager = new CookieManager(env.SESSION_SECRET);
 
   it('should list accounts and switch between them', async () => {
     // 1. Setup User and Session

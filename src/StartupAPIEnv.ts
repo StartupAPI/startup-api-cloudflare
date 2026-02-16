@@ -7,6 +7,6 @@ export type StartupAPIEnv = {
   TWITCH_CLIENT_ID: string;
   TWITCH_CLIENT_SECRET: string;
   ADMIN_IDS: string;
-  COOKIE_SECRET: string;
+  SESSION_SECRET: string;
   SYSTEM: DurableObjectNamespace;
 } & Env;

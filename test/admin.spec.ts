@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { CookieManager } from '../src/CookieManager';
 
 describe('Admin Administration', () => {
-  const cookieManager = new CookieManager(env.COOKIE_SECRET || 'dev-secret');
+  const cookieManager = new CookieManager(env.SESSION_SECRET);
 
   it('should deny access to non-admin users', async () => {
     // 1. Create a normal user
@@ -512,7 +512,7 @@ describe('Admin Administration', () => {
     const impCookie = cookies.find((c) => c.startsWith('session_id='));
     const backupCookieStr = cookies.find((c) => c.startsWith('backup_session_id='));
     const backupCookieValue = backupCookieStr?.split(';')[0].split('=')[1];
-    
+
     // Verify backup session contains the original session info
     const decryptedBackup = await cookieManager.decrypt(backupCookieValue!);
     expect(decryptedBackup).toBe(`${adminSessionId}:${adminIdStr}`);
