@@ -32,6 +32,7 @@ describe('Integration Tests', () => {
     });
     expect(credsRes.status).toBe(200);
 
+    // Add mapping to UserDO
     await stub.fetch('http://do/credentials', {
       method: 'POST',
       body: JSON.stringify({ provider: 'test-provider', subject_id: '123' }),

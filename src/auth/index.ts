@@ -42,11 +42,11 @@ export async function handleAuth(
         const token = await provider.getToken(code);
         const profile = await provider.getUserProfile(token.access_token);
 
-        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+        const credStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName(provider.name));
 
         // 1. Try to resolve existing user by credential
-        const resolveRes = await systemStub.fetch(
-          `http://do/resolve-credential?provider=${provider.name}&subject_id=${profile.id}`,
+        const resolveRes = await credStub.fetch(
+          `http://do/resolve?subject_id=${profile.id}`,
         );
 
         let userIdStr: string | null = null;
@@ -112,9 +112,9 @@ export async function handleAuth(
           (profile as any).provider_icon = usersPath + 'me/provider-icon';
         }
 
-        // Register credential in SystemDO (which forwards to CredentialDO)
-        await systemStub.fetch('http://do/credentials', {
-          method: 'POST',
+        // Register credential in provider-specific CredentialDO
+        await credStub.fetch('http://do/', {
+          method: 'PUT',
           body: JSON.stringify({
             user_id: userIdStr,
             provider: provider.name,
@@ -137,6 +137,7 @@ export async function handleAuth(
         });
 
         // Register User in SystemDO index
+        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
         await systemStub.fetch('http://do/users', {
           method: 'POST',
           body: JSON.stringify({

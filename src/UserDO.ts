@@ -155,21 +155,26 @@ export class UserDO implements DurableObject {
       return Response.json({ valid: false, error: 'Expired' }, { status: 401 });
     }
 
-    // Get latest profile data from SystemDO credentials
-    const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
-    const credsRes = await systemStub.fetch(`http://do/users/${this.state.id.toString()}/credentials`);
+    // Get latest profile data from linked credentials
+    const credentialsMapping = this.sql.exec('SELECT DISTINCT provider FROM user_credentials');
+    const credentials = [];
+    for (const row of credentialsMapping) {
+      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
+      const res = await stub.fetch(`http://do/list?user_id=${this.state.id.toString()}`);
+      if (res.ok) {
+        const providerCreds = await res.json() as any[];
+        credentials.push(...providerCreds.map(c => ({ provider: row.provider, ...c })));
+      }
+    }
     
     let profile: Record<string, any> = {};
     let latestCreds: any = null;
 
-    if (credsRes.ok) {
-      const credentials = await credsRes.json();
-      if (Array.isArray(credentials)) {
-        // Get the most recently updated credential
-        latestCreds = credentials.sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))[0];
-        if (latestCreds && latestCreds.profile_data) {
-          profile = { ...latestCreds.profile_data };
-        }
+    if (credentials.length > 0) {
+      // Get the most recently updated credential
+      latestCreds = credentials.sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))[0];
+      if (latestCreds && latestCreds.profile_data) {
+        profile = { ...latestCreds.profile_data };
       }
     }
 

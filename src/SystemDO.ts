@@ -28,13 +28,6 @@ export class SystemDO implements DurableObject {
         member_count INTEGER DEFAULT 0,
         created_at INTEGER
       );
-
-      CREATE TABLE IF NOT EXISTS user_credentials (
-        user_id TEXT NOT NULL,
-        provider TEXT NOT NULL,
-        subject_id TEXT NOT NULL,
-        PRIMARY KEY (user_id, provider, subject_id)
-      );
     `);
   }
 
@@ -59,11 +52,6 @@ export class SystemDO implements DurableObject {
         if (subPath === 'memberships') {
           const stub = this.env.USER.get(this.env.USER.idFromString(userId));
           return stub.fetch(new Request('http://do/memberships', request));
-        }
-
-        if (subPath === 'credentials') {
-          if (method === 'GET') return this.listUserCredentials(userId);
-          if (method === 'DELETE') return this.deleteUserCredential(request, userId);
         }
 
         if (method === 'GET') return this.getUser(userId);
@@ -141,9 +129,9 @@ export class SystemDO implements DurableObject {
       return new Response('Missing provider or subject_id', { status: 400 });
     }
 
-    const id = this.env.CREDENTIAL.idFromName(`${provider}:${subject_id}`);
+    const id = this.env.CREDENTIAL.idFromName(provider);
     const stub = this.env.CREDENTIAL.get(id);
-    const res = await stub.fetch('http://do/');
+    const res = await stub.fetch(`http://do/resolve?subject_id=${subject_id}`);
     
     if (!res.ok) {
       return new Response('Not Found', { status: 404 });
@@ -161,57 +149,13 @@ export class SystemDO implements DurableObject {
       return new Response('Missing required fields', { status: 400 });
     }
 
-    // Store in CredentialDO
-    const id = this.env.CREDENTIAL.idFromName(`${provider}:${subject_id}`);
+    // Store in provider-level CredentialDO
+    const id = this.env.CREDENTIAL.idFromName(provider);
     const stub = this.env.CREDENTIAL.get(id);
     await stub.fetch('http://do/', {
       method: 'PUT',
       body: JSON.stringify(data)
     });
-
-    // Index in SystemDO
-    this.sql.exec(
-      'INSERT OR REPLACE INTO user_credentials (user_id, provider, subject_id) VALUES (?, ?, ?)',
-      data.user_id,
-      provider,
-      subject_id
-    );
-
-    return Response.json({ success: true });
-  }
-
-  async listUserCredentials(userId: string): Promise<Response> {
-    const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials WHERE user_id = ?', userId);
-    const credentials = [];
-    for (const row of result) {
-      const id = this.env.CREDENTIAL.idFromName(`${row.provider}:${row.subject_id}`);
-      const stub = this.env.CREDENTIAL.get(id);
-      const res = await stub.fetch(`http://do/`);
-      if (res.ok) {
-        credentials.push(await res.json());
-      }
-    }
-    return Response.json(credentials);
-  }
-
-  async deleteUserCredential(request: Request, userId: string): Promise<Response> {
-    const { provider } = (await request.json()) as { provider: string };
-
-    const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials WHERE user_id = ?', userId);
-    const userCredentials = Array.from(result) as any[];
-
-    if (userCredentials.length <= 1) {
-      return new Response('Cannot delete the last credential', { status: 400 });
-    }
-
-    const credToDelete = userCredentials.find(c => c.provider === provider);
-    if (credToDelete) {
-      const id = this.env.CREDENTIAL.idFromName(`${credToDelete.provider}:${credToDelete.subject_id}`);
-      const stub = this.env.CREDENTIAL.get(id);
-      await stub.fetch('http://do/', { method: 'DELETE' });
-
-      this.sql.exec('DELETE FROM user_credentials WHERE user_id = ? AND provider = ?', userId, provider);
-    }
 
     return Response.json({ success: true });
   }
@@ -253,7 +197,6 @@ export class SystemDO implements DurableObject {
   async deleteUser(userId: string): Promise<Response> {
     // Delete from index
     this.sql.exec('DELETE FROM users WHERE id = ?', userId);
-    this.sql.exec('DELETE FROM user_credentials WHERE user_id = ?', userId);
 
     // Call UserDO to delete its data
     try {
