@@ -15,7 +15,7 @@ erDiagram
     SystemDO ||--o{ CredentialDO : indexes
     
     UserDO ||--o{ Session : owns
-    UserDO ||--o{ CredentialDO : "identified by"
+    UserDO ||--o{ user_credentials : "keeps list of links"
     UserDO }|--o{ AccountDO : "belongs to (Memberships)"
 
     AccountDO ||--o{ Member : "contains (Users)"
@@ -26,6 +26,7 @@ erDiagram
         table profile "key-value"
         table sessions "active logins"
         table memberships "account links"
+        table user_credentials "provider + subject_id mapping"
     }
 
     AccountDO {
@@ -38,12 +39,11 @@ erDiagram
     SystemDO {
         table users "search index"
         table accounts "search index"
-        table user_credentials "user -> credentials map"
     }
 
     CredentialDO {
-        string id PK "provider:subject_id"
-        table credential "OAuth details"
+        string id PK "provider"
+        table credentials "subject_id -> user_id mapping"
     }
 ```
 
@@ -51,10 +51,10 @@ erDiagram
 
 ### 1. Durable Objects
 
-- **UserDO**: Represents a unique user. Stores profile information, active sessions, and account memberships.
+- **UserDO**: Represents a unique user. Stores profile information, active sessions, account memberships, and a local mapping of linked OAuth credentials.
 - **AccountDO**: Represents a tenant (organization or team). Manages account-level metadata, member lists (User IDs and roles), and billing/subscription state.
-- **CredentialDO**: Stores individual OAuth credentials. Each instance is identified by `provider:subject_id`, ensuring that a specific login method uniquely points to a single user.
-- **SystemDO**: Acts as a global directory and search index. It maintains a list of all users, accounts, and the mapping between users and their `CredentialDO` instances.
+- **CredentialDO**: Stores all OAuth credentials for a specific provider (e.g., one instance for "google", another for "twitch"). It provides fast lookup of internal User IDs based on OAuth Subject IDs during login.
+- **SystemDO**: Acts as a global directory and search index. It maintains a list of all users and accounts to support administrative search and listing features. Mapping between users and credentials is now decentralized.
 
 ### 2. Authentication Flow
 

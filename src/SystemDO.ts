@@ -123,7 +123,7 @@ export class SystemDO implements DurableObject {
       const isAdmin =
         adminIds.includes(u.id) ||
         (u.email && adminIds.includes(u.email)) ||
-        (u.provider && u.id && adminIds.includes(`${u.provider}:${u.id}`)); // This might be wrong if u.id is DO ID now.
+        (u.provider && u.id && adminIds.includes(`${u.provider}:${u.id}`));
 
       return {
         ...u,
@@ -141,9 +141,9 @@ export class SystemDO implements DurableObject {
       return new Response('Missing provider or subject_id', { status: 400 });
     }
 
-    const id = this.env.CREDENTIAL.idFromName(`${provider}:${subjectId}`);
+    const id = this.env.CREDENTIAL.idFromName(provider);
     const stub = this.env.CREDENTIAL.get(id);
-    const res = await stub.fetch('http://do/');
+    const res = await stub.fetch(`http://do/resolve?subject_id=${subjectId}`);
     
     if (!res.ok) {
       return new Response('Not Found', { status: 404 });
@@ -162,7 +162,7 @@ export class SystemDO implements DurableObject {
     }
 
     // Store in CredentialDO
-    const id = this.env.CREDENTIAL.idFromName(`${provider}:${subject_id}`);
+    const id = this.env.CREDENTIAL.idFromName(provider);
     const stub = this.env.CREDENTIAL.get(id);
     await stub.fetch('http://do/', {
       method: 'PUT',
@@ -184,11 +184,14 @@ export class SystemDO implements DurableObject {
     const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials WHERE user_id = ?', userId);
     const credentials = [];
     for (const row of result) {
-      const id = this.env.CREDENTIAL.idFromName(`${row.provider}:${row.subject_id}`);
+      const id = this.env.CREDENTIAL.idFromName(row.provider as string);
       const stub = this.env.CREDENTIAL.get(id);
-      const res = await stub.fetch('http://do/');
+      const res = await stub.fetch(`http://do/resolve?subject_id=${row.subject_id}`);
       if (res.ok) {
-        credentials.push(await res.json());
+        credentials.push({
+          provider: row.provider,
+          ...(await res.json() as any)
+        });
       }
     }
     return Response.json(credentials);
@@ -206,9 +209,8 @@ export class SystemDO implements DurableObject {
 
     const credToDelete = userCredentials.find(c => c.provider === provider);
     if (credToDelete) {
-      const id = this.env.CREDENTIAL.idFromName(`${credToDelete.provider}:${credToDelete.subject_id}`);
-      const stub = this.env.CREDENTIAL.get(id);
-      await stub.fetch('http://do/', { method: 'DELETE' });
+      const id = this.env.CREDENTIAL.idFromName(credToDelete.provider);
+      await stub.fetch(`http://do/?subject_id=${credToDelete.subject_id}`, { method: 'DELETE' });
 
       this.sql.exec('DELETE FROM user_credentials WHERE user_id = ? AND provider = ?', userId, provider);
     }
@@ -253,6 +255,7 @@ export class SystemDO implements DurableObject {
   async deleteUser(userId: string): Promise<Response> {
     // Delete from index
     this.sql.exec('DELETE FROM users WHERE id = ?', userId);
+    this.sql.exec('DELETE FROM user_credentials WHERE user_id = ?', userId);
 
     // Call UserDO to delete its data
     try {

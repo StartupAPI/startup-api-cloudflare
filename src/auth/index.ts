@@ -112,7 +112,7 @@ export async function handleAuth(
           (profile as any).provider_icon = usersPath + 'me/provider-icon';
         }
 
-        // Register credential in SystemDO
+        // Register credential in SystemDO (which forwards to CredentialDO)
         await systemStub.fetch('http://do/credentials', {
           method: 'POST',
           body: JSON.stringify({
@@ -124,6 +124,15 @@ export async function handleAuth(
             expires_at: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
             scope: token.scope,
             profile_data: profile,
+          }),
+        });
+
+        // Register credential mapping in UserDO
+        await stub.fetch('http://do/credentials', {
+          method: 'POST',
+          body: JSON.stringify({
+            provider: provider.name,
+            subject_id: profile.id,
           }),
         });
 

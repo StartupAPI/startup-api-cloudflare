@@ -47,6 +47,12 @@ export class UserDO implements DurableObject {
         role INTEGER,
         is_current INTEGER
       );
+
+      CREATE TABLE IF NOT EXISTS user_credentials (
+        provider TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        PRIMARY KEY (provider, subject_id)
+      );
     `);
   }
 
@@ -68,6 +74,8 @@ export class UserDO implements DurableObject {
       return this.updateProfile(request);
     } else if (path === '/credentials' && method === 'GET') {
       return this.listCredentials();
+    } else if (path === '/credentials' && method === 'POST') {
+      return this.addCredential(request);
     } else if (path === '/credentials' && method === 'DELETE') {
       return this.deleteCredential(request);
     } else if (path === '/sessions' && method === 'POST') {
@@ -97,6 +105,7 @@ export class UserDO implements DurableObject {
       this.sql.exec('DELETE FROM sessions');
       this.sql.exec('DELETE FROM images');
       this.sql.exec('DELETE FROM memberships');
+      this.sql.exec('DELETE FROM user_credentials');
       return Response.json({ success: true });
     }
 
@@ -154,11 +163,13 @@ export class UserDO implements DurableObject {
     let latestCreds: any = null;
 
     if (credsRes.ok) {
-      const credentials = await credsRes.json() as any[];
-      // Get the most recently updated credential
-      latestCreds = credentials.sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))[0];
-      if (latestCreds && latestCreds.profile_data) {
-        profile = latestCreds.profile_data;
+      const credentials = await credsRes.json();
+      if (Array.isArray(credentials)) {
+        // Get the most recently updated credential
+        latestCreds = credentials.sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))[0];
+        if (latestCreds && latestCreds.profile_data) {
+          profile = latestCreds.profile_data;
+        }
       }
     }
 
@@ -218,18 +229,46 @@ export class UserDO implements DurableObject {
     }
   }
 
+  async addCredential(request: Request): Promise<Response> {
+    const { provider, subject_id } = (await request.json()) as { provider: string; subject_id: string };
+    this.sql.exec('INSERT OR REPLACE INTO user_credentials (provider, subject_id) VALUES (?, ?)', provider, subject_id);
+    return Response.json({ success: true });
+  }
+
   async listCredentials(): Promise<Response> {
-    const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
-    return await systemStub.fetch(`http://do/users/${this.state.id.toString()}/credentials`);
+    const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials');
+    const credentials = [];
+    for (const row of result) {
+      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
+      const res = await stub.fetch(`http://do/resolve?subject_id=${row.subject_id}`);
+      if (res.ok) {
+        credentials.push({
+          provider: row.provider,
+          ...(await res.json() as any)
+        });
+      }
+    }
+    return Response.json(credentials);
   }
 
   async deleteCredential(request: Request): Promise<Response> {
-    const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
-    const body = await request.text();
-    return await systemStub.fetch(`http://do/users/${this.state.id.toString()}/credentials`, {
-      method: 'DELETE',
-      body,
-    });
+    const { provider } = (await request.json()) as { provider: string };
+
+    const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials');
+    const all = Array.from(result) as any[];
+
+    if (all.length <= 1) {
+      return new Response('Cannot delete the last credential', { status: 400 });
+    }
+
+    const cred = all.find(c => c.provider === provider);
+    if (cred) {
+      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(cred.provider));
+      await stub.fetch(`http://do/?subject_id=${cred.subject_id}`, { method: 'DELETE' });
+      this.sql.exec('DELETE FROM user_credentials WHERE provider = ? AND subject_id = ?', cred.provider, cred.subject_id);
+    }
+
+    return Response.json({ success: true });
   }
 
   /**
