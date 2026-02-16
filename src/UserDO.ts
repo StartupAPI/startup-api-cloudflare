@@ -103,6 +103,13 @@ export class UserDO implements DurableObject {
     } else if (path.startsWith('/images/') && method === 'PUT') {
       const key = path.replace('/images/', '');
       return this.storeImage(request, key);
+    } else if (path === '/delete' && method === 'POST') {
+      this.sql.exec('DELETE FROM profile');
+      this.sql.exec('DELETE FROM credentials');
+      this.sql.exec('DELETE FROM sessions');
+      this.sql.exec('DELETE FROM images');
+      this.sql.exec('DELETE FROM memberships');
+      return Response.json({ success: true });
     }
 
     return new Response('Not Found', { status: 404 });
@@ -152,15 +159,20 @@ export class UserDO implements DurableObject {
     }
 
     // Get latest profile data
-    const credsResult = this.sql.exec('SELECT profile_data, provider FROM credentials ORDER BY updated_at DESC LIMIT 1');
+    const credsResult = this.sql.exec(
+      'SELECT profile_data, provider, subject_id FROM credentials ORDER BY updated_at DESC LIMIT 1',
+    );
     const creds = credsResult.next().value as any;
 
     let profile = {};
     if (creds && creds.profile_data) {
       try {
         profile = JSON.parse(creds.profile_data as string);
+        // Ensure the ID is our internal DO ID
+        (profile as any).id = this.state.id.toString();
         // Add provider info for the UI icon
         (profile as any).provider = creds.provider;
+        (profile as any).subject_id = creds.subject_id;
       } catch (e) {}
     }
 

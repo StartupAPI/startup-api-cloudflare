@@ -34,13 +34,13 @@ class PowerStrip extends HTMLElement {
 
   async fetchUser() {
     try {
-      const res = await fetch(`${this.basePath}/me`);
+      const res = await fetch(`${this.basePath}/api/me`);
       if (res.ok) {
         const data = await res.json();
         if (data.valid) {
           this.user = data.profile;
           // Fetch accounts if logged in
-          const accountsRes = await fetch(`${this.basePath}/me/accounts`);
+          const accountsRes = await fetch(`${this.basePath}/api/me/accounts`);
           if (accountsRes.ok) {
             this.accounts = await accountsRes.json();
           }
@@ -53,7 +53,7 @@ class PowerStrip extends HTMLElement {
 
   async switchAccount(accountId) {
     try {
-      const res = await fetch(`${this.basePath}/me/accounts/switch`, {
+      const res = await fetch(`${this.basePath}/api/me/accounts/switch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -127,8 +127,22 @@ class PowerStrip extends HTMLElement {
         const accountName = currentAccount ? currentAccount.name : 'No Account';
 
         let switchButton = '';
+        let accountContainer = '';
+
         if (this.accounts.length > 1) {
-          switchButton = `<button class="trigger switch-btn" id="switch-account-trigger" title="Switch Account">Switch</button>`;
+          switchButton = `
+            <button class="trigger switch-btn" id="switch-account-trigger" title="Switch Account">
+              <svg viewBox="0 0 24 24" style="width: 0.8rem; height: 0.8rem; fill: currentColor; display: block;">
+                <path d="M7 10l5 5 5-5z"/>
+              </svg>
+            </button>`;
+
+          accountContainer = `
+            <div class="account-container">
+                <span class="account-label">${accountName}</span>
+                ${switchButton}
+            </div>
+          `;
 
           const accountList = this.accounts
             .map(
@@ -156,8 +170,12 @@ class PowerStrip extends HTMLElement {
             `;
         }
 
+        const adminLink = this.user.is_admin ? `<a href="${this.basePath}/admin/" class="trigger admin-btn" title="Admin Panel">Admin</a>` : '';
+
         content = `
             <div class="user-profile">
+              ${adminLink}
+              ${accountContainer}
               <div class="avatar-container">
                   <img src="${this.user.picture}" alt="${this.user.name}" title="${this.user.name}" class="avatar" width="16" height="16" />
                   <div class="provider-badge ${this.user.provider}">
@@ -166,9 +184,7 @@ class PowerStrip extends HTMLElement {
               </div>
               <div class="user-info">
                   <span class="user-name">${this.user.name}</span>
-                  <span class="account-label">${accountName}</span>
               </div>
-              ${switchButton}
               <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
             </div>
           `;
@@ -284,6 +300,12 @@ class PowerStrip extends HTMLElement {
             justify-content: center;
         }
 
+        .account-container {
+            display: flex;
+            align-items: center;
+            gap: 0;
+        }
+
         .user-name {
             font-size: 0.8rem;
             color: #333;
@@ -295,12 +317,26 @@ class PowerStrip extends HTMLElement {
         }
         
         .account-label {
-            font-size: 0.65rem;
-            color: #666;
+            font-size: 0.8rem;
+            color: #1a73e8;
             max-width: 10rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            font-weight: 500;
+        }
+
+        .switch-btn {
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 1rem;
+            height: 1rem;
+        }
+
+        .admin-btn {
+            color: #d93025 !important;
         }
 
         @media (max-width: 25rem) {

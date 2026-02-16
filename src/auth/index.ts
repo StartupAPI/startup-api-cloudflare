@@ -85,11 +85,12 @@ export async function handleAuth(request: Request, env: StartupAPIEnv, url: URL,
 
         // Register User in SystemDO
         const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+        const userIdStr = id.toString();
         await systemStub.fetch('http://do/users', {
           method: 'POST',
           body: JSON.stringify({
-            id: id.toString(),
-            name: profile.name || profile.id,
+            id: userIdStr,
+            name: profile.name || userIdStr,
             email: profile.email,
             provider: provider.name,
           }),
@@ -109,7 +110,7 @@ export async function handleAuth(request: Request, env: StartupAPIEnv, url: URL,
           await accountStub.fetch('http://do/info', {
             method: 'POST',
             body: JSON.stringify({
-              name: `${profile.name || profile.id}'s Account`,
+              name: `${profile.name || userIdStr}'s Account`,
               personal: true,
             }),
           });

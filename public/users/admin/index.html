@@ -153,7 +153,10 @@
     </section>
 
     <section id="accounts-section">
-      <h2>Accounts</h2>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2>Accounts</h2>
+        <button onclick="openCreateAccount()">Create Account</button>
+      </div>
       <form
         class="search-bar"
         onsubmit="
@@ -171,6 +174,7 @@
             <th>Name</th>
             <th>Status</th>
             <th>Plan</th>
+            <th>Members</th>
             <th>Created</th>
             <th>Actions</th>
           </tr>
@@ -198,6 +202,28 @@
       <div class="modal-actions">
         <button class="secondary-btn" onclick="closeModal('edit-user-modal')">Cancel</button>
         <button onclick="saveUser()">Save</button>
+      </div>
+    </dialog>
+
+    <!-- User Memberships Modal -->
+    <dialog id="user-memberships-modal" style="width: 500px;">
+      <h3>User Memberships</h3>
+      <input type="hidden" id="memberships-user-id" />
+      <table style="font-size: 0.9rem;">
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Role</th>
+            <th>Current</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="user-memberships-table-body">
+          <!-- Memberships -->
+        </tbody>
+      </table>
+      <div class="modal-actions">
+        <button class="secondary-btn" onclick="closeModal('user-memberships-modal')">Close</button>
       </div>
     </dialog>
 
@@ -231,8 +257,75 @@
       </div>
     </dialog>
 
+    <!-- Create Account Modal -->
+    <dialog id="create-account-modal">
+      <h3>Create New Account</h3>
+      <div class="form-group">
+        <label for="create-account-name">Account Name</label>
+        <input type="text" id="create-account-name" placeholder="e.g. Acme Corp" />
+      </div>
+      <div class="form-group">
+        <label for="create-account-owner">Initial Owner (Optional)</label>
+        <select id="create-account-owner">
+          <option value="">-- No Owner --</option>
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="create-account-plan">Initial Plan</label>
+        <select id="create-account-plan">
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-btn" onclick="closeModal('create-account-modal')">Cancel</button>
+        <button onclick="createAccount()">Create</button>
+      </div>
+    </dialog>
+
+    <!-- Members Modal -->
+    <dialog id="members-modal" style="width: 600px;">
+      <h3>Manage Members</h3>
+      <input type="hidden" id="members-account-id" />
+      
+      <div style="margin-bottom: 1.5rem;">
+        <h4>Add Member</h4>
+        <div style="display: flex; gap: 0.5rem;">
+          <select id="add-member-user" style="flex-grow: 1; padding: 0.5rem;">
+            <option value="">-- Select User --</option>
+          </select>
+          <select id="add-member-role" style="width: 120px; padding: 0.5rem;">
+            <option value="0">User</option>
+            <option value="1">Admin</option>
+          </select>
+          <button onclick="addMember()">Add</button>
+        </div>
+      </div>
+
+      <h4>Current Members</h4>
+      <table style="font-size: 0.9rem;">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th>Joined</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="members-table-body">
+          <!-- Members -->
+        </tbody>
+      </table>
+
+      <div class="modal-actions">
+        <button class="secondary-btn" onclick="closeModal('members-modal')">Close</button>
+      </div>
+    </dialog>
+
     <script>
-      const API_BASE = '/users/admin';
+      const API_BASE = '/users/admin/api';
       let currentUsers = [];
       let currentAccounts = [];
 
@@ -276,13 +369,20 @@
             (u) => `
                 <tr>
                     <td>${u.id.substring(0, 8)}...</td>
-                    <td>${u.name || '-'}</td>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <img src="${u.picture || ''}" style="width: 24px; height: 24px; border-radius: 50%;" onerror="this.style.display='none'">
+                        ${u.name || '-'}
+                      </div>
+                    </td>
                     <td>${u.email || '-'}</td>
                     <td>${u.provider || '-'}</td>
                     <td>${new Date(u.created_at).toLocaleDateString()}</td>
                     <td class="actions">
                         <button class="secondary-btn" onclick="openEditUser('${u.id}')">Edit</button>
+                        <button class="secondary-btn" onclick="openUserMemberships('${u.id}')">Memberships</button>
                         <button onclick="impersonate('${u.id}')">Impersonate</button>
+                        <button style="background: #d93025;" onclick="deleteUser('${u.id}')">Delete</button>
                     </td>
                 </tr>
             `,
@@ -300,9 +400,12 @@
                     <td>${a.name || '-'}</td>
                     <td>${a.status || '-'}</td>
                     <td>${a.plan || '-'}</td>
+                    <td>${a.member_count || 0}</td>
                     <td>${new Date(a.created_at).toLocaleDateString()}</td>
                     <td class="actions">
                          <button class="secondary-btn" onclick="openEditAccount('${a.id}')">Edit</button>
+                         <button class="secondary-btn" onclick="openMembers('${a.id}')">Members</button>
+                         <button style="background: #d93025;" onclick="deleteAccount('${a.id}')">Delete</button>
                     </td>
                 </tr>
             `,
@@ -345,6 +448,144 @@
         document.getElementById('edit-account-modal').showModal();
       }
 
+      function openCreateAccount() {
+        const ownerSelect = document.getElementById('create-account-owner');
+        // Reset and populate owners from currentUsers
+        ownerSelect.innerHTML = '<option value="">-- No Owner --</option>';
+        currentUsers.forEach((u) => {
+          const option = document.createElement('option');
+          option.value = u.id;
+          option.textContent = `${u.name || u.id} (${u.email || 'no email'})`;
+          ownerSelect.appendChild(option);
+        });
+
+        document.getElementById('create-account-name').value = '';
+        document.getElementById('create-account-plan').value = 'free';
+        document.getElementById('create-account-modal').showModal();
+      }
+
+      async function createAccount() {
+        const name = document.getElementById('create-account-name').value;
+        const ownerId = document.getElementById('create-account-owner').value;
+        const plan = document.getElementById('create-account-plan').value;
+
+        if (!name) {
+          showToast('Account name is required');
+          return;
+        }
+
+        const res = await fetch(`${API_BASE}/accounts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, ownerId, plan }),
+        });
+
+        if (res.ok) {
+          showToast('Account created');
+          closeModal('create-account-modal');
+          searchAccounts();
+        } else {
+          showToast('Creation failed');
+        }
+      }
+
+      async function openMembers(accountId) {
+        document.getElementById('members-account-id').value = accountId;
+        
+        // Populate user select
+        const userSelect = document.getElementById('add-member-user');
+        userSelect.innerHTML = '<option value="">-- Select User --</option>';
+        currentUsers.forEach(u => {
+          const option = document.createElement('option');
+          option.value = u.id;
+          option.textContent = `${u.name || u.id} (${u.email || 'no email'})`;
+          userSelect.appendChild(option);
+        });
+
+        await refreshMembers();
+        document.getElementById('members-modal').showModal();
+      }
+
+      async function refreshMembers() {
+        const accountId = document.getElementById('members-account-id').value;
+        const members = await fetchAPI(`/accounts/${accountId}/members`);
+        if (members) {
+          renderMembers(members);
+        }
+      }
+
+      function renderMembers(members) {
+        const tbody = document.getElementById('members-table-body');
+        tbody.innerHTML = members.map(m => {
+          const user = currentUsers.find(u => u.id === m.user_id);
+          return `
+            <tr>
+              <td>${user ? (user.name || user.email || m.user_id) : m.user_id}</td>
+              <td>${m.role === 1 ? 'Admin' : 'User'}</td>
+              <td>${new Date(m.joined_at).toLocaleDateString()}</td>
+              <td>
+                <button class="secondary-btn" onclick="removeMember('${m.user_id}')">Remove</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      async function addMember() {
+        const accountId = document.getElementById('members-account-id').value;
+        const userId = document.getElementById('add-member-user').value;
+        const role = parseInt(document.getElementById('add-member-role').value);
+
+        if (!userId) {
+          showToast('Please select a user');
+          return;
+        }
+
+        const res = await fetch(`${API_BASE}/accounts/${accountId}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, role })
+        });
+
+        if (res.ok) {
+          showToast('Member added');
+          refreshMembers();
+        } else {
+          showToast('Failed to add member');
+        }
+      }
+
+      async function removeMember(userId) {
+        if (!confirm('Are you sure you want to remove this member?')) return;
+        
+        const accountId = document.getElementById('members-account-id').value;
+        const res = await fetch(`${API_BASE}/accounts/${accountId}/members/${userId}`, {
+          method: 'DELETE'
+        });
+
+        if (res.ok) {
+          showToast('Member removed');
+          refreshMembers();
+        } else {
+          showToast('Failed to remove member');
+        }
+      }
+
+      async function deleteAccount(accountId) {
+        if (!confirm('Are you sure you want to PERMANENTLY delete this account? All data will be lost.')) return;
+
+        const res = await fetch(`${API_BASE}/accounts/${accountId}`, {
+          method: 'DELETE'
+        });
+
+        if (res.ok) {
+          showToast('Account deleted');
+          searchAccounts();
+        } else {
+          showToast('Deletion failed');
+        }
+      }
+
       function closeModal(id) {
         document.getElementById(id).close();
       }
@@ -381,6 +622,68 @@
           searchUsers();
         } else {
           showToast('Update failed');
+        }
+      }
+
+      async function deleteUser(userId) {
+        if (!confirm('Are you sure you want to PERMANENTLY delete this user? All data will be lost.')) return;
+
+        const res = await fetch(`${API_BASE}/users/${userId}`, {
+          method: 'DELETE'
+        });
+
+        if (res.ok) {
+          showToast('User deleted');
+          searchUsers();
+        } else {
+          showToast('Deletion failed');
+        }
+      }
+
+      async function openUserMemberships(userId) {
+        document.getElementById('memberships-user-id').value = userId;
+        const memberships = await fetchAPI(`/users/${userId}/memberships`);
+        if (memberships) {
+          renderUserMemberships(memberships);
+          document.getElementById('user-memberships-modal').showModal();
+        }
+      }
+
+      function renderUserMemberships(memberships) {
+        const userId = document.getElementById('memberships-user-id').value;
+        const tbody = document.getElementById('user-memberships-table-body');
+        tbody.innerHTML = memberships.map(m => {
+          const account = currentAccounts.find(a => a.id === m.account_id);
+          return `
+            <tr>
+              <td>${account ? account.name : m.account_id.substring(0, 8) + '...'}</td>
+              <td>${m.role === 1 ? 'Admin' : 'User'}</td>
+              <td>${m.is_current ? '✅' : ''}</td>
+              <td>
+                <button class="secondary-btn" onclick="removeUserFromAccount('${userId}', '${m.account_id}')">Remove</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      async function removeUserFromAccount(userId, accountId) {
+        if (!confirm('Are you sure you want to remove this user from the account?')) return;
+        
+        const res = await fetch(`${API_BASE}/accounts/${accountId}/members/${userId}`, {
+          method: 'DELETE'
+        });
+
+        if (res.ok) {
+          showToast('User removed from account');
+          // Refresh memberships
+          const memberships = await fetchAPI(`/users/${userId}/memberships`);
+          if (memberships) {
+            renderUserMemberships(memberships);
+          }
+          searchAccounts(); // Refresh member counts in the main table
+        } else {
+          showToast('Failed to remove user from account');
         }
       }
 

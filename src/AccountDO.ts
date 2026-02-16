@@ -63,6 +63,26 @@ export class AccountDO implements DurableObject {
       return this.subscribe(request);
     } else if (path === '/billing/cancel' && method === 'POST') {
       return this.cancelSubscription();
+    } else if (path === '/delete' && method === 'POST') {
+      // Get all members to notify their UserDOs
+      const members = Array.from(this.sql.exec('SELECT user_id FROM members'));
+      for (const member of members as any[]) {
+        try {
+          const userStub = this.env.USER.get(this.env.USER.idFromString(member.user_id));
+          await userStub.fetch('http://do/memberships', {
+            method: 'DELETE',
+            body: JSON.stringify({
+              account_id: this.state.id.toString(),
+            }),
+          });
+        } catch (e) {
+          console.error(`Failed to notify UserDO ${member.user_id} of account deletion`, e);
+        }
+      }
+
+      this.sql.exec('DELETE FROM account_info');
+      this.sql.exec('DELETE FROM members');
+      return Response.json({ success: true });
     }
 
     return new Response('Not Found', { status: 404 });
@@ -106,6 +126,14 @@ export class AccountDO implements DurableObject {
     // Update Account DO
     this.sql.exec('INSERT OR REPLACE INTO members (user_id, role, joined_at) VALUES (?, ?, ?)', user_id, role, now);
 
+    // Update SystemDO index
+    try {
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.fetch(`http://do/accounts/${this.state.id.toString()}/increment-members`, { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to update member count in SystemDO', e);
+    }
+
     // Sync with User DO
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(user_id));
@@ -128,6 +156,14 @@ export class AccountDO implements DurableObject {
 
   async removeMember(userId: string): Promise<Response> {
     this.sql.exec('DELETE FROM members WHERE user_id = ?', userId);
+
+    // Update SystemDO index
+    try {
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.fetch(`http://do/accounts/${this.state.id.toString()}/decrement-members`, { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to update member count in SystemDO', e);
+    }
 
     // Sync with User DO
     try {

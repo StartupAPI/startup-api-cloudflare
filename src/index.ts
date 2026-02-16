@@ -35,10 +35,6 @@ export default {
       return handleAuth(request, env, url, usersPath);
     }
 
-    if (url.pathname === usersPath + 'me') {
-      return handleMe(request, env);
-    }
-
     if (url.pathname === usersPath + 'me/avatar') {
       return handleMeImage(request, env, 'avatar');
     }
@@ -47,12 +43,21 @@ export default {
       return handleMeImage(request, env, 'provider-icon');
     }
 
-    if (url.pathname === usersPath + 'me/accounts') {
-      return handleMyAccounts(request, env);
-    }
+    // Handle API Routes
+    if (url.pathname.startsWith(usersPath + 'api/')) {
+      const apiPath = url.pathname.replace(usersPath + 'api/', '/');
 
-    if (url.pathname === usersPath + 'me/accounts/switch' && request.method === 'POST') {
-      return handleSwitchAccount(request, env);
+      if (apiPath === '/me') {
+        return handleMe(request, env);
+      }
+
+      if (apiPath === '/me/accounts') {
+        return handleMyAccounts(request, env);
+      }
+
+      if (apiPath === '/me/accounts/switch' && request.method === 'POST') {
+        return handleSwitchAccount(request, env);
+      }
     }
 
     if (url.pathname === usersPath + 'logout') {
@@ -118,23 +123,26 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 
   const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
 
-  if (path.startsWith('/users')) {
-    return systemStub.fetch(new Request('http://do' + path + url.search, request));
-  } else if (path.startsWith('/accounts')) {
-    return systemStub.fetch(new Request('http://do' + path + url.search, request));
-  } else if (path === '/impersonate' && request.method === 'POST') {
-    const { userId } = (await request.json()) as { userId: string };
+  if (path.startsWith('/api/')) {
+    const apiPath = path.replace('/api/', '');
+    if (apiPath.startsWith('users')) {
+      return systemStub.fetch(new Request('http://do/' + apiPath + url.search, request));
+    } else if (apiPath.startsWith('accounts')) {
+      return systemStub.fetch(new Request('http://do/' + apiPath + url.search, request));
+    } else if (apiPath === 'impersonate' && request.method === 'POST') {
+      const { userId } = (await request.json()) as { userId: string };
 
-    // Create a session for the target user
-    const targetUserStub = env.USER.get(env.USER.idFromString(userId));
-    const sessionRes = await targetUserStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+      // Create a session for the target user
+      const targetUserStub = env.USER.get(env.USER.idFromString(userId));
+      const sessionRes = await targetUserStub.fetch('http://do/sessions', { method: 'POST' });
+      const { sessionId } = (await sessionRes.json()) as any;
 
-    const doId = userId;
-    const headers = new Headers();
-    headers.set('Set-Cookie', `session_id=${sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+      const doId = userId;
+      const headers = new Headers();
+      headers.set('Set-Cookie', `session_id=${sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
 
-    return Response.json({ success: true }, { headers });
+      return Response.json({ success: true }, { headers });
+    }
   }
 
   return new Response('Not Found', { status: 404 });
@@ -164,8 +172,8 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv): Promise
     const data = (await validateRes.json()) as any;
     if (data.valid) {
       return {
-        ...data.profile,
         id: doId,
+        ...data.profile,
       };
     }
   } catch (e) {
@@ -177,7 +185,12 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv): Promise
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
   if (!env.ADMIN_IDS) return false;
   const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim());
-  return adminIds.includes(user.id);
+  return (
+    adminIds.includes(user.id) ||
+    (user.email && adminIds.includes(user.email)) ||
+    (user.subject_id && adminIds.includes(user.subject_id)) ||
+    (user.provider && user.subject_id && adminIds.includes(`${user.provider}:${user.subject_id}`))
+  );
 }
 
 async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response> {
@@ -204,6 +217,7 @@ async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response>
     if (!validateRes.ok) return validateRes;
 
     const data = (await validateRes.json()) as any;
+    data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
 
     // Fetch memberships to find current account
     const membershipsRes = await userStub.fetch('http://do/memberships');

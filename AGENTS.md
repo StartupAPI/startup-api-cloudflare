@@ -22,5 +22,10 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 
 ## Worker implementation
 
-- Internal worker routes all start with ${usersPath}, make sure to always prefix them
-- Never override .env and .dev.vars files
+- Internal worker routes all start with `${usersPath}`, make sure to always prefix them
+- Never override `.env` and `.dev.vars` files
+
+## API
+
+- All non-admin API paths start with `/${usersPath}/api/`
+- All admin API paths start with `/${usersPath}/admin/api/`

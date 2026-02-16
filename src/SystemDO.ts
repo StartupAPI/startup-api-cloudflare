@@ -25,6 +25,7 @@ export class SystemDO implements DurableObject {
         name TEXT,
         status TEXT,
         plan TEXT,
+        member_count INTEGER DEFAULT 0,
         created_at INTEGER
       );
     `);
@@ -39,19 +40,49 @@ export class SystemDO implements DurableObject {
       if (method === 'GET') return this.listUsers(url.searchParams);
       if (method === 'POST') return this.registerUser(request);
     } else if (path.startsWith('/users/')) {
-      const userId = path.substring('/users/'.length);
+      const parts = path.split('/');
+      const userId = parts[2];
+      const subPath = parts[3];
+
       if (userId) {
+        if (subPath === 'memberships') {
+          const stub = this.env.USER.get(this.env.USER.idFromString(userId));
+          return stub.fetch(new Request('http://do/memberships', request));
+        }
+
         if (method === 'GET') return this.getUser(userId);
         if (method === 'PUT') return this.updateUser(request, userId);
+        if (method === 'DELETE') return this.deleteUser(userId);
       }
     } else if (path === '/accounts') {
       if (method === 'GET') return this.listAccounts(url.searchParams);
       if (method === 'POST') return this.registerAccount(request);
     } else if (path.startsWith('/accounts/')) {
-      const accountId = path.substring('/accounts/'.length);
+      const parts = path.split('/');
+      const accountId = parts[2];
+      const subPath = parts[3];
+
       if (accountId) {
+        if (subPath === 'members') {
+          const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
+          if (parts[4]) {
+            // /accounts/:id/members/:userId
+            return stub.fetch(new Request('http://do/members/' + parts[4], request));
+          }
+          return stub.fetch(new Request('http://do/members', request));
+        }
+
         if (method === 'GET') return this.getAccount(accountId);
         if (method === 'PUT') return this.updateAccount(request, accountId);
+        if (method === 'DELETE') return this.deleteAccount(accountId);
+        if (path.endsWith('/increment-members')) {
+          await this.incrementMemberCount(accountId);
+          return Response.json({ success: true });
+        }
+        if (path.endsWith('/decrement-members')) {
+          await this.decrementMemberCount(accountId);
+          return Response.json({ success: true });
+        }
       }
     }
 
@@ -105,6 +136,21 @@ export class SystemDO implements DurableObject {
       data.provider || null,
       now,
     );
+
+    return Response.json({ success: true });
+  }
+
+  async deleteUser(userId: string): Promise<Response> {
+    // Delete from index
+    this.sql.exec('DELETE FROM users WHERE id = ?', userId);
+
+    // Call UserDO to delete its data
+    try {
+      const stub = this.env.USER.get(this.env.USER.idFromString(userId));
+      await stub.fetch('http://do/delete', { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to clear UserDO data', e);
+    }
 
     return Response.json({ success: true });
   }
@@ -176,23 +222,75 @@ export class SystemDO implements DurableObject {
 
   async registerAccount(request: Request): Promise<Response> {
     const data = (await request.json()) as {
-      id: string;
+      id?: string;
       name: string;
       status?: string;
       plan?: string;
+      ownerId?: string;
     };
+
+    let accountIdStr = data.id;
+    if (!accountIdStr) {
+      const id = this.env.ACCOUNT.newUniqueId();
+      accountIdStr = id.toString();
+
+      // Initialize AccountDO
+      const stub = this.env.ACCOUNT.get(id);
+      await stub.fetch('http://do/info', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: data.name,
+        }),
+      });
+
+      // If owner provided, add them as ADMIN
+      if (data.ownerId) {
+        await stub.fetch('http://do/members', {
+          method: 'POST',
+          body: JSON.stringify({
+            user_id: data.ownerId,
+            role: 1, // ADMIN
+          }),
+        });
+      }
+    }
+
     const now = Date.now();
 
     this.sql.exec(
-      'INSERT OR REPLACE INTO accounts (id, name, status, plan, created_at) VALUES (?, ?, ?, ?, ?)',
-      data.id,
+      'INSERT OR REPLACE INTO accounts (id, name, status, plan, member_count, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      accountIdStr,
       data.name,
       data.status || 'active',
       data.plan || 'free',
+      data.ownerId ? 1 : 0,
       now,
     );
 
+    return Response.json({ success: true, id: accountIdStr });
+  }
+
+  async deleteAccount(accountId: string): Promise<Response> {
+    // Delete from index
+    this.sql.exec('DELETE FROM accounts WHERE id = ?', accountId);
+
+    // Call AccountDO to delete its data
+    try {
+      const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
+      await stub.fetch('http://do/delete', { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to clear AccountDO data', e);
+    }
+
     return Response.json({ success: true });
+  }
+
+  async incrementMemberCount(accountId: string) {
+    this.sql.exec('UPDATE accounts SET member_count = member_count + 1 WHERE id = ?', accountId);
+  }
+
+  async decrementMemberCount(accountId: string) {
+    this.sql.exec('UPDATE accounts SET member_count = member_count - 1 WHERE id = ?', accountId);
   }
 
   async updateAccount(request: Request, accountId: string): Promise<Response> {
