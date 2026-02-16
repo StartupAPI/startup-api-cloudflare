@@ -324,33 +324,34 @@
 
           <!-- Configuration -->
           <section class="card">
-            <div class="card-header">Environment Variables</div>
+            <div class="card-header">Required Configuration</div>
             <div class="card-body">
               <p>
-                Configure your installation by setting these variables in your
-                <code>wrangler.jsonc</code> or Cloudflare Dashboard:
+                These variables <strong>must</strong> be set in your <code>wrangler.jsonc</code> or Cloudflare Dashboard for the worker to function. 
+                Until these are configured, the worker serves this documentation page.
               </p>
 
               <div class="mb-4">
                 <h5>
                   <span class="variable-name">ORIGIN_URL</span>
-                  <span class="badge-required">REQUIRED</span>
                 </h5>
                 <p>The base URL of the application you want to proxy, e.g. your app URL.</p>
-                <p>Until you set this variable the worker serves this help page.</p>
                 <pre>ORIGIN_URL = "https://your-app-origin.com"</pre>
               </div>
 
               <div class="mb-4">
                 <h5>
                   <span class="variable-name">SESSION_SECRET</span>
-                  <span class="badge-required">REQUIRED</span>
                 </h5>
                 <p>A long, random string used to encrypt session cookies. <strong>Keep this secret!</strong></p>
-                <p>Until you set this variable the worker serves this help page.</p>
                 <pre>SESSION_SECRET = "your-long-random-secret-string"</pre>
               </div>
+            </div>
+          </section>
 
+          <section class="card">
+            <div class="card-header">Optional Configuration</div>
+            <div class="card-body">
               <div class="mb-4">
                 <h5>
                   <span class="variable-name">USERS_PATH</span>
