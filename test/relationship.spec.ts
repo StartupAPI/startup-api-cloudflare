@@ -10,15 +10,10 @@ describe('User-Account Relationship', () => {
     const userStub = env.USER.get(userId);
 
     // Add user to account
-    const addRes = await accountStub.fetch('http://do/members', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: userId.toString(), role: AccountDO.ROLE_ADMIN }),
-    });
-    expect(addRes.status).toBe(200);
+    await accountStub.addMember(userId.toString(), AccountDO.ROLE_ADMIN);
 
     // Verify UserDO has membership
-    const memRes = await userStub.fetch('http://do/memberships');
-    const memberships: any[] = await memRes.json();
+    const memberships = await userStub.getMemberships();
     expect(memberships).toHaveLength(1);
     expect(memberships[0].account_id).toBe(accountId.toString());
     expect(memberships[0].role).toBe(AccountDO.ROLE_ADMIN);
@@ -31,20 +26,13 @@ describe('User-Account Relationship', () => {
     const userStub = env.USER.get(userId);
 
     // Add user first
-    await accountStub.fetch('http://do/members', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: userId.toString(), role: AccountDO.ROLE_ADMIN }),
-    });
+    await accountStub.addMember(userId.toString(), AccountDO.ROLE_ADMIN);
 
     // Remove user
-    const delRes = await accountStub.fetch(`http://do/members/${userId.toString()}`, {
-      method: 'DELETE',
-    });
-    expect(delRes.status).toBe(200);
+    await accountStub.removeMember(userId.toString());
 
     // Verify UserDO has NO membership
-    const memRes = await userStub.fetch('http://do/memberships');
-    const memberships: any[] = await memRes.json();
+    const memberships = await userStub.getMemberships();
     expect(memberships).toHaveLength(0);
   });
 
@@ -55,33 +43,21 @@ describe('User-Account Relationship', () => {
     const accountId2 = env.ACCOUNT.newUniqueId().toString();
 
     // Add memberships directly to UserDO for this test (or via AccountDO)
-    await userStub.fetch('http://do/memberships', {
-      method: 'POST',
-      body: JSON.stringify({ account_id: accountId1, role: AccountDO.ROLE_ADMIN, is_current: true }),
-    });
-    await userStub.fetch('http://do/memberships', {
-      method: 'POST',
-      body: JSON.stringify({ account_id: accountId2, role: AccountDO.ROLE_ADMIN, is_current: false }),
-    });
+    await userStub.addMembership(accountId1, AccountDO.ROLE_ADMIN, true);
+    await userStub.addMembership(accountId2, AccountDO.ROLE_ADMIN, false);
 
     // Verify initial state
-    let memRes = await userStub.fetch('http://do/memberships');
-    let memberships: any[] = await memRes.json();
-    expect(memberships.find((m) => m.account_id === accountId1).is_current).toBe(1);
-    expect(memberships.find((m) => m.account_id === accountId2).is_current).toBe(0);
+    let memberships = await userStub.getMemberships();
+    expect(memberships.find((m: any) => m.account_id === accountId1).is_current).toBe(1);
+    expect(memberships.find((m: any) => m.account_id === accountId2).is_current).toBe(0);
 
     // Switch to Account 2
-    const switchRes = await userStub.fetch('http://do/switch-account', {
-      method: 'POST',
-      body: JSON.stringify({ account_id: accountId2 }),
-    });
-    expect(switchRes.status).toBe(200);
+    await userStub.switchAccount(accountId2);
 
     // Verify state
-    memRes = await userStub.fetch('http://do/memberships');
-    memberships = await memRes.json();
-    expect(memberships.find((m) => m.account_id === accountId1).is_current).toBe(0);
-    expect(memberships.find((m) => m.account_id === accountId2).is_current).toBe(1);
+    memberships = await userStub.getMemberships();
+    expect(memberships.find((m: any) => m.account_id === accountId1).is_current).toBe(0);
+    expect(memberships.find((m: any) => m.account_id === accountId2).is_current).toBe(1);
   });
 
   it('should retrieve current account', async () => {
@@ -90,15 +66,10 @@ describe('User-Account Relationship', () => {
     const accountId = env.ACCOUNT.newUniqueId().toString();
 
     // Add membership
-    await userStub.fetch('http://do/memberships', {
-      method: 'POST',
-      body: JSON.stringify({ account_id: accountId, role: AccountDO.ROLE_ADMIN, is_current: true }),
-    });
+    await userStub.addMembership(accountId, AccountDO.ROLE_ADMIN, true);
 
     // Get current account
-    const res = await userStub.fetch('http://do/current-account');
-    expect(res.status).toBe(200);
-    const current: any = await res.json();
+    const current: any = await userStub.getCurrentAccount();
     expect(current).toHaveProperty('account_id', accountId);
     expect(current).toHaveProperty('role', AccountDO.ROLE_ADMIN);
   });

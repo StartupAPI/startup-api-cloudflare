@@ -16,27 +16,19 @@ describe('Integration Tests', () => {
     const stub = env.USER.get(id);
 
     // Create session
-    const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await stub.createSession();
 
     // Add some credentials/profile data via SystemDO
     const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    const credsRes = await systemStub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({
-        user_id: id.toString(),
-        provider: 'test-provider',
-        subject_id: '123',
-        profile_data: { name: 'Integration Tester' },
-      }),
+    await systemStub.registerCredential({
+      user_id: id.toString(),
+      provider: 'test-provider',
+      subject_id: '123',
+      profile_data: { name: 'Integration Tester' },
     });
-    expect(credsRes.status).toBe(200);
 
     // Add mapping to UserDO
-    await stub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({ provider: 'test-provider', subject_id: '123' }),
-    });
+    await stub.addCredential('test-provider', '123');
 
     // 2. Fetch /api/me with the cookie
     const doId = id.toString();
@@ -59,25 +51,18 @@ describe('Integration Tests', () => {
     const doId = id.toString();
 
     // Create session
-    const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await stub.createSession();
 
     // Add initial credentials via SystemDO
     const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({
-        user_id: id.toString(),
-        provider: 'test-provider',
-        subject_id: '123',
-        profile_data: { name: 'Original Name' },
-      }),
+    await systemStub.registerCredential({
+      user_id: id.toString(),
+      provider: 'test-provider',
+      subject_id: '123',
+      profile_data: { name: 'Original Name' },
     });
 
-    await stub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({ provider: 'test-provider', subject_id: '123' }),
-    });
+    await stub.addCredential('test-provider', '123');
 
     const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${doId}`);
 
@@ -112,38 +97,25 @@ describe('Integration Tests', () => {
     const doId = id.toString();
 
     // Create session
-    const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await stub.createSession();
 
     // Add two credentials via SystemDO and UserDO mapping
     const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({
-        user_id: id.toString(),
-        provider: 'google',
-        subject_id: 'g123',
-        profile_data: { email: 'google@example.com' },
-      }),
+    await systemStub.registerCredential({
+      user_id: id.toString(),
+      provider: 'google',
+      subject_id: 'g123',
+      profile_data: { email: 'google@example.com' },
     });
-    await stub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({ provider: 'google', subject_id: 'g123' }),
-    });
+    await stub.addCredential('google', 'g123');
 
-    await systemStub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({
-        user_id: id.toString(),
-        provider: 'twitch',
-        subject_id: 't123',
-        profile_data: { email: 'twitch@example.com' },
-      }),
+    await systemStub.registerCredential({
+      user_id: id.toString(),
+      provider: 'twitch',
+      subject_id: 't123',
+      profile_data: { email: 'twitch@example.com' },
     });
-    await stub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({ provider: 'twitch', subject_id: 't123' }),
-    });
+    await stub.addCredential('twitch', 't123');
 
     const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${doId}`);
 
@@ -183,17 +155,11 @@ describe('Integration Tests', () => {
     const stub = env.USER.get(id);
 
     // Create session
-    const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await stub.createSession();
 
     // Store a fake image
     const imageData = new Uint8Array([1, 2, 3, 4]);
-    const storeRes = await stub.fetch('http://do/images/avatar', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/png' },
-      body: imageData,
-    });
-    await storeRes.json(); // Drain body
+    await stub.storeImage('avatar', imageData.buffer, 'image/png');
 
     // Fetch image via worker
     const doId = id.toString();
@@ -217,8 +183,7 @@ describe('Integration Tests', () => {
     const doId = id.toString();
 
     // Create session
-    const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await stub.createSession();
 
     // 2. Call /logout with the cookie
     const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${doId}`);
@@ -236,11 +201,7 @@ describe('Integration Tests', () => {
     expect(setCookie).toContain('session_id=;');
 
     // 3. Verify session is actually deleted in DO
-    const validRes = await stub.fetch('http://do/validate-session', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId }),
-    });
-    const validData: any = await validRes.json();
+    const validData = await stub.validateSession(sessionId);
     expect(validData.valid).toBe(false);
   });
 });

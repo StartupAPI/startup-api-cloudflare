@@ -11,8 +11,7 @@ describe('Account Switching Integration', () => {
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
 
-    const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await userStub.createSession();
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
 
     // 2. Setup Accounts
@@ -21,40 +20,22 @@ describe('Account Switching Integration', () => {
     const acc1Stub = env.ACCOUNT.get(acc1Id);
     const acc1IdStr = acc1Id.toString();
 
-    await acc1Stub.fetch('http://do/info', {
-      method: 'POST',
-      body: JSON.stringify({ name: 'Personal Account', personal: true }),
-    });
+    await acc1Stub.updateInfo({ name: 'Personal Account', personal: true });
     // Add user to Account 1
-    await acc1Stub.fetch('http://do/members', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: userIdStr, role: 1 }),
-    });
+    await acc1Stub.addMember(userIdStr, 1);
     // Add membership to User (Current)
-    await userStub.fetch('http://do/memberships', {
-      method: 'POST',
-      body: JSON.stringify({ account_id: acc1IdStr, role: 1, is_current: true }),
-    });
+    await userStub.addMembership(acc1IdStr, 1, true);
 
     // Account 2 (Team)
     const acc2Id = env.ACCOUNT.newUniqueId();
     const acc2Stub = env.ACCOUNT.get(acc2Id);
     const acc2IdStr = acc2Id.toString();
 
-    await acc2Stub.fetch('http://do/info', {
-      method: 'POST',
-      body: JSON.stringify({ name: 'Team Account', personal: false }),
-    });
+    await acc2Stub.updateInfo({ name: 'Team Account', personal: false });
     // Add user to Account 2
-    await acc2Stub.fetch('http://do/members', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: userIdStr, role: 0 }),
-    });
+    await acc2Stub.addMember(userIdStr, 0);
     // Add membership to User (Not Current)
-    await userStub.fetch('http://do/memberships', {
-      method: 'POST',
-      body: JSON.stringify({ account_id: acc2IdStr, role: 0, is_current: false }),
-    });
+    await userStub.addMembership(acc2IdStr, 0, false);
 
     // 3. Test GET /users/api/me/accounts
     const listRes = await SELF.fetch('http://example.com/users/api/me/accounts', {

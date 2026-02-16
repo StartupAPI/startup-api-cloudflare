@@ -8,16 +8,10 @@ describe('UserDO Durable Object', () => {
 
     // Update profile
     const profileData = { name: 'Test User', email: 'test@example.com' };
-    let res = await stub.fetch('http://do/profile', {
-      method: 'POST',
-      body: JSON.stringify(profileData),
-    });
-    expect(res.status).toBe(200);
-    await res.json(); // Drain body
+    await stub.updateProfile(profileData);
 
     // Get profile
-    res = await stub.fetch('http://do/profile');
-    const data = await res.json();
+    const data = await stub.getProfile();
     expect(data).toEqual(profileData);
   });
 
@@ -25,10 +19,7 @@ describe('UserDO Durable Object', () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
 
-    const res = await stub.fetch('http://do/sessions', {
-      method: 'POST',
-    });
-    const data: any = await res.json();
+    const data: any = await stub.createSession();
     expect(data).toHaveProperty('sessionId');
     expect(data).toHaveProperty('expiresAt');
   });
@@ -38,33 +29,18 @@ describe('UserDO Durable Object', () => {
     const stub = env.USER.get(id);
 
     // Create session
-    const res = await stub.fetch('http://do/sessions', {
-      method: 'POST',
-    });
-    const { sessionId } = (await res.json()) as any;
+    const { sessionId } = (await stub.createSession()) as any;
 
     // Validate session exists
-    let validRes = await stub.fetch('http://do/validate-session', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId }),
-    });
-    let validData: any = await validRes.json();
+    let validData: any = await stub.validateSession(sessionId);
     expect(validData.valid).toBe(true);
 
     // Delete session
-    const delRes = await stub.fetch('http://do/sessions', {
-      method: 'DELETE',
-      body: JSON.stringify({ sessionId }),
-    });
-    const delData: any = await delRes.json();
+    const delData: any = await stub.deleteSession(sessionId);
     expect(delData.success).toBe(true);
 
     // Validate session is gone
-    validRes = await stub.fetch('http://do/validate-session', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId }),
-    });
-    validData = await validRes.json();
+    validData = await stub.validateSession(sessionId);
     expect(validData.valid).toBe(false);
   });
 
@@ -76,15 +52,10 @@ describe('UserDO Durable Object', () => {
     const role = 1;
 
     // Add membership
-    let res = await stub.fetch('http://do/memberships', {
-      method: 'POST',
-      body: JSON.stringify({ account_id: accountId, role, is_current: true }),
-    });
-    expect(res.status).toBe(200);
+    await stub.addMembership(accountId, role, true);
 
     // Get memberships
-    res = await stub.fetch('http://do/memberships');
-    const memberships: any[] = await res.json();
+    const memberships = await stub.getMemberships();
     expect(memberships).toHaveLength(1);
     expect(memberships[0].account_id).toBe(accountId);
     expect(memberships[0].role).toBe(role);
