@@ -41,6 +41,7 @@ class PowerStrip extends HTMLElement {
           this.user = {
             profile: data.profile,
             is_admin: data.is_admin,
+            is_impersonated: data.is_impersonated,
           };
           // Fetch accounts if logged in
           const accountsRes = await fetch(`${this.basePath}/api/me/accounts`);
@@ -127,7 +128,7 @@ class PowerStrip extends HTMLElement {
       if (this.user) {
         const providerIcon = this.getProviderIcon(this.user.profile.provider);
         const currentAccount = this.accounts.find((a) => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
-        const accountName = currentAccount ? currentAccount.name : 'No Account';
+        const accountName = currentAccount ? (currentAccount.personal ? this.user.profile.name : currentAccount.name) : 'No Account';
 
         let switchButton = '';
         let accountContainer = '';
@@ -174,12 +175,17 @@ class PowerStrip extends HTMLElement {
         }
 
         const adminLink = this.user.is_admin
-          ? `<a href="${this.basePath}/admin/" class="trigger admin-btn" title="Admin Panel">Admin</a>`
+          ? `<a href="${this.basePath}/admin/" class="trigger admin-btn" title="Admin Panel" target="startup-api-admin">Admin</a>`
+          : '';
+
+        const impersonationLink = this.user.is_impersonated
+          ? `<button class="trigger stop-impersonation-btn" id="stop-impersonation-trigger" title="Stop Impersonation">Stop Impersonation</button>`
           : '';
 
         content = `
             <div class="user-profile">
               ${adminLink}
+              ${impersonationLink}
               ${accountContainer}
               <div class="avatar-container">
                   <img src="${this.user.profile.picture}" alt="${this.user.profile.name}" title="${this.user.profile.name}" class="avatar" width="16" height="16" />
@@ -342,6 +348,11 @@ class PowerStrip extends HTMLElement {
 
         .admin-btn {
             color: #d93025 !important;
+        }
+
+        .stop-impersonation-btn {
+            color: #fbbc05 !important;
+            font-weight: bold;
         }
 
         @media (max-width: 25rem) {
@@ -523,6 +534,21 @@ class PowerStrip extends HTMLElement {
     `;
   }
 
+  async stopImpersonation() {
+    try {
+      const res = await fetch(`${this.basePath}/api/stop-impersonation`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        console.error('Failed to stop impersonation');
+      }
+    } catch (e) {
+      console.error('Error stopping impersonation', e);
+    }
+  }
+
   addEventListeners() {
     const loginTrigger = this.shadowRoot.getElementById('login-trigger');
     const loginDialog = this.shadowRoot.getElementById('login-dialog');
@@ -548,6 +574,14 @@ class PowerStrip extends HTMLElement {
         if (!isInDialog) {
           loginDialog.close();
         }
+      });
+    }
+
+    // Impersonation logic
+    const stopImpersonationTrigger = this.shadowRoot.getElementById('stop-impersonation-trigger');
+    if (stopImpersonationTrigger) {
+      stopImpersonationTrigger.addEventListener('click', () => {
+        this.stopImpersonation();
       });
     }
 

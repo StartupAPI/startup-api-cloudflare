@@ -478,4 +478,72 @@ describe('Admin Administration', () => {
     memberships = (await membershipsRes.json()) as any[];
     expect(memberships.find((m) => m.account_id === accountId)).toBeUndefined();
   });
+
+  it('should support stop-impersonation', async () => {
+    // 1. Get an admin user
+    const adminId = env.USER.idFromName('admin');
+    const adminStub = env.USER.get(adminId);
+    const adminIdStr = adminId.toString();
+
+    const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
+    const { sessionId: adminSessionId } = (await sessionRes.json()) as any;
+    const adminCookie = `session_id=${adminSessionId}:${adminIdStr}`;
+
+    // 2. Impersonate another user
+    const targetUserId = env.USER.newUniqueId().toString();
+    const impRes = await SELF.fetch('http://example.com/users/admin/api/impersonate', {
+      method: 'POST',
+      headers: {
+        Cookie: adminCookie,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId: targetUserId }),
+    });
+
+    const setCookie = impRes.headers.get('Set-Cookie');
+    expect(setCookie).toContain('backup_session_id=' + adminSessionId);
+
+    // Get the new session cookie
+    const cookies = impRes.headers.getSetCookie();
+    const impCookie = cookies.find((c) => c.startsWith('session_id='));
+    const backupCookie = cookies.find((c) => c.startsWith('backup_session_id='));
+    const combinedCookie = `${impCookie}; ${backupCookie}`;
+
+    // 3. Stop impersonation
+    const stopRes = await SELF.fetch('http://example.com/users/api/stop-impersonation', {
+      method: 'POST',
+      headers: { Cookie: combinedCookie },
+    });
+
+    expect(stopRes.status).toBe(200);
+    const stopSetCookie = stopRes.headers.getSetCookie();
+    const restoredSession = stopSetCookie.find((c) => c.startsWith('session_id=' + adminSessionId));
+    expect(restoredSession).toBeDefined();
+    const deletedBackup = stopSetCookie.find((c) => c.startsWith('backup_session_id=;'));
+    expect(deletedBackup).toBeDefined();
+  });
+
+  it('should not allow admin to impersonate themselves', async () => {
+    // 1. Get an admin user
+    const adminId = env.USER.idFromName('admin');
+    const adminIdStr = adminId.toString();
+
+    const userStub = env.USER.get(adminId);
+    const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
+    const { sessionId } = (await sessionRes.json()) as any;
+    const cookieHeader = `session_id=${sessionId}:${adminIdStr}`;
+
+    // 2. Try to impersonate themselves
+    const res = await SELF.fetch('http://example.com/users/admin/api/impersonate', {
+      method: 'POST',
+      headers: {
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId: adminIdStr }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe('Cannot impersonate yourself');
+  });
 });

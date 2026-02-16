@@ -51,6 +51,22 @@ export default {
         return handleMe(request, env);
       }
 
+      if (apiPath === '/stop-impersonation' && request.method === 'POST') {
+        const cookieHeader = request.headers.get('Cookie');
+        const cookies = parseCookies(cookieHeader || '');
+        const backupSession = cookies['backup_session_id'];
+
+        if (!backupSession) {
+          return new Response('No impersonation session found', { status: 400 });
+        }
+
+        const headers = new Headers();
+        headers.set('Set-Cookie', `session_id=${backupSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        headers.append('Set-Cookie', `backup_session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
+
+        return Response.json({ success: true }, { headers });
+      }
+
       if (apiPath === '/me/accounts') {
         return handleMyAccounts(request, env);
       }
@@ -132,6 +148,15 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
     } else if (apiPath === 'impersonate' && request.method === 'POST') {
       const { userId } = (await request.json()) as { userId: string };
 
+      if (user.id === userId) {
+        return new Response('Cannot impersonate yourself', { status: 400 });
+      }
+
+      // Get current session to backup
+      const cookieHeader = request.headers.get('Cookie');
+      const cookies = parseCookies(cookieHeader || '');
+      const currentSession = cookies['session_id'];
+
       // Create a session for the target user
       const targetUserStub = env.USER.get(env.USER.idFromString(userId));
       const sessionRes = await targetUserStub.fetch('http://do/sessions', { method: 'POST' });
@@ -140,6 +165,9 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
       const doId = userId;
       const headers = new Headers();
       headers.set('Set-Cookie', `session_id=${sessionId}:${doId}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+      if (currentSession) {
+        headers.append('Set-Cookie', `backup_session_id=${currentSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+      }
 
       return Response.json({ success: true }, { headers });
     }
@@ -218,6 +246,7 @@ async function handleMe(request: Request, env: StartupAPIEnv): Promise<Response>
 
     const data = (await validateRes.json()) as any;
     data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
+    data.is_impersonated = !!cookies['backup_session_id'];
 
     // Fetch memberships to find current account
     const membershipsRes = await userStub.fetch('http://do/memberships');
@@ -339,8 +368,8 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv): Promise<R
           info = await infoRes.json();
         }
         return {
-          ...m,
           ...info,
+          ...m,
         };
       }),
     );
