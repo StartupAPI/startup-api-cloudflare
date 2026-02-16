@@ -95,15 +95,6 @@ export class CredentialDO implements DurableObject {
       return Response.json({ success: true });
     }
 
-    // Default handler for legacy resolve-by-ID if needed, or just 404
-    if (path === '/' && method === 'GET') {
-        const result = this.sql.exec('SELECT * FROM credentials LIMIT 1');
-        const row = result.next().value as any;
-        if (!row) return new Response('Not Found', { status: 404 });
-        row.profile_data = JSON.parse(row.profile_data);
-        return Response.json(row);
-    }
-
     return new Response('Method Not Allowed', { status: 405 });
   }
 }

@@ -241,17 +241,14 @@ export class UserDO implements DurableObject {
   }
 
   async listCredentials(): Promise<Response> {
-    const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials');
+    const credentialsMapping = this.sql.exec('SELECT DISTINCT provider FROM user_credentials');
     const credentials = [];
-    const rows = Array.from(result);
-    console.log(`[UserDO] Found ${rows.length} credential mappings in local DB`);
-    for (const row of rows) {
-      const id = this.env.CREDENTIAL.idFromName(`${row.provider}:${row.subject_id}`);
-      const stub = this.env.CREDENTIAL.get(id);
-      const res = await stub.fetch(`http://do/`);
-      console.log(`[UserDO] Fetching ${row.provider}:${row.subject_id} result: ${res.status}`);
+    for (const row of credentialsMapping) {
+      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
+      const res = await stub.fetch(`http://do/list?user_id=${this.state.id.toString()}`);
       if (res.ok) {
-        credentials.push(await res.json());
+        const providerCreds = await res.json() as any[];
+        credentials.push(...providerCreds.map(c => ({ provider: row.provider, ...c })));
       }
     }
     return Response.json(credentials);
@@ -269,8 +266,8 @@ export class UserDO implements DurableObject {
 
     const cred = all.find(c => c.provider === provider);
     if (cred) {
-      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(`${cred.provider}:${cred.subject_id}`));
-      await stub.fetch('http://do/', { method: 'DELETE' });
+      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(cred.provider));
+      await stub.fetch(`http://do/?subject_id=${cred.subject_id}`, { method: 'DELETE' });
       this.sql.exec('DELETE FROM user_credentials WHERE provider = ? AND subject_id = ?', cred.provider, cred.subject_id);
     }
 

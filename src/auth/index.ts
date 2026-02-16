@@ -81,8 +81,8 @@ export async function handleAuth(
         const stub = env.USER.get(id);
         userIdStr = id.toString();
 
-        // Fetch and Store Avatar
-        if (profile.picture) {
+        // Fetch and Store Avatar (Only for new users)
+        if (isNewUser && profile.picture) {
           try {
             const picRes = await fetch(profile.picture);
             if (picRes.ok) {
@@ -136,17 +136,19 @@ export async function handleAuth(
           }),
         });
 
-        // Register User in SystemDO index
+        // Register User in SystemDO index (Only for new users)
         const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-        await systemStub.fetch('http://do/users', {
-          method: 'POST',
-          body: JSON.stringify({
-            id: userIdStr,
-            name: profile.name || userIdStr,
-            email: profile.email,
-            provider: provider.name,
-          }),
-        });
+        if (isNewUser) {
+          await systemStub.fetch('http://do/users', {
+            method: 'POST',
+            body: JSON.stringify({
+              id: userIdStr,
+              name: profile.name || userIdStr,
+              email: profile.email,
+              provider: provider.name,
+            }),
+          });
+        }
 
         // Ensure user has at least one account
         const membershipsRes = await stub.fetch('http://do/memberships');
