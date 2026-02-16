@@ -38,7 +38,10 @@ class PowerStrip extends HTMLElement {
       if (res.ok) {
         const data = await res.json();
         if (data.valid) {
-          this.user = data.profile;
+          this.user = {
+            profile: data.profile,
+            is_admin: data.is_admin,
+          };
           // Fetch accounts if logged in
           const accountsRes = await fetch(`${this.basePath}/api/me/accounts`);
           if (accountsRes.ok) {
@@ -122,7 +125,7 @@ class PowerStrip extends HTMLElement {
 
     if (providers.length > 0 && providers[0] !== '') {
       if (this.user) {
-        const providerIcon = this.getProviderIcon(this.user.provider);
+        const providerIcon = this.getProviderIcon(this.user.profile.provider);
         const currentAccount = this.accounts.find((a) => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
         const accountName = currentAccount ? currentAccount.name : 'No Account';
 
@@ -170,20 +173,22 @@ class PowerStrip extends HTMLElement {
             `;
         }
 
-        const adminLink = this.user.is_admin ? `<a href="${this.basePath}/admin/" class="trigger admin-btn" title="Admin Panel">Admin</a>` : '';
+        const adminLink = this.user.is_admin
+          ? `<a href="${this.basePath}/admin/" class="trigger admin-btn" title="Admin Panel">Admin</a>`
+          : '';
 
         content = `
             <div class="user-profile">
               ${adminLink}
               ${accountContainer}
               <div class="avatar-container">
-                  <img src="${this.user.picture}" alt="${this.user.name}" title="${this.user.name}" class="avatar" width="16" height="16" />
-                  <div class="provider-badge ${this.user.provider}">
+                  <img src="${this.user.profile.picture}" alt="${this.user.profile.name}" title="${this.user.profile.name}" class="avatar" width="16" height="16" />
+                  <div class="provider-badge ${this.user.profile.provider}">
                       ${providerIcon}
                   </div>
               </div>
               <div class="user-info">
-                  <span class="user-name">${this.user.name}</span>
+                  <span class="user-name">${this.user.profile.name}</span>
               </div>
               <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
             </div>
