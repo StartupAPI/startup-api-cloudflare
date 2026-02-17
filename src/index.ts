@@ -280,6 +280,13 @@ function isAdmin(user: any, env: StartupAPIEnv): boolean {
 
   return (
     adminIds.includes(user.id) ||
+    (env.ENVIRONMENT === 'test' && adminIds.some(id => {
+        try {
+            return user.id === env.USER.idFromName(id).toString();
+        } catch(e) {
+            return false;
+        }
+    })) ||
     (profile.email && adminIds.includes(profile.email)) ||
     (credential.subject_id && adminIds.includes(credential.subject_id)) ||
     (credential.provider && credential.subject_id && adminIds.includes(`${credential.provider}:${credential.subject_id}`))

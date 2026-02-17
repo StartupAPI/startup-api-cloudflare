@@ -35,8 +35,9 @@
     },
   ],
   "vars": {
+    "ENVIRONMENT": "test",
     "SESSION_SECRET": "dev-secret",
     "ORIGIN_URL": "http://example.com",
-    "ADMIN_IDS": "23ace4e386a6b91718ceddfb0b8edbe8bfdbbf408dd17ef5e8439dd7d039758d",
+    "ADMIN_IDS": "admin",
   },
 }

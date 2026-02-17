@@ -36,7 +36,7 @@ describe('Admin Administration', () => {
   });
 
   it('should allow access to admin users', async () => {
-    // 1. Get an admin user ID from environment
+    // 1. Get an admin user ID
     const userId = env.USER.idFromName('admin');
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
@@ -68,7 +68,7 @@ describe('Admin Administration', () => {
   });
 
   it('should serve admin dashboard at /users/admin/', async () => {
-    // 1. Get an admin user ID from environment
+    // 1. Get an admin user ID
     const userId = env.USER.idFromName('admin');
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
@@ -128,7 +128,7 @@ describe('Admin Administration', () => {
   });
 
   it('should create a new account via admin API', async () => {
-    // 1. Get an admin user ID from environment
+    // 1. Get an admin user ID
     const userId = env.USER.idFromName('admin');
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
