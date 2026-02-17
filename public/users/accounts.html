@@ -17,6 +17,13 @@
       }
       h1 {
         color: #333;
+        margin-bottom: 0.25rem;
+      }
+      .subtitle {
+        font-size: 0.875rem;
+        color: #666;
+        margin-bottom: 2rem;
+        font-family: monospace;
       }
       section {
         background: white;
@@ -161,6 +168,7 @@
 
     <a href="/" class="back-link">← Back to Home</a>
     <h1 id="account-name-heading">Account Settings</h1>
+    <div id="account-id-subtitle" class="subtitle"></div>
 
     <section id="account-info-section">
       <h2>General Information</h2>
@@ -168,10 +176,6 @@
         <div class="form-group">
           <label for="account-name">Account Name</label>
           <input type="text" id="account-name" name="name" required />
-        </div>
-        <div class="form-group">
-          <label>Account ID</label>
-          <input type="text" id="account-id-display" disabled />
         </div>
         <div class="form-group">
           <label>Plan</label>
@@ -216,7 +220,7 @@
             document.getElementById('account-name-heading').textContent = `Settings: ${data.account.name || 'Account'}`;
             document.getElementById('account-name').value = data.account.name || '';
             initialAccountInfo.name = data.account.name || '';
-            document.getElementById('account-id-display').value = currentAccountId;
+            document.getElementById('account-id-subtitle').textContent = `ID: ${currentAccountId}`;
             
             // Check if user is admin of the account or system admin
             if (currentUserRole !== 1 && !data.is_admin) {
