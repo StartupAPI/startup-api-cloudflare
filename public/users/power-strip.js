@@ -516,6 +516,7 @@ class PowerStrip extends HTMLElement {
             align-items: center;
             transition: background-color 0.2s;
             font-size: 1rem;
+            gap: 1rem;
         }
         
         .account-item:hover {
