@@ -305,7 +305,7 @@ class PowerStrip extends HTMLElement {
         .avatar {
             width: 1.1rem;
             height: 1.1rem;
-            border-radius: 4px;
+            border-radius: 50%;
             object-fit: cover;
         }
 
