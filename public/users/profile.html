@@ -86,14 +86,6 @@
             </a>
           </div>
         </section>
-
-        <section id="account-settings-section" style="display: none;">
-          <h2>Account Settings</h2>
-          <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem;">
-            Manage your team members and account configuration.
-          </p>
-          <a href="/users/accounts.html" class="btn-link">Manage Account & Team</a>
-        </section>
       </div>
     </div>
 
@@ -137,7 +129,6 @@
             }
 
             if (data.account && (data.account.role === 1 || data.is_admin)) {
-                document.getElementById('account-settings-section').style.display = 'block';
                 document.getElementById('nav-account-item').style.display = 'block';
             }
 
