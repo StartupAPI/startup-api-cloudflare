@@ -35,7 +35,24 @@ export class AccountDO extends DurableObject {
         role INTEGER,
         joined_at INTEGER
       );
+
+      CREATE TABLE IF NOT EXISTS images (
+        key TEXT PRIMARY KEY,
+        value BLOB,
+        mime_type TEXT
+      );
     `);
+  }
+
+  async getImage(key: string) {
+    const result = this.sql.exec('SELECT value, mime_type FROM images WHERE key = ?', key);
+    const row = result.next().value as any;
+    return row || null;
+  }
+
+  async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
+    this.sql.exec('INSERT OR REPLACE INTO images (key, value, mime_type) VALUES (?, ?, ?)', key, value, mime_type);
+    return { success: true };
   }
 
   async getInfo() {
@@ -52,7 +69,11 @@ export class AccountDO extends DurableObject {
     try {
       this.ctx.storage.transactionSync(() => {
         for (const [key, value] of Object.entries(data)) {
-          this.sql.exec('INSERT OR REPLACE INTO account_info (key, value) VALUES (?, ?)', key, JSON.stringify(value));
+          let valToStore = value;
+          if (key === 'name' && typeof value === 'string') {
+            valToStore = value.substring(0, 50);
+          }
+          this.sql.exec('INSERT OR REPLACE INTO account_info (key, value) VALUES (?, ?)', key, JSON.stringify(valToStore));
         }
       });
       return { success: true };
@@ -62,8 +83,30 @@ export class AccountDO extends DurableObject {
   }
 
   async getMembers() {
-    const result = this.sql.exec('SELECT user_id, role, joined_at FROM members');
-    return Array.from(result);
+    const result = Array.from(this.sql.exec('SELECT user_id, role, joined_at FROM members'));
+    const membersWithNames = await Promise.all(
+      result.map(async (m: any) => {
+        try {
+          const userStub = this.env.USER.get(this.env.USER.idFromString(m.user_id));
+          const profile = await userStub.getProfile();
+          const image = await userStub.getImage('avatar');
+          
+          let picture = profile.picture || null;
+          if (image) {
+            picture = `/users/api/users/${m.user_id}/avatar`;
+          }
+
+          return {
+            ...m,
+            name: profile.name || 'Unknown User',
+            picture: picture,
+          };
+        } catch (e) {
+          return { ...m, name: 'Unknown User', picture: null };
+        }
+      }),
+    );
+    return membersWithNames;
   }
 
   async addMember(user_id: string, role: number) {
@@ -86,6 +129,20 @@ export class AccountDO extends DurableObject {
       await userStub.addMembership(this.ctx.id.toString(), role, false);
     } catch (e) {
       console.error('Failed to sync membership to UserDO', e);
+    }
+
+    return { success: true };
+  }
+
+  async updateMemberRole(userId: string, role: number) {
+    this.sql.exec('UPDATE members SET role = ? WHERE user_id = ?', role, userId);
+
+    // Sync with User DO
+    try {
+      const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
+      await userStub.addMembership(this.ctx.id.toString(), role, false);
+    } catch (e) {
+      console.error('Failed to sync membership role to UserDO', e);
     }
 
     return { success: true };

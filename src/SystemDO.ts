@@ -160,6 +160,8 @@ export class SystemDO extends DurableObject {
 
   async registerAccount(data: { id?: string; name: string; status?: string; plan?: string; ownerId?: string }) {
     let accountIdStr = data.id;
+    const accountName = (data.name || '').substring(0, 50);
+
     if (!accountIdStr) {
       const id = this.env.ACCOUNT.newUniqueId();
       accountIdStr = id.toString();
@@ -167,7 +169,7 @@ export class SystemDO extends DurableObject {
       // Initialize AccountDO
       const stub = this.env.ACCOUNT.get(id);
       await stub.updateInfo({
-        name: data.name,
+        name: accountName,
       });
 
       // If owner provided, add them as ADMIN
@@ -181,7 +183,7 @@ export class SystemDO extends DurableObject {
     this.sql.exec(
       'INSERT OR REPLACE INTO accounts (id, name, status, plan, member_count, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       accountIdStr,
-      data.name,
+      accountName,
       data.status || 'active',
       data.plan || 'free',
       data.ownerId ? 1 : 0,
@@ -215,10 +217,15 @@ export class SystemDO extends DurableObject {
   }
 
   async updateAccount(accountId: string, data: any) {
+    const sanitizedData = { ...data };
+    if (sanitizedData.name !== undefined) {
+      sanitizedData.name = sanitizedData.name.substring(0, 50);
+    }
+
     // Update AccountDO
     try {
       const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
-      await stub.updateInfo(data);
+      await stub.updateInfo(sanitizedData);
     } catch (e) {
       console.error('Failed to update AccountDO', e);
     }
@@ -227,9 +234,9 @@ export class SystemDO extends DurableObject {
     const updates: string[] = [];
     const args: any[] = [];
 
-    if (data.name !== undefined) {
+    if (sanitizedData.name !== undefined) {
       updates.push('name = ?');
-      args.push(data.name);
+      args.push(sanitizedData.name);
     }
     if (data.status !== undefined) {
       updates.push('status = ?');

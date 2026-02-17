@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Account Settings</title>
+    <link rel="stylesheet" href="/users/style.css" />
+  </head>
+  <body>
+    <power-strip providers="google,twitch" style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem;">
+      <svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="#ffcc00"/></svg>
+    </power-strip>
+    <script src="/users/power-strip.js" async></script>
+
+    <div class="header-area">
+      <a href="/" class="back-link">← Back to Home</a>
+      <h1 class="page-subtitle">Account Settings</h1>
+      <div id="account-name-heading" class="page-title">Account</div>
+      <div id="account-id-subtitle" class="subtitle">
+          <span class="id-text" id="account-id-text"></span>
+          <button id="copy-id-btn" class="copy-btn" title="Copy Account ID">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+          </button>
+      </div>
+    </div>
+
+    <div class="main-layout">
+      <nav class="sidebar">
+        <ul class="nav-list">
+          <li class="nav-item">
+            <a href="/users/profile.html" class="nav-link">Profile</a>
+          </li>
+          <li class="nav-item" id="nav-account-item">
+            <a href="/users/accounts.html" class="nav-link active">Account Settings</a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="content-area">
+        <section id="account-info-section">
+          <div class="avatar-section">
+            <div style="position: relative;">
+              <img id="account-avatar" class="account-avatar-large" src="" alt="Account Avatar" style="display: none;" />
+              <div id="account-avatar-placeholder" class="account-avatar-large" style="background: #f1f3f4; display: flex; align-items: center; justify-content: center; color: #5f6368;">
+                <svg viewBox="0 0 24 24" style="width: 48px; height: 48px; fill: currentColor;">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-9h10v2H7z"/>
+                </svg>
+              </div>
+              <input type="file" id="avatar-input" accept="image/*" style="display: none;" />
+              <button type="button" id="change-avatar-btn" class="secondary-btn" style="position: absolute; bottom: -0.5rem; left: 50%; transform: translateX(-50%); padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap;">Change</button>
+            </div>
+            <div>
+              <h2 id="display-account-name" style="margin: 0; color: #333;">Loading...</h2>
+              <p id="display-account-plan" style="margin: 0.25rem 0 0 0; color: #666;"></p>
+            </div>
+          </div>
+
+          <h2>General Information</h2>
+          <form id="account-info-form">
+            <div class="form-group">
+              <label for="account-name">Account Name</label>
+              <input type="text" id="account-name" name="name" maxlength="50" required />
+            </div>
+            <div class="form-group">
+              <label>Plan</label>
+              <input type="text" id="account-plan-display" disabled />
+            </div>
+            <button type="submit" id="save-account-btn" disabled>Save Changes</button>
+          </form>
+        </section>
+
+        <section id="members-section">
+          <h2>Team Members</h2>
+          <div id="members-list">
+            <p>Loading members...</p>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+      const API_BASE = '/users/api';
+      let currentAccountId = null;
+      let currentUserRole = 0;
+      let currentUserId = null;
+      let initialAccountInfo = {};
+
+      async function init() {
+        try {
+          const res = await fetch(`${API_BASE}/me`);
+          if (!res.ok) {
+            if (res.status === 401) {
+              window.location.href = '/';
+              return;
+            }
+            throw new Error('Failed to load user info');
+          }
+          const data = await res.json();
+          if (data.valid && data.account) {
+            currentAccountId = data.account.id;
+            currentUserRole = data.account.role;
+            currentUserId = data.profile.id;
+
+            document.getElementById('account-name-heading').textContent = data.account.name || 'Account';
+            document.getElementById('account-name').value = data.account.name || '';
+            initialAccountInfo.name = data.account.name || '';
+            document.getElementById('account-id-text').textContent = `ID: ${currentAccountId}`;
+
+            document.getElementById('copy-id-btn').onclick = () => {
+                navigator.clipboard.writeText(currentAccountId).then(() => {
+                    showToast('Account ID copied to clipboard');
+                }).catch(err => {
+                    console.error('Failed to copy: ', err);
+                });
+            };
+            
+            // Check if user is admin of the account or system admin
+            if (currentUserRole !== 1 && !data.is_admin) {
+                document.getElementById('members-section').style.display = 'none';
+                document.getElementById('account-info-section').style.display = 'none';
+                
+                const section = document.createElement('section');
+                const msg = document.createElement('p');
+                msg.textContent = "You do not have permission to manage this account's information.";
+                msg.style.color = '#666';
+                msg.style.margin = '0';
+                section.appendChild(msg);
+                document.querySelector('.content-area').appendChild(section);
+            } else {
+                loadMembers();
+            }
+
+            loadAccountDetails();
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      }
+
+      document.getElementById('account-name').addEventListener('input', (e) => {
+        const hasChanged = e.target.value !== initialAccountInfo.name;
+        document.getElementById('save-account-btn').disabled = !hasChanged;
+      });
+
+      document.getElementById('change-avatar-btn').onclick = () => {
+        document.getElementById('avatar-input').click();
+      };
+
+      document.getElementById('avatar-input').onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+          const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/avatar`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': file.type
+            },
+            body: await file.arrayBuffer()
+          });
+
+          if (res.ok) {
+            showToast('Account avatar updated');
+            // Refresh image
+            const img = document.getElementById('account-avatar');
+            img.src = `${API_BASE}/me/accounts/${currentAccountId}/avatar?t=${Date.now()}`;
+            img.style.display = 'block';
+            document.getElementById('account-avatar-placeholder').style.display = 'none';
+            
+            // Refresh power-strip
+            const powerStrip = document.querySelector('power-strip');
+            if (powerStrip && typeof powerStrip.refresh === 'function') {
+              powerStrip.refresh();
+            }
+          } else {
+            const err = await res.text();
+            throw new Error(err || 'Failed to upload avatar');
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      };
+
+      document.getElementById('account-info-form').onsubmit = async (e) => {
+          e.preventDefault();
+          const name = document.getElementById('account-name').value;
+          
+          try {
+              const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name })
+              });
+              
+              if (res.ok) {
+                  showToast('Account name updated');
+                  initialAccountInfo.name = name;
+                  document.getElementById('account-name-heading').textContent = name;
+                  document.getElementById('save-account-btn').disabled = true;
+                  
+                  // Refresh power-strip
+                  const powerStrip = document.querySelector('power-strip');
+                  if (powerStrip && typeof powerStrip.refresh === 'function') {
+                      powerStrip.refresh();
+                  }
+              } else {
+                  throw new Error('Failed to update account name');
+              }
+          } catch (e) {
+              showToast(e.message);
+          }
+      };
+
+      async function loadAccountDetails() {
+          try {
+              const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`);
+              if (res.ok) {
+                  const data = await res.json();
+                  if (data.name) {
+                      document.getElementById('account-name').value = data.name;
+                      document.getElementById('display-account-name').textContent = data.name;
+                      initialAccountInfo.name = data.name;
+                  }
+                  if (data.billing && data.billing.plan_details) {
+                      document.getElementById('account-plan-display').value = data.billing.plan_details.name;
+                      document.getElementById('display-account-plan').textContent = data.billing.plan_details.name;
+                  } else if (data.billing && data.billing.state) {
+                      document.getElementById('account-plan-display').value = data.billing.state.plan_slug;
+                      document.getElementById('display-account-plan').textContent = data.billing.state.plan_slug;
+                  }
+
+                  // Load avatar
+                  const avatarRes = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/avatar`);
+                  if (avatarRes.ok) {
+                      const img = document.getElementById('account-avatar');
+                      img.src = `${API_BASE}/me/accounts/${currentAccountId}/avatar`;
+                      img.style.display = 'block';
+                      document.getElementById('account-avatar-placeholder').style.display = 'none';
+                  }
+              }
+          } catch (e) {
+              console.error('Error loading account details:', e);
+          }
+      }
+
+      async function loadMembers() {
+        const list = document.getElementById('members-list');
+        try {
+          const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/members`);
+          if (!res.ok) throw new Error('Failed to load members');
+          const members = await res.json();
+          
+          if (members.length === 0) {
+            list.innerHTML = '<p>No members found.</p>';
+            return;
+          }
+
+          list.innerHTML = members.map(m => {
+            const isAdmin = m.role === 1;
+            const isSelf = m.user_id === currentUserId;
+            const avatarContent = m.picture 
+                ? `<img src="${m.picture}" class="member-avatar" alt="${m.name}" />`
+                : `<div class="member-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                   </div>`;
+
+            return `
+              <div class="member-item">
+                <div class="member-info">
+                  ${avatarContent}
+                  <div class="member-details">
+                    <div class="member-name" title="${m.name}${isSelf ? ' (You)' : ''}">${m.name} ${isSelf ? '(You)' : ''}</div>
+                    <div class="member-role">
+                      <select onchange="updateRole('${m.user_id}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role"' : ''} class="role-select">
+                        <option value="0" ${m.role === 0 ? 'selected' : ''}>Member</option>
+                        <option value="1" ${m.role === 1 ? 'selected' : ''}>Admin</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <button class="remove-btn" onclick="removeMember('${m.user_id}')" ${isSelf ? 'disabled title="You cannot remove yourself"' : ''}>
+                  Remove
+                </button>
+              </div>
+            `;
+          }).join('');
+        } catch (e) {
+          list.innerHTML = `<p style="color: red;">${e.message}</p>`;
+        }
+      }
+
+      async function updateRole(userId, newRole) {
+          try {
+              const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/members/${userId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ role: parseInt(newRole) }),
+              });
+
+              if (res.ok) {
+                  showToast('Role updated');
+                  loadMembers();
+              } else {
+                  const err = await res.text();
+                  throw new Error(err || 'Failed to update role');
+              }
+          } catch (e) {
+              showToast(e.message);
+              loadMembers(); // Refresh to reset select
+          }
+      }
+
+      async function removeMember(userId) {
+        if (!confirm(`Are you sure you want to remove user ${userId} from this account?`)) return;
+
+        try {
+          const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/members/${userId}`, {
+            method: 'DELETE'
+          });
+
+          if (res.ok) {
+            showToast('Member removed');
+            loadMembers();
+          } else {
+            const err = await res.text();
+            throw new Error(err || 'Failed to remove member');
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      }
+
+      function showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.innerText = msg;
+        toast.style.opacity = 1;
+        setTimeout(() => (toast.style.opacity = 0), 3000);
+      }
+
+      init();
+    </script>
+  </body>
+</html>

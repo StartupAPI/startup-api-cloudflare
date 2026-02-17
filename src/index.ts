@@ -89,6 +89,26 @@ export default {
       if (apiPath === '/me/accounts/switch' && request.method === 'POST') {
         return handleSwitchAccount(request, env, cookieManager);
       }
+
+      if (apiPath.startsWith('/me/accounts/')) {
+        const parts = apiPath.split('/');
+        if (parts.length === 4) {
+          return handleAccountDetails(request, env, parts[3], cookieManager);
+        }
+        if (parts.length === 5 && parts[4] === 'avatar') {
+          return handleAccountImage(request, env, parts[3], 'avatar', cookieManager);
+        }
+        if (parts.length >= 5 && parts[4] === 'members') {
+          return handleAccountMembers(request, env, parts[3], parts.slice(5), cookieManager);
+        }
+      }
+
+      if (apiPath.startsWith('/users/') && apiPath.endsWith('/avatar')) {
+        const parts = apiPath.split('/');
+        if (parts.length === 4) {
+          return handleUserImage(request, env, parts[2], 'avatar', cookieManager);
+        }
+      }
     }
 
     if (url.pathname === usersPath + 'logout') {
@@ -293,6 +313,106 @@ function isAdmin(user: any, env: StartupAPIEnv): boolean {
   );
 }
 
+async function handleAccountMembers(
+  request: Request,
+  env: StartupAPIEnv,
+  accountId: string,
+  extraParts: string[],
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  const memberships = await userStub.getMemberships();
+  const membership = memberships.find((m: any) => m.account_id === accountId);
+
+  const isAccountAdmin = membership && membership.role === AccountDO.ROLE_ADMIN;
+  const isSysAdmin = isAdmin(user, env);
+
+  if (!isAccountAdmin && !isSysAdmin) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+
+  if (extraParts.length === 0) {
+    if (request.method === 'GET') {
+      return Response.json(await accountStub.getMembers());
+    }
+    if (request.method === 'POST') {
+      const { user_id, role } = (await request.json()) as { user_id: string; role: number };
+      return Response.json(await accountStub.addMember(user_id, role));
+    }
+  } else if (extraParts.length === 1) {
+    const userIdToManage = extraParts[0];
+    if (request.method === 'DELETE') {
+      if (userIdToManage === user.id) {
+        return new Response('Cannot remove yourself', { status: 400 });
+      }
+      return Response.json(await accountStub.removeMember(userIdToManage));
+    }
+    if (request.method === 'PATCH') {
+      const { role } = (await request.json()) as { role: number };
+      if (userIdToManage === user.id && role !== AccountDO.ROLE_ADMIN) {
+        return new Response('Cannot demote yourself', { status: 400 });
+      }
+      return Response.json(await accountStub.updateMemberRole(userIdToManage, role));
+    }
+  }
+
+  return new Response('Not Found', { status: 404 });
+}
+
+async function handleAccountDetails(
+  request: Request,
+  env: StartupAPIEnv,
+  accountId: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  const memberships = await userStub.getMemberships();
+  const membership = memberships.find((m: any) => m.account_id === accountId);
+
+  const isAccountAdmin = membership && membership.role === AccountDO.ROLE_ADMIN;
+  const isSysAdmin = isAdmin(user, env);
+
+  if (!isAccountAdmin && !isSysAdmin) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+
+  if (request.method === 'POST') {
+    const data = await request.json() as any;
+    const result = await accountStub.updateInfo(data);
+    
+    // Sync with SystemDO index if name changed
+    if (data.name) {
+      try {
+        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+        await systemStub.updateAccount(accountId, { name: data.name });
+      } catch (e) {
+        console.error('Failed to sync account name to SystemDO', e);
+      }
+    }
+    return Response.json(result);
+  }
+
+  const info = await accountStub.getInfo();
+  const billing = await accountStub.getBillingInfo();
+
+  return Response.json({
+    ...info,
+    id: accountId,
+    role: membership ? membership.role : null,
+    billing,
+  });
+}
+
 async function handleMe(
   request: Request,
   env: StartupAPIEnv,
@@ -322,6 +442,14 @@ async function handleMe(
 
     if (!data.valid) return Response.json(data, { status: 401 });
 
+    const profile = { ...data.profile };
+    const image = await userStub.getImage('avatar');
+    if (image) {
+      const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+      profile.picture = usersPath + 'me/avatar';
+    }
+
+    data.profile = profile;
     data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
     data.is_impersonated = !!cookies['backup_session_id'];
 
@@ -487,11 +615,84 @@ async function handleMeImage(
       return Response.json({ success: true });
     }
 
+    return handleUserImage(request, env, doId, type, cookieManager);
+  } catch (e: any) {
+    console.error('[handleMeImage] Error:', e.message, e.stack);
+    return new Response('Error fetching image: ' + e.message, { status: 500 });
+  }
+}
+
+async function handleUserImage(
+  request: Request,
+  env: StartupAPIEnv,
+  userId: string,
+  type: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  // Public access to user avatars (if we want them to be public in member lists)
+  // Or we could check if current user has permission to see it.
+  // For now, let's make it public if you know the ID.
+
+  try {
+    const id = env.USER.idFromString(userId);
+    const stub = env.USER.get(id);
+
     const image = await stub.getImage(type);
     if (!image) return new Response('Not Found', { status: 404 });
     return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
   } catch (e) {
     return new Response('Error fetching image', { status: 500 });
+  }
+}
+
+async function handleAccountImage(
+  request: Request,
+  env: StartupAPIEnv,
+  accountId: string,
+  type: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  const memberships = await userStub.getMemberships();
+  const membership = memberships.find((m: any) => m.account_id === accountId);
+
+  // For viewing, we might allow any member to see account avatar
+  if (!membership && !isAdmin(user, env)) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+
+  try {
+    if (request.method === 'PUT') {
+      // Only admins can upload
+      if (membership?.role !== AccountDO.ROLE_ADMIN && !isAdmin(user, env)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      const contentType = request.headers.get('Content-Type');
+      if (!contentType || !contentType.startsWith('image/')) {
+        return new Response('Invalid image type', { status: 400 });
+      }
+
+      const blob = await request.arrayBuffer();
+      if (blob.byteLength > 1024 * 1024) {
+        return new Response('Image too large (max 1MB)', { status: 400 });
+      }
+
+      await accountStub.storeImage(type, blob, contentType);
+      return Response.json({ success: true });
+    }
+
+    const image = await accountStub.getImage(type);
+    if (!image) return new Response('Not Found', { status: 404 });
+    return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
+  } catch (e: any) {
+    console.error('[handleAccountImage] Error:', e.message, e.stack);
+    return new Response('Error handling account image: ' + e.message, { status: 500 });
   }
 }
 
