@@ -105,14 +105,23 @@
         min-width: 0; /* Important for ellipsis in flex child */
       }
       .member-details {
+        flex: 1;
         min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
       }
       .member-name {
         font-weight: 600;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 300px;
+        flex: 1;
+      }
+      .member-role {
+        width: 80px;
+        display: flex;
+        justify-content: center;
       }
       .role-badge {
         font-size: 0.75rem;
@@ -242,7 +251,9 @@
                 <div class="member-info">
                   <div class="member-details">
                     <div class="member-name" title="${m.name}${isSelf ? ' (You)' : ''}">${m.name} ${isSelf ? '(You)' : ''}</div>
-                    <div class="role-badge ${isAdmin ? 'admin' : ''}">${isAdmin ? 'Admin' : 'Member'}</div>
+                    <div class="member-role">
+                      <div class="role-badge ${isAdmin ? 'admin' : ''}">${isAdmin ? 'Admin' : 'Member'}</div>
+                    </div>
                   </div>
                 </div>
                 <button class="remove-btn" onclick="removeMember('${m.user_id}')" ${isSelf ? 'disabled title="You cannot remove yourself"' : ''}>
