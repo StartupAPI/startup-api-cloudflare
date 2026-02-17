@@ -37,6 +37,6 @@
   "vars": {
     "SESSION_SECRET": "dev-secret",
     "ORIGIN_URL": "http://example.com",
-    "ADMIN_IDS": "35dc566be4615393c7a738bf294b1f2372bcdfc6ec567c455cc5a5b50f059a51",
+    "ADMIN_IDS": "23ace4e386a6b91718ceddfb0b8edbe8bfdbbf408dd17ef5e8439dd7d039758d",
   },
 }
