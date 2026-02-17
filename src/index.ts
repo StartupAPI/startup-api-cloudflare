@@ -89,6 +89,13 @@ export default {
       if (apiPath === '/me/accounts/switch' && request.method === 'POST') {
         return handleSwitchAccount(request, env, cookieManager);
       }
+
+      if (apiPath.startsWith('/me/accounts/')) {
+        const parts = apiPath.split('/');
+        if (parts.length >= 5 && parts[4] === 'members') {
+          return handleAccountMembers(request, env, parts[3], parts.slice(5), cookieManager);
+        }
+      }
     }
 
     if (url.pathname === usersPath + 'logout') {
@@ -291,6 +298,45 @@ function isAdmin(user: any, env: StartupAPIEnv): boolean {
     (credential.subject_id && adminIds.includes(credential.subject_id)) ||
     (credential.provider && credential.subject_id && adminIds.includes(`${credential.provider}:${credential.subject_id}`))
   );
+}
+
+async function handleAccountMembers(
+  request: Request,
+  env: StartupAPIEnv,
+  accountId: string,
+  extraParts: string[],
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  const memberships = await userStub.getMemberships();
+  const membership = memberships.find((m: any) => m.account_id === accountId);
+
+  const isAccountAdmin = membership && membership.role === AccountDO.ROLE_ADMIN;
+  const isSysAdmin = isAdmin(user, env);
+
+  if (!isAccountAdmin && !isSysAdmin) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+
+  if (extraParts.length === 0) {
+    if (request.method === 'GET') {
+      return Response.json(await accountStub.getMembers());
+    }
+    if (request.method === 'POST') {
+      const { user_id, role } = (await request.json()) as { user_id: string; role: number };
+      return Response.json(await accountStub.addMember(user_id, role));
+    }
+  } else if (extraParts.length === 1 && request.method === 'DELETE') {
+    const userIdToRemove = extraParts[0];
+    return Response.json(await accountStub.removeMember(userIdToRemove));
+  }
+
+  return new Response('Not Found', { status: 404 });
 }
 
 async function handleMe(
