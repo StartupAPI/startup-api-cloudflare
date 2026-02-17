@@ -114,11 +114,6 @@
         text-overflow: ellipsis;
         max-width: 300px;
       }
-      .member-id {
-        font-size: 0.75rem;
-        color: #999;
-        font-family: monospace;
-      }
       .role-badge {
         font-size: 0.75rem;
         padding: 0.25rem 0.5rem;
@@ -247,7 +242,6 @@
                 <div class="member-info">
                   <div class="member-details">
                     <div class="member-name" title="${m.name}${isSelf ? ' (You)' : ''}">${m.name} ${isSelf ? '(You)' : ''}</div>
-                    <div class="member-id">${m.user_id}</div>
                     <div class="role-badge ${isAdmin ? 'admin' : ''}">${isAdmin ? 'Admin' : 'Member'}</div>
                   </div>
                 </div>
