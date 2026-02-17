@@ -105,12 +105,11 @@
             // Check if user is admin of the account or system admin
             if (currentUserRole !== 1 && !data.is_admin) {
                 document.getElementById('members-section').style.display = 'none';
-                document.getElementById('account-name').disabled = true;
-                document.getElementById('save-account-btn').style.display = 'none';
+                document.getElementById('account-info-section').style.display = 'none';
                 const msg = document.createElement('p');
                 msg.textContent = "You do not have permission to manage this account's information.";
                 msg.style.color = '#666';
-                document.getElementById('account-info-section').appendChild(msg);
+                document.querySelector('.content-area').appendChild(msg);
             } else {
                 loadMembers();
             }
