@@ -46,6 +46,7 @@ class PowerStrip extends HTMLElement {
         if (data.valid) {
           this.user = {
             profile: data.profile,
+            credential: data.credential,
             is_admin: data.is_admin,
             is_impersonated: data.is_impersonated,
           };
@@ -132,7 +133,7 @@ class PowerStrip extends HTMLElement {
 
     if (providers.length > 0 && providers[0] !== '') {
       if (this.user) {
-        const providerIcon = this.getProviderIcon(this.user.profile.provider);
+        const providerIcon = this.getProviderIcon(this.user.credential.provider);
         const currentAccount = this.accounts.find((a) => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
         const accountName = currentAccount ? (currentAccount.personal ? this.user.profile.name : currentAccount.name) : 'No Account';
 
@@ -195,7 +196,7 @@ class PowerStrip extends HTMLElement {
               ${accountContainer}
               <div class="avatar-container">
                   <img src="${this.user.profile.picture}" alt="${this.user.profile.name}" title="${this.user.profile.name}" class="avatar" width="16" height="16" />
-                  <div class="provider-badge ${this.user.profile.provider}">
+                  <div class="provider-badge ${this.user.credential.provider}">
                       ${providerIcon}
                   </div>
               </div>

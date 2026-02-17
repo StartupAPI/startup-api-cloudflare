@@ -87,31 +87,32 @@ export class UserDO extends DurableObject {
     // Determine login context (provider and subject_id)
     const sessionMeta = session.meta ? JSON.parse(session.meta) : {};
     const loginProvider = sessionMeta.provider;
+    let credential: Record<string, any> = {};
 
     if (loginProvider) {
-      profile.provider = loginProvider;
+      credential.provider = loginProvider;
       const credResult = this.sql.exec(
         'SELECT subject_id FROM user_credentials WHERE provider = ?',
         loginProvider,
       );
       const credRow = credResult.next().value as any;
       if (credRow) {
-        profile.subject_id = credRow.subject_id;
+        credential.subject_id = credRow.subject_id;
       }
     } else {
       // Fallback: get first available credential if no provider in session
       const credResult = this.sql.exec('SELECT provider, subject_id FROM user_credentials LIMIT 1');
       const credRow = credResult.next().value as any;
       if (credRow) {
-        profile.provider = credRow.provider;
-        profile.subject_id = credRow.subject_id;
+        credential.provider = credRow.provider;
+        credential.subject_id = credRow.subject_id;
       }
     }
 
     // Ensure the ID is set
     profile.id = this.ctx.id.toString();
 
-    return { valid: true, profile };
+    return { valid: true, profile, credential };
   }
 
   /**

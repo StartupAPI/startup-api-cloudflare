@@ -59,6 +59,10 @@
       button:hover {
         background: #1557b0;
       }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
       .avatar-section {
         display: flex;
         align-items: center;
@@ -103,6 +107,19 @@
         border-radius: 8px;
         margin-bottom: 0.75rem;
       }
+      .credential-item.active {
+        border-color: #1a73e8;
+        background-color: #e8f0fe;
+      }
+      .current-badge {
+        font-size: 0.75rem;
+        background: #1a73e8;
+        color: white;
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.75rem;
+        margin-left: 0.5rem;
+        font-weight: normal;
+      }
       .credential-info {
         display: flex;
         align-items: center;
@@ -125,6 +142,12 @@
       .remove-btn:hover {
         background: #fce8e6;
         color: #a50e0e;
+      }
+      .remove-btn:disabled {
+        background: #fafafa;
+        color: #999;
+        border-color: #eee;
+        cursor: not-allowed;
       }
       .link-account-btn {
         display: flex;
@@ -171,7 +194,7 @@
           <label for="email">Email</label>
           <input type="email" id="email" name="email" disabled title="Email is managed by your login provider" />
         </div>
-        <button type="submit">Save Changes</button>
+        <button type="submit" id="save-btn" disabled>Save Changes</button>
       </form>
     </section>
 
@@ -210,6 +233,8 @@
 
     <script>
       const API_BASE = '/users/api';
+      let currentProvider = null;
+      let initialProfile = {};
 
       async function loadProfile() {
         try {
@@ -224,6 +249,8 @@
           const data = await res.json();
           if (data.valid && data.profile) {
             const p = data.profile;
+            initialProfile = { name: p.name || '' };
+            currentProvider = data.credential ? data.credential.provider : null;
             document.getElementById('name').value = p.name || '';
             document.getElementById('email').value = p.email || '';
             document.getElementById('display-name').textContent = p.name || 'Anonymous';
@@ -240,11 +267,18 @@
                 const providerName = p.provider.charAt(0).toUpperCase() + p.provider.slice(1);
                 emailLabel.textContent = `Email (from ${providerName})`;
             }
+
+            document.getElementById('save-btn').disabled = true;
           }
         } catch (e) {
           showToast(e.message);
         }
       }
+
+      document.getElementById('name').addEventListener('input', (e) => {
+        const hasChanged = e.target.value !== initialProfile.name;
+        document.getElementById('save-btn').disabled = !hasChanged;
+      });
 
       document.getElementById('profile-form').onsubmit = async (e) => {
         e.preventDefault();
@@ -295,22 +329,28 @@
             return;
           }
 
-          list.innerHTML = credentials.map(c => `
-            <div class="credential-item">
-              <div class="credential-info">
-                <div class="provider-icon">
-                  ${getProviderIcon(c.provider)}
+          list.innerHTML = credentials.map(c => {
+            const isCurrent = c.provider === currentProvider;
+            return `
+              <div class="credential-item ${isCurrent ? 'active' : ''}">
+                <div class="credential-info">
+                  <div class="provider-icon">
+                    ${getProviderIcon(c.provider)}
+                  </div>
+                  <div>
+                    <div style="font-weight: 600;">
+                      ${c.provider.charAt(0).toUpperCase() + c.provider.slice(1)}
+                      ${isCurrent ? '<span class="current-badge">logged in</span>' : ''}
+                    </div>
+                    <div style="font-size: 0.8rem; color: #666;">${c.profile_data.email || c.subject_id}</div>
+                  </div>
                 </div>
-                <div>
-                  <div style="font-weight: 600;">${c.provider.charAt(0).toUpperCase() + c.provider.slice(1)}</div>
-                  <div style="font-size: 0.8rem; color: #666;">${c.profile_data.email || c.subject_id}</div>
-                </div>
+                <button class="remove-btn" onclick="removeCredential('${c.provider}')" ${isCurrent || credentials.length === 1 ? 'disabled title="' + (isCurrent ? 'Cannot remove the method you are currently logged in with' : 'Cannot remove your last login method') + '"' : ''}>
+                  Remove
+                </button>
               </div>
-              <button class="remove-btn" onclick="removeCredential('${c.provider}')" ${credentials.length === 1 ? 'disabled title="Cannot remove your last login method"' : ''}>
-                Remove
-              </button>
-            </div>
-          `).join('');
+            `;
+          }).join('');
         } catch (e) {
           list.innerHTML = `<p style="color: red;">${e.message}</p>`;
         }

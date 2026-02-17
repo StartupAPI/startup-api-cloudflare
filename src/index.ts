@@ -5,8 +5,6 @@ import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
 import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
-import { GoogleProvider } from './auth/GoogleProvider';
-import { TwitchProvider } from './auth/TwitchProvider';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -40,10 +38,6 @@ export default {
 
     if (url.pathname === usersPath + 'me/avatar') {
       return handleMeImage(request, env, 'avatar', cookieManager);
-    }
-
-    if (url.pathname === usersPath + 'me/provider-icon') {
-      return handleMeImage(request, env, 'provider-icon', cookieManager);
     }
 
     // Handle API Routes
@@ -268,7 +262,8 @@ async function getUserFromSession(
     if (data.valid) {
       return {
         id: doId,
-        ...data.profile,
+        profile: data.profile,
+        credential: data.credential,
       };
     }
   } catch (e) {
@@ -280,11 +275,14 @@ async function getUserFromSession(
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
   if (!env.ADMIN_IDS) return false;
   const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim()).filter(Boolean);
+  const profile = user.profile || {};
+  const credential = user.credential || {};
+
   return (
     adminIds.includes(user.id) ||
-    (user.email && adminIds.includes(user.email)) ||
-    (user.subject_id && adminIds.includes(user.subject_id)) ||
-    (user.provider && user.subject_id && adminIds.includes(`${user.provider}:${user.subject_id}`))
+    (profile.email && adminIds.includes(profile.email)) ||
+    (credential.subject_id && adminIds.includes(credential.subject_id)) ||
+    (credential.provider && credential.subject_id && adminIds.includes(`${credential.provider}:${credential.subject_id}`))
   );
 }
 
@@ -319,9 +317,6 @@ async function handleMe(
 
     data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
     data.is_impersonated = !!cookies['backup_session_id'];
-
-    const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
-    data.profile.provider_icon = usersPath + 'me/provider-icon';
 
     // Fetch memberships to find current account
     const memberships = await userStub.getMemberships();
@@ -469,28 +464,6 @@ async function handleMeImage(
   try {
     const id = env.USER.idFromString(doId);
     const stub = env.USER.get(id);
-
-    if (type === 'provider-icon') {
-      const data = await stub.validateSession(sessionId);
-      if (!data.valid || !data.profile.provider) {
-        return new Response('Not Found', { status: 404 });
-      }
-
-      const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
-      const url = new URL(request.url);
-      const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
-      const redirectBase = origin + usersPath + 'auth';
-
-      const provider = [
-        GoogleProvider.create(env, redirectBase),
-        TwitchProvider.create(env, redirectBase)
-      ].find(p => p?.name === data.profile.provider);
-
-      const icon = provider?.getIcon();
-      if (!icon) return new Response('Not Found', { status: 404 });
-
-      return new Response(icon, { headers: { 'Content-Type': 'image/svg+xml' } });
-    }
 
     const image = await stub.getImage(type);
     if (!image) return new Response('Not Found', { status: 404 });
