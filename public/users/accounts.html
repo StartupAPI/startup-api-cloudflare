@@ -17,6 +17,13 @@
       }
       h1 {
         color: #333;
+        margin-bottom: 0.5rem;
+        font-size: 1.5rem;
+      }
+      .account-name-title {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #1a73e8;
         margin-bottom: 0.25rem;
       }
       .subtitle {
@@ -195,7 +202,8 @@
     <script src="/users/power-strip.js" async></script>
 
     <a href="/" class="back-link">← Back to Home</a>
-    <h1 id="account-name-heading">Account Settings</h1>
+    <div id="account-name-heading" class="account-name-title">Account</div>
+    <h1>Account Settings</h1>
     <div id="account-id-subtitle" class="subtitle">
         <span class="id-text" id="account-id-text"></span>
         <button id="copy-id-btn" class="copy-btn" title="Copy Account ID">
@@ -253,7 +261,7 @@
             currentUserRole = data.account.role;
             currentUserId = data.profile.id;
 
-            document.getElementById('account-name-heading').textContent = `Settings: ${data.account.name || 'Account'}`;
+            document.getElementById('account-name-heading').textContent = data.account.name || 'Account';
             document.getElementById('account-name').value = data.account.name || '';
             initialAccountInfo.name = data.account.name || '';
             document.getElementById('account-id-text').textContent = `ID: ${currentAccountId}`;
@@ -305,7 +313,7 @@
               if (res.ok) {
                   showToast('Account name updated');
                   initialAccountInfo.name = name;
-                  document.getElementById('account-name-heading').textContent = `Settings: ${name}`;
+                  document.getElementById('account-name-heading').textContent = name;
                   document.getElementById('save-account-btn').disabled = true;
                   
                   // Refresh power-strip
