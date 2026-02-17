@@ -66,6 +66,16 @@ describe('Account Membership Management', () => {
     const members2 = await listRes2.json() as any[];
     expect(members2.length).toBe(1);
     expect(members2.some(m => m.user_id === userIdStr)).toBe(false);
+
+    // 8. Fetch Account Details
+    const detailsRes = await SELF.fetch(`http://example.com/users/api/me/accounts/${accIdStr}`, {
+      headers: { 'Cookie': adminCookie },
+    });
+    expect(detailsRes.status).toBe(200);
+    const details = await detailsRes.json() as any;
+    expect(details.id).toBe(accIdStr);
+    expect(details.billing).toBeDefined();
+    expect(details.billing.state.plan_slug).toBe('free');
   });
 
   it('should not allow non-admin to add members', async () => {

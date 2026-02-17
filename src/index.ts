@@ -92,6 +92,9 @@ export default {
 
       if (apiPath.startsWith('/me/accounts/')) {
         const parts = apiPath.split('/');
+        if (parts.length === 4) {
+          return handleAccountDetails(request, env, parts[3], cookieManager);
+        }
         if (parts.length >= 5 && parts[4] === 'members') {
           return handleAccountMembers(request, env, parts[3], parts.slice(5), cookieManager);
         }
@@ -337,6 +340,38 @@ async function handleAccountMembers(
   }
 
   return new Response('Not Found', { status: 404 });
+}
+
+async function handleAccountDetails(
+  request: Request,
+  env: StartupAPIEnv,
+  accountId: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  const memberships = await userStub.getMemberships();
+  const membership = memberships.find((m: any) => m.account_id === accountId);
+
+  const isAccountAdmin = membership && membership.role === AccountDO.ROLE_ADMIN;
+  const isSysAdmin = isAdmin(user, env);
+
+  if (!isAccountAdmin && !isSysAdmin) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+  const info = await accountStub.getInfo();
+  const billing = await accountStub.getBillingInfo();
+
+  return Response.json({
+    ...info,
+    id: accountId,
+    role: membership ? membership.role : null,
+    billing,
+  });
 }
 
 async function handleMe(

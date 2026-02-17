@@ -227,8 +227,19 @@
       }
 
       async function loadAccountDetails() {
-          // This would ideally call an endpoint that returns full account info including billing
-          // For now we might just have plan info in the account object if it was there
+          try {
+              const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`);
+              if (res.ok) {
+                  const data = await res.json();
+                  if (data.billing && data.billing.plan_details) {
+                      document.getElementById('account-plan-display').value = data.billing.plan_details.name;
+                  } else if (data.billing && data.billing.state) {
+                      document.getElementById('account-plan-display').value = data.billing.state.plan_slug;
+                  }
+              }
+          } catch (e) {
+              console.error('Error loading account details:', e);
+          }
       }
 
       async function loadMembers() {
