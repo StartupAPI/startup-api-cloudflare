@@ -174,24 +174,6 @@
       <div id="members-list">
         <p>Loading members...</p>
       </div>
-
-      <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #eee;">
-        <h3>Add Member</h3>
-        <form id="add-member-form">
-          <div class="form-group">
-            <label for="new-member-id">User ID</label>
-            <input type="text" id="new-member-id" placeholder="Enter User ID" required />
-          </div>
-          <div class="form-group">
-            <label for="new-member-role">Role</label>
-            <select id="new-member-role">
-              <option value="0">Member</option>
-              <option value="1">Admin</option>
-            </select>
-          </div>
-          <button type="submit" id="add-btn">Add Member</button>
-        </form>
-      </div>
     </section>
 
     <div id="toast"></div>
@@ -279,31 +261,6 @@
           list.innerHTML = `<p style="color: red;">${e.message}</p>`;
         }
       }
-
-      document.getElementById('add-member-form').onsubmit = async (e) => {
-        e.preventDefault();
-        const userId = document.getElementById('new-member-id').value;
-        const role = parseInt(document.getElementById('new-member-role').value);
-
-        try {
-          const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/members`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: userId, role }),
-          });
-
-          if (res.ok) {
-            showToast('Member added successfully');
-            document.getElementById('add-member-form').reset();
-            loadMembers();
-          } else {
-            const err = await res.text();
-            throw new Error(err || 'Failed to add member');
-          }
-        } catch (e) {
-          showToast(e.message);
-        }
-      };
 
       async function removeMember(userId) {
         if (!confirm(`Are you sure you want to remove user ${userId} from this account?`)) return;
