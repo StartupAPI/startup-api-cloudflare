@@ -5,6 +5,7 @@ import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
 import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
+import { resizeToSquare } from './ImageUtils';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -94,6 +95,9 @@ export default {
         const parts = apiPath.split('/');
         if (parts.length === 4) {
           return handleAccountDetails(request, env, parts[3], cookieManager);
+        }
+        if (parts.length === 5 && parts[4] === 'avatar') {
+          return handleAccountImage(request, env, parts[3], 'avatar', cookieManager);
         }
         if (parts.length >= 5 && parts[4] === 'members') {
           return handleAccountMembers(request, env, parts[3], parts.slice(5), cookieManager);
@@ -604,11 +608,9 @@ async function handleMeImage(
       }
 
       const blob = await request.arrayBuffer();
-      if (blob.byteLength > 1024 * 1024) {
-        return new Response('Image too large (max 1MB)', { status: 400 });
-      }
+      const resizedBlob = await resizeToSquare(blob, 500);
 
-      await stub.storeImage(type, blob, contentType);
+      await stub.storeImage(type, resizedBlob, contentType);
       return Response.json({ success: true });
     }
 
@@ -638,6 +640,54 @@ async function handleUserImage(
     return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
   } catch (e) {
     return new Response('Error fetching image', { status: 500 });
+  }
+}
+
+async function handleAccountImage(
+  request: Request,
+  env: StartupAPIEnv,
+  accountId: string,
+  type: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  const memberships = await userStub.getMemberships();
+  const membership = memberships.find((m: any) => m.account_id === accountId);
+
+  // For viewing, we might allow any member to see account avatar
+  if (!membership && !isAdmin(user, env)) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+
+  try {
+    if (request.method === 'PUT') {
+      // Only admins can upload
+      if (membership?.role !== AccountDO.ROLE_ADMIN && !isAdmin(user, env)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      const contentType = request.headers.get('Content-Type');
+      if (!contentType || !contentType.startsWith('image/')) {
+        return new Response('Invalid image type', { status: 400 });
+      }
+
+      const blob = await request.arrayBuffer();
+      const resizedBlob = await resizeToSquare(blob, 500);
+
+      await accountStub.storeImage(type, resizedBlob, contentType);
+      return Response.json({ success: true });
+    }
+
+    const image = await accountStub.getImage(type);
+    if (!image) return new Response('Not Found', { status: 404 });
+    return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
+  } catch (e) {
+    return new Response('Error handling account image', { status: 500 });
   }
 }
 

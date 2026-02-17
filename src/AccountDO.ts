@@ -35,7 +35,24 @@ export class AccountDO extends DurableObject {
         role INTEGER,
         joined_at INTEGER
       );
+
+      CREATE TABLE IF NOT EXISTS images (
+        key TEXT PRIMARY KEY,
+        value BLOB,
+        mime_type TEXT
+      );
     `);
+  }
+
+  async getImage(key: string) {
+    const result = this.sql.exec('SELECT value, mime_type FROM images WHERE key = ?', key);
+    const row = result.next().value as any;
+    return row || null;
+  }
+
+  async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
+    this.sql.exec('INSERT OR REPLACE INTO images (key, value, mime_type) VALUES (?, ?, ?)', key, value, mime_type);
+    return { success: true };
   }
 
   async getInfo() {

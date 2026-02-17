@@ -4,6 +4,7 @@ import { GoogleProvider } from './GoogleProvider';
 import { TwitchProvider } from './TwitchProvider';
 import { OAuthProvider } from './OAuthProvider';
 import { CookieManager } from '../CookieManager';
+import { resizeToSquare } from '../ImageUtils';
 
 export async function handleAuth(
   request: Request,
@@ -85,7 +86,8 @@ export async function handleAuth(
             const picRes = await fetch(profile.picture);
             if (picRes.ok) {
               const picBlob = await picRes.arrayBuffer();
-              await userStub.storeImage('avatar', picBlob, picRes.headers.get('Content-Type') || 'image/jpeg');
+              const resizedPic = await resizeToSquare(picBlob, 500);
+              await userStub.storeImage('avatar', resizedPic, picRes.headers.get('Content-Type') || 'image/jpeg');
               // Update profile.picture to point to our worker
               profile.picture = usersPath + 'me/avatar';
             }

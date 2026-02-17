@@ -26,6 +26,7 @@
     "wrangler": "^4.60.0"
   },
   "dependencies": {
+    "@silvia-odwyer/photon": "^0.3.3",
     "prettier": "^3.8.1"
   }
 }
