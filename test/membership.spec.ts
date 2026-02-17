@@ -94,6 +94,38 @@ describe('Account Membership Management', () => {
     });
     const details2 = await detailsRes2.json() as any;
     expect(details2.name).toBe('Updated Account Name');
+
+    // 10. Update Member Role
+    const userIdToUpdate = env.USER.newUniqueId().toString();
+    await (env.ACCOUNT.get(env.ACCOUNT.idFromString(accIdStr))).addMember(userIdToUpdate, 0);
+    
+    const patchRes = await SELF.fetch(`http://example.com/users/api/me/accounts/${accIdStr}/members/${userIdToUpdate}`, {
+      method: 'PATCH',
+      headers: { 
+          'Cookie': adminCookie,
+          'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ role: 1 }),
+    });
+    expect(patchRes.status).toBe(200);
+
+    // 11. Protect self from removal
+    const selfRemoveRes = await SELF.fetch(`http://example.com/users/api/me/accounts/${accIdStr}/members/${adminIdStr}`, {
+      method: 'DELETE',
+      headers: { 'Cookie': adminCookie },
+    });
+    expect(selfRemoveRes.status).toBe(400);
+
+    // 12. Protect self from demotion
+    const selfDemoteRes = await SELF.fetch(`http://example.com/users/api/me/accounts/${accIdStr}/members/${adminIdStr}`, {
+      method: 'PATCH',
+      headers: { 
+          'Cookie': adminCookie,
+          'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ role: 0 }),
+    });
+    expect(selfDemoteRes.status).toBe(400);
   });
 
   it('should not allow non-admin to add members', async () => {

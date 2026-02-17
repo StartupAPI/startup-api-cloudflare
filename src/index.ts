@@ -341,9 +341,21 @@ async function handleAccountMembers(
       const { user_id, role } = (await request.json()) as { user_id: string; role: number };
       return Response.json(await accountStub.addMember(user_id, role));
     }
-  } else if (extraParts.length === 1 && request.method === 'DELETE') {
-    const userIdToRemove = extraParts[0];
-    return Response.json(await accountStub.removeMember(userIdToRemove));
+  } else if (extraParts.length === 1) {
+    const userIdToManage = extraParts[0];
+    if (request.method === 'DELETE') {
+      if (userIdToManage === user.id) {
+        return new Response('Cannot remove yourself', { status: 400 });
+      }
+      return Response.json(await accountStub.removeMember(userIdToManage));
+    }
+    if (request.method === 'PATCH') {
+      const { role } = (await request.json()) as { role: number };
+      if (userIdToManage === user.id && role !== AccountDO.ROLE_ADMIN) {
+        return new Response('Cannot demote yourself', { status: 400 });
+      }
+      return Response.json(await accountStub.updateMemberRole(userIdToManage, role));
+    }
   }
 
   return new Response('Not Found', { status: 404 });

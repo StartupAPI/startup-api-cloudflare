@@ -396,6 +396,23 @@ button:disabled {
   color: #1a73e8;
 }
 
+.role-select {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  font-size: 0.85rem;
+  background: #fff;
+}
+
+.role-select:disabled {
+  background: #f1f3f4;
+  color: #5f6368;
+  border-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: default;
+}
+
 .id-text {
   white-space: nowrap;
   overflow: hidden;

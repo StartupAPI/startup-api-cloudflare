@@ -117,6 +117,20 @@ export class AccountDO extends DurableObject {
     return { success: true };
   }
 
+  async updateMemberRole(userId: string, role: number) {
+    this.sql.exec('UPDATE members SET role = ? WHERE user_id = ?', role, userId);
+
+    // Sync with User DO
+    try {
+      const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
+      await userStub.addMembership(this.ctx.id.toString(), role, false);
+    } catch (e) {
+      console.error('Failed to sync membership role to UserDO', e);
+    }
+
+    return { success: true };
+  }
+
   async removeMember(userId: string) {
     this.sql.exec('DELETE FROM members WHERE user_id = ?', userId);
 

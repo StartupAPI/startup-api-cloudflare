@@ -208,7 +208,10 @@
                   <div class="member-details">
                     <div class="member-name" title="${m.name}${isSelf ? ' (You)' : ''}">${m.name} ${isSelf ? '(You)' : ''}</div>
                     <div class="member-role">
-                      <div class="role-badge ${isAdmin ? 'admin' : ''}">${isAdmin ? 'Admin' : 'Member'}</div>
+                      <select onchange="updateRole('${m.user_id}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role"' : ''} class="role-select">
+                        <option value="0" ${m.role === 0 ? 'selected' : ''}>Member</option>
+                        <option value="1" ${m.role === 1 ? 'selected' : ''}>Admin</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -221,6 +224,27 @@
         } catch (e) {
           list.innerHTML = `<p style="color: red;">${e.message}</p>`;
         }
+      }
+
+      async function updateRole(userId, newRole) {
+          try {
+              const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/members/${userId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ role: parseInt(newRole) }),
+              });
+
+              if (res.ok) {
+                  showToast('Role updated');
+                  loadMembers();
+              } else {
+                  const err = await res.text();
+                  throw new Error(err || 'Failed to update role');
+              }
+          } catch (e) {
+              showToast(e.message);
+              loadMembers(); // Refresh to reset select
+          }
       }
 
       async function removeMember(userId) {
