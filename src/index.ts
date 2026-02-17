@@ -615,8 +615,9 @@ async function handleMeImage(
     }
 
     return handleUserImage(request, env, doId, type, cookieManager);
-  } catch (e) {
-    return new Response('Error fetching image', { status: 500 });
+  } catch (e: any) {
+    console.error('[handleMeImage] Error:', e.message, e.stack);
+    return new Response('Error fetching image: ' + e.message, { status: 500 });
   }
 }
 
@@ -686,8 +687,9 @@ async function handleAccountImage(
     const image = await accountStub.getImage(type);
     if (!image) return new Response('Not Found', { status: 404 });
     return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
-  } catch (e) {
-    return new Response('Error handling account image', { status: 500 });
+  } catch (e: any) {
+    console.error('[handleAccountImage] Error:', e.message, e.stack);
+    return new Response('Error handling account image: ' + e.message, { status: 500 });
   }
 }
 
