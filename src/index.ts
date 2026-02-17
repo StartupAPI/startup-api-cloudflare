@@ -465,6 +465,21 @@ async function handleMeImage(
     const id = env.USER.idFromString(doId);
     const stub = env.USER.get(id);
 
+    if (request.method === 'PUT') {
+      const contentType = request.headers.get('Content-Type');
+      if (!contentType || !contentType.startsWith('image/')) {
+        return new Response('Invalid image type', { status: 400 });
+      }
+
+      const blob = await request.arrayBuffer();
+      if (blob.byteLength > 1024 * 1024) {
+        return new Response('Image too large (max 1MB)', { status: 400 });
+      }
+
+      await stub.storeImage(type, blob, contentType);
+      return Response.json({ success: true });
+    }
+
     const image = await stub.getImage(type);
     if (!image) return new Response('Not Found', { status: 404 });
     return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });

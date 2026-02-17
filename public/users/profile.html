@@ -59,6 +59,14 @@
       button:hover {
         background: #1557b0;
       }
+      button.secondary-btn {
+        background: #fff;
+        color: #1a73e8;
+        border: 1px solid #1a73e8;
+      }
+      button.secondary-btn:hover {
+        background: #f8f9fa;
+      }
       button:disabled {
         background: #ccc;
         cursor: not-allowed;
@@ -178,7 +186,11 @@
 
     <section>
       <div class="avatar-section">
-        <img id="profile-picture" class="avatar-large" src="" alt="Profile Picture" style="display: none;" />
+        <div style="position: relative;">
+          <img id="profile-picture" class="avatar-large" src="" alt="Profile Picture" style="display: none;" />
+          <input type="file" id="avatar-input" accept="image/*" style="display: none;" />
+          <button type="button" id="change-avatar-btn" class="secondary-btn" style="position: absolute; bottom: -0.5rem; left: 50%; transform: translateX(-50%); padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap;">Change</button>
+        </div>
         <div>
           <h2 id="display-name" style="margin: 0; color: #333;">Loading...</h2>
           <p id="display-email" style="margin: 0.25rem 0 0 0; color: #666;"></p>
@@ -279,6 +291,48 @@
         const hasChanged = e.target.value !== initialProfile.name;
         document.getElementById('save-btn').disabled = !hasChanged;
       });
+
+      document.getElementById('change-avatar-btn').onclick = () => {
+        document.getElementById('avatar-input').click();
+      };
+
+      document.getElementById('avatar-input').onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 1024 * 1024) {
+          showToast('Image too large (max 1MB)');
+          return;
+        }
+
+        try {
+          const res = await fetch('/users/me/avatar', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': file.type
+            },
+            body: await file.arrayBuffer()
+          });
+
+          if (res.ok) {
+            showToast('Avatar updated');
+            // Refresh image by appending timestamp to bypass cache
+            const img = document.getElementById('profile-picture');
+            img.src = `/users/me/avatar?t=${Date.now()}`;
+            
+            // Refresh power-strip
+            const powerStrip = document.querySelector('power-strip');
+            if (powerStrip && typeof powerStrip.refresh === 'function') {
+              powerStrip.refresh();
+            }
+          } else {
+            const err = await res.text();
+            throw new Error(err || 'Failed to upload avatar');
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      };
 
       document.getElementById('profile-form').onsubmit = async (e) => {
         e.preventDefault();
