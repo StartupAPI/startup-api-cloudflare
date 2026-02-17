@@ -5,7 +5,6 @@ import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
 import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
-import { resizeToSquare } from './ImageUtils';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -608,9 +607,11 @@ async function handleMeImage(
       }
 
       const blob = await request.arrayBuffer();
-      const resizedBlob = await resizeToSquare(blob, 500);
+      if (blob.byteLength > 1024 * 1024) {
+        return new Response('Image too large (max 1MB)', { status: 400 });
+      }
 
-      await stub.storeImage(type, resizedBlob, contentType);
+      await stub.storeImage(type, blob, contentType);
       return Response.json({ success: true });
     }
 
@@ -678,9 +679,11 @@ async function handleAccountImage(
       }
 
       const blob = await request.arrayBuffer();
-      const resizedBlob = await resizeToSquare(blob, 500);
+      if (blob.byteLength > 1024 * 1024) {
+        return new Response('Image too large (max 1MB)', { status: 400 });
+      }
 
-      await accountStub.storeImage(type, resizedBlob, contentType);
+      await accountStub.storeImage(type, blob, contentType);
       return Response.json({ success: true });
     }
 
