@@ -417,7 +417,7 @@ button:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 15ch;
+  max-width: 25ch;
 }
 
 .copy-btn {
