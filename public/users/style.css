@@ -76,8 +76,11 @@ body {
 }
 
 .nav-link.active {
-  background: #e8f0fe;
   color: #1a73e8;
+  font-weight: 600;
+  border-left: 3px solid #1a73e8;
+  border-radius: 0;
+  padding-left: calc(1rem - 3px);
 }
 
 h1.page-subtitle {
