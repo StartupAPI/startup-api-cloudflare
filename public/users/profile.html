@@ -139,6 +139,10 @@
               const img = document.getElementById('profile-picture');
               img.src = p.picture;
               img.style.display = 'block';
+            } else {
+              const img = document.getElementById('profile-picture');
+              img.src = '';
+              img.style.display = 'none';
             }
 
             const emailLabel = document.querySelector('label[for="email"]');

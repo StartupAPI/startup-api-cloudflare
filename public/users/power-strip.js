@@ -198,13 +198,21 @@ class PowerStrip extends HTMLElement {
           ? `<button class="trigger stop-impersonation-btn" id="stop-impersonation-trigger" title="Stop Impersonation">Stop Impersonation</button>`
           : '';
 
+        const avatarContent = this.user.profile.picture
+          ? `<img src="${this.user.profile.picture}" alt="${this.user.profile.name}" title="${this.user.profile.name}" class="avatar" width="16" height="16" />`
+          : `<div class="avatar placeholder" style="background: #eee; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; fill: #999;">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
+            </div>`;
+
         content = `
             <div class="user-profile">
               ${adminLink}
               ${impersonationLink}
               ${accountContainer}
               <div class="avatar-container">
-                  <img src="${this.user.profile.picture}" alt="${this.user.profile.name}" title="${this.user.profile.name}" class="avatar" width="16" height="16" />
+                  ${avatarContent}
                   <div class="provider-badge ${this.user.credential.provider}">
                       ${providerIcon}
                   </div>
