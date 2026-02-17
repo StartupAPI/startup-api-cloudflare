@@ -45,7 +45,8 @@ export async function handleAuth(
         const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
 
         // 1. Try to resolve existing user by credential
-        const resolveData = await systemStub.resolveCredential(provider.name, profile.id);
+        const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName(provider.name));
+        const resolveData = await credentialStub.get(profile.id);
 
         let userIdStr: string | null = null;
 
@@ -75,7 +76,7 @@ export async function handleAuth(
 
         const isNewUser = !userIdStr;
         const id = userIdStr ? env.USER.idFromString(userIdStr) : env.USER.newUniqueId();
-        const stub = env.USER.get(id);
+        const userStub = env.USER.get(id);
         userIdStr = id.toString();
 
         // Fetch and Store Avatar (Only for new users)
@@ -84,7 +85,7 @@ export async function handleAuth(
             const picRes = await fetch(profile.picture);
             if (picRes.ok) {
               const picBlob = await picRes.arrayBuffer();
-              await stub.storeImage('avatar', picBlob, picRes.headers.get('Content-Type') || 'image/jpeg');
+              await userStub.storeImage('avatar', picBlob, picRes.headers.get('Content-Type') || 'image/jpeg');
               // Update profile.picture to point to our worker
               profile.picture = usersPath + 'me/avatar';
             }
@@ -98,12 +99,12 @@ export async function handleAuth(
 
         if (providerSvg) {
           const encoder = new TextEncoder();
-          await stub.storeImage('provider-icon', encoder.encode(providerSvg), 'image/svg+xml');
+          await userStub.storeImage('provider-icon', encoder.encode(providerSvg), 'image/svg+xml');
           (profile as any).provider_icon = usersPath + 'me/provider-icon';
         }
 
-        // Register credential in provider-specific CredentialDO (via SystemDO)
-        await systemStub.registerCredential({
+        // Register credential in provider-specific CredentialDO
+        await credentialStub.put({
           user_id: userIdStr,
           provider: provider.name,
           subject_id: profile.id,
@@ -115,7 +116,7 @@ export async function handleAuth(
         });
 
         // Register credential mapping in UserDO
-        await stub.addCredential(provider.name, profile.id);
+        await userStub.addCredential(provider.name, profile.id);
 
         // Register User in SystemDO index (Only for new users)
         if (isNewUser) {
@@ -128,7 +129,7 @@ export async function handleAuth(
         }
 
         // Ensure user has at least one account
-        const memberships = await stub.getMemberships();
+        const memberships = await userStub.getMemberships();
 
         if (memberships.length === 0) {
           // Create a personal account
@@ -154,11 +155,11 @@ export async function handleAuth(
           await accountStub.addMember(id.toString(), 1);
 
           // Add membership to user
-          await stub.addMembership(accountIdStr, 1, true);
+          await userStub.addMembership(accountIdStr, 1, true);
         }
 
         // Create Session
-        const session = await stub.createSession();
+        const session = await userStub.createSession();
 
         // Set cookie and redirect
         const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${userIdStr}`);

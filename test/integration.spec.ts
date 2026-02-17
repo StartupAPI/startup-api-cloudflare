@@ -18,9 +18,9 @@ describe('Integration Tests', () => {
     // Create session
     const { sessionId } = await stub.createSession();
 
-    // Add some credentials/profile data via SystemDO
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerCredential({
+    // Add some credentials/profile data via CredentialDO
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test-provider'));
+    await credentialStub.put({
       user_id: id.toString(),
       provider: 'test-provider',
       subject_id: '123',
@@ -53,9 +53,9 @@ describe('Integration Tests', () => {
     // Create session
     const { sessionId } = await stub.createSession();
 
-    // Add initial credentials via SystemDO
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerCredential({
+    // Add initial credentials via CredentialDO
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test-provider'));
+    await credentialStub.put({
       user_id: id.toString(),
       provider: 'test-provider',
       subject_id: '123',
@@ -99,9 +99,9 @@ describe('Integration Tests', () => {
     // Create session
     const { sessionId } = await stub.createSession();
 
-    // Add two credentials via SystemDO and UserDO mapping
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerCredential({
+    // Add two credentials via CredentialDO and UserDO mapping
+    const googleCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
+    await googleCredStub.put({
       user_id: id.toString(),
       provider: 'google',
       subject_id: 'g123',
@@ -109,7 +109,8 @@ describe('Integration Tests', () => {
     });
     await stub.addCredential('google', 'g123');
 
-    await systemStub.registerCredential({
+    const twitchCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('twitch'));
+    await twitchCredStub.put({
       user_id: id.toString(),
       provider: 'twitch',
       subject_id: 't123',

@@ -16,8 +16,8 @@ describe('Admin Administration', () => {
 
     // Add profile data (not admin email)
     await userStub.addCredential('test', '123');
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerCredential({
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
+    await credentialStub.put({
       provider: 'test',
       subject_id: '123',
       user_id: userIdStr,
@@ -45,8 +45,8 @@ describe('Admin Administration', () => {
 
     // Add profile data
     await userStub.addCredential('test', 'admin123');
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerCredential({
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
+    await credentialStub.put({
       provider: 'test',
       subject_id: 'admin123',
       user_id: userIdStr,
@@ -76,8 +76,8 @@ describe('Admin Administration', () => {
 
     // Add profile data
     await userStub.addCredential('test', 'admin123');
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerCredential({
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
+    await credentialStub.put({
       provider: 'test',
       subject_id: 'admin123',
       user_id: userIdStr,

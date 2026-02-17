@@ -55,27 +55,6 @@ export class SystemDO extends DurableObject {
     return users;
   }
 
-  async resolveCredential(provider: string, subject_id: string) {
-    const id = this.env.CREDENTIAL.idFromName(provider);
-    const stub = this.env.CREDENTIAL.get(id);
-    const data = await stub.get(subject_id);
-    
-    if (!data) return null;
-
-    return { user_id: data.user_id };
-  }
-
-  async registerCredential(data: any) {
-    const { provider } = data;
-
-    // Store in provider-level CredentialDO
-    const id = this.env.CREDENTIAL.idFromName(provider);
-    const stub = this.env.CREDENTIAL.get(id);
-    await stub.put(data);
-
-    return { success: true };
-  }
-
   async getUserMemberships(userId: string) {
     const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
     return await userStub.getMemberships();
