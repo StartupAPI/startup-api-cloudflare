@@ -173,6 +173,21 @@
       .link-account-btn.google:hover { background: #f8f9fa; }
       .link-account-btn.twitch { background: #9146FF; color: white; border-color: #9146FF; }
       .link-account-btn.twitch:hover { background: #7d2ee6; }
+      .btn-link {
+        display: inline-block;
+        padding: 0.75rem 1rem;
+        background: white;
+        color: #1a73e8;
+        border: 1px solid #1a73e8;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 0.875rem;
+        transition: background 0.2s;
+      }
+      .btn-link:hover {
+        background: #f8f9fa;
+      }
     </style>
   </head>
   <body>
@@ -241,6 +256,14 @@
       </div>
     </section>
 
+    <section id="account-settings-section" style="display: none;">
+      <h2>Account Settings</h2>
+      <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem;">
+        Manage your team members and account configuration.
+      </p>
+      <a href="/users/accounts.html" class="btn-link">Manage Account & Team</a>
+    </section>
+
     <div id="toast"></div>
 
     <script>
@@ -278,6 +301,10 @@
             if (p.provider) {
                 const providerName = p.provider.charAt(0).toUpperCase() + p.provider.slice(1);
                 emailLabel.textContent = `Email (from ${providerName})`;
+            }
+
+            if (data.account && (data.account.role === 1 || data.is_admin)) {
+                document.getElementById('account-settings-section').style.display = 'block';
             }
 
             document.getElementById('save-btn').disabled = true;
