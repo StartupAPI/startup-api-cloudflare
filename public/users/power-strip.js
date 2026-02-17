@@ -135,7 +135,7 @@ class PowerStrip extends HTMLElement {
       if (this.user) {
         const providerIcon = this.getProviderIcon(this.user.credential.provider);
         const currentAccount = this.accounts.find((a) => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
-        const accountName = currentAccount ? (currentAccount.personal ? this.user.profile.name : currentAccount.name) : 'No Account';
+        const accountName = currentAccount ? currentAccount.name : 'No Account';
 
         let switchButton = '';
         let accountContainer = '';
