@@ -9,7 +9,6 @@ body {
 }
 
 .main-layout, .header-area {
-  max-width: 1200px;
   margin-left: auto;
   margin-right: auto;
 }
