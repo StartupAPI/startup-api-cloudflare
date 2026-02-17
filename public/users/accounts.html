@@ -106,10 +106,14 @@
             if (currentUserRole !== 1 && !data.is_admin) {
                 document.getElementById('members-section').style.display = 'none';
                 document.getElementById('account-info-section').style.display = 'none';
+                
+                const section = document.createElement('section');
                 const msg = document.createElement('p');
                 msg.textContent = "You do not have permission to manage this account's information.";
                 msg.style.color = '#666';
-                document.querySelector('.content-area').appendChild(msg);
+                msg.style.margin = '0';
+                section.appendChild(msg);
+                document.querySelector('.content-area').appendChild(section);
             } else {
                 loadMembers();
             }
