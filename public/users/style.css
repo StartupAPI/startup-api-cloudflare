@@ -21,7 +21,7 @@ body {
 }
 
 .sidebar {
-  width: 200px;
+  width: 240px;
   flex-shrink: 0;
 }
 
@@ -34,7 +34,7 @@ body {
 
 .header-area {
   margin-bottom: 2rem;
-  padding-left: calc(200px + 3rem);
+  padding-left: calc(240px + 3rem);
 }
 
 @media (max-width: 768px) {
@@ -68,6 +68,7 @@ body {
   border-radius: 6px;
   transition: all 0.2s;
   font-weight: 500;
+  font-size: 0.9rem;
 }
 
 .nav-link:hover {
