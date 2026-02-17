@@ -25,6 +25,10 @@ body {
   min-width: 0;
 }
 
+.header-area {
+  margin-bottom: 2rem;
+}
+
 .nav-list {
   list-style: none;
   padding: 0;

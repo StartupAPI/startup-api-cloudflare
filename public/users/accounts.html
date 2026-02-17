@@ -12,19 +12,6 @@
     </power-strip>
     <script src="/users/power-strip.js" async></script>
 
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1 class="page-subtitle">Account Settings</h1>
-    <div id="account-name-heading" class="page-title">Account</div>
-    <div id="account-id-subtitle" class="subtitle">
-        <span class="id-text" id="account-id-text"></span>
-        <button id="copy-id-btn" class="copy-btn" title="Copy Account ID">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-        </button>
-    </div>
-
     <div class="main-layout">
       <nav class="sidebar">
         <ul class="nav-list">
@@ -38,6 +25,21 @@
       </nav>
 
       <div class="content-area">
+        <div class="header-area">
+          <a href="/" class="back-link">← Back to Home</a>
+          <h1 class="page-subtitle">Account Settings</h1>
+          <div id="account-name-heading" class="page-title">Account</div>
+          <div id="account-id-subtitle" class="subtitle">
+              <span class="id-text" id="account-id-text"></span>
+              <button id="copy-id-btn" class="copy-btn" title="Copy Account ID">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+              </button>
+          </div>
+        </div>
+
         <section id="account-info-section">
           <h2>General Information</h2>
           <form id="account-info-form">
