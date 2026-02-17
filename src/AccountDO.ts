@@ -52,7 +52,11 @@ export class AccountDO extends DurableObject {
     try {
       this.ctx.storage.transactionSync(() => {
         for (const [key, value] of Object.entries(data)) {
-          this.sql.exec('INSERT OR REPLACE INTO account_info (key, value) VALUES (?, ?)', key, JSON.stringify(value));
+          let valToStore = value;
+          if (key === 'name' && typeof value === 'string') {
+            valToStore = value.substring(0, 50);
+          }
+          this.sql.exec('INSERT OR REPLACE INTO account_info (key, value) VALUES (?, ?)', key, JSON.stringify(valToStore));
         }
       });
       return { success: true };
