@@ -73,27 +73,9 @@ export class UserDO extends DurableObject {
       return { valid: false, error: 'Expired' };
     }
 
-    // Get latest profile data from linked credentials
-    const credentialsMapping = this.sql.exec('SELECT DISTINCT provider FROM user_credentials');
-    const credentials = [];
-    for (const row of credentialsMapping) {
-      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
-      const providerCreds = await stub.list(this.ctx.id.toString());
-      credentials.push(...providerCreds.map((c: any) => ({ provider: row.provider, ...c })));
-    }
-    
     let profile: Record<string, any> = {};
-    let latestCreds: any = null;
 
-    if (credentials.length > 0) {
-      // Get the most recently updated credential
-      latestCreds = credentials.sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))[0];
-      if (latestCreds && latestCreds.profile_data) {
-        profile = { ...latestCreds.profile_data };
-      }
-    }
-
-    // Merge with custom profile data
+    // Get profile data from local 'profile' table
     const customProfileResult = this.sql.exec('SELECT key, value FROM profile');
     for (const row of customProfileResult) {
       try {
@@ -102,12 +84,32 @@ export class UserDO extends DurableObject {
       } catch (e) {}
     }
 
-    // Ensure the ID and provider info are set
-    profile.id = this.ctx.id.toString();
-    if (latestCreds) {
-      profile.provider = latestCreds.provider;
-      profile.subject_id = latestCreds.subject_id;
+    // Determine login context (provider and subject_id)
+    const sessionMeta = session.meta ? JSON.parse(session.meta) : {};
+    const loginProvider = sessionMeta.provider;
+
+    if (loginProvider) {
+      profile.provider = loginProvider;
+      const credResult = this.sql.exec(
+        'SELECT subject_id FROM user_credentials WHERE provider = ?',
+        loginProvider,
+      );
+      const credRow = credResult.next().value as any;
+      if (credRow) {
+        profile.subject_id = credRow.subject_id;
+      }
+    } else {
+      // Fallback: get first available credential if no provider in session
+      const credResult = this.sql.exec('SELECT provider, subject_id FROM user_credentials LIMIT 1');
+      const credRow = credResult.next().value as any;
+      if (credRow) {
+        profile.provider = credRow.provider;
+        profile.subject_id = credRow.subject_id;
+      }
     }
+
+    // Ensure the ID is set
+    profile.id = this.ctx.id.toString();
 
     return { valid: true, profile };
   }
@@ -185,15 +187,22 @@ export class UserDO extends DurableObject {
    * Creates a new login session for the user.
    * Generates a random session ID and sets a 24-hour expiration.
    *
+   * @param meta - Optional metadata to store with the session.
    * @returns A Promise resolving to a JSON response with the session ID and expiration time.
    */
-  async createSession() {
+  async createSession(meta?: Record<string, any>) {
     // Basic session creation
     const sessionId = crypto.randomUUID();
     const now = Date.now();
     const expiresAt = now + 24 * 60 * 60 * 1000; // 24 hours
 
-    this.sql.exec('INSERT INTO sessions (id, created_at, expires_at) VALUES (?, ?, ?)', sessionId, now, expiresAt);
+    this.sql.exec(
+      'INSERT INTO sessions (id, created_at, expires_at, meta) VALUES (?, ?, ?, ?)',
+      sessionId,
+      now,
+      expiresAt,
+      meta ? JSON.stringify(meta) : null,
+    );
 
     return { sessionId, expiresAt };
   }

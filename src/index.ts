@@ -5,6 +5,8 @@ import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
 import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
+import { GoogleProvider } from './auth/GoogleProvider';
+import { TwitchProvider } from './auth/TwitchProvider';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -318,6 +320,9 @@ async function handleMe(
     data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
     data.is_impersonated = !!cookies['backup_session_id'];
 
+    const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+    data.profile.provider_icon = usersPath + 'me/provider-icon';
+
     // Fetch memberships to find current account
     const memberships = await userStub.getMemberships();
     const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
@@ -459,11 +464,34 @@ async function handleMeImage(
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const [, doId] = sessionCookie.split(':');
+  const [sessionId, doId] = sessionCookie.split(':');
 
   try {
     const id = env.USER.idFromString(doId);
     const stub = env.USER.get(id);
+
+    if (type === 'provider-icon') {
+      const data = await stub.validateSession(sessionId);
+      if (!data.valid || !data.profile.provider) {
+        return new Response('Not Found', { status: 404 });
+      }
+
+      const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+      const url = new URL(request.url);
+      const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
+      const redirectBase = origin + usersPath + 'auth';
+
+      const provider = [
+        GoogleProvider.create(env, redirectBase),
+        TwitchProvider.create(env, redirectBase)
+      ].find(p => p?.name === data.profile.provider);
+
+      const icon = provider?.getIcon();
+      if (!icon) return new Response('Not Found', { status: 404 });
+
+      return new Response(icon, { headers: { 'Content-Type': 'image/svg+xml' } });
+    }
+
     const image = await stub.getImage(type);
     if (!image) return new Response('Not Found', { status: 404 });
     return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });

@@ -94,15 +94,6 @@ export async function handleAuth(
           }
         }
 
-        // Store Provider Icon
-        const providerSvg = provider.getIcon();
-
-        if (providerSvg) {
-          const encoder = new TextEncoder();
-          await userStub.storeImage('provider-icon', encoder.encode(providerSvg), 'image/svg+xml');
-          (profile as any).provider_icon = usersPath + 'me/provider-icon';
-        }
-
         // Register credential in provider-specific CredentialDO
         await credentialStub.put({
           user_id: userIdStr,
@@ -120,6 +111,7 @@ export async function handleAuth(
 
         // Register User in SystemDO index (Only for new users)
         if (isNewUser) {
+          await userStub.updateProfile(profile);
           await systemStub.registerUser({
             id: userIdStr,
             name: profile.name || userIdStr,
@@ -159,7 +151,7 @@ export async function handleAuth(
         }
 
         // Create Session
-        const session = await userStub.createSession();
+        const session = await userStub.createSession({ provider: provider.name });
 
         // Set cookie and redirect
         const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${userIdStr}`);

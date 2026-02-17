@@ -16,6 +16,7 @@ describe('Admin Administration', () => {
 
     // Add profile data (not admin email)
     await userStub.addCredential('test', '123');
+    await userStub.updateProfile({ email: 'normal@example.com' });
     const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
     await credentialStub.put({
       provider: 'test',
@@ -45,6 +46,7 @@ describe('Admin Administration', () => {
 
     // Add profile data
     await userStub.addCredential('test', 'admin123');
+    await userStub.updateProfile({ email: 'admin@example.com' });
     const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
     await credentialStub.put({
       provider: 'test',
@@ -76,6 +78,7 @@ describe('Admin Administration', () => {
 
     // Add profile data
     await userStub.addCredential('test', 'admin123');
+    await userStub.updateProfile({ email: 'admin@example.com' });
     const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
     await credentialStub.put({
       provider: 'test',
