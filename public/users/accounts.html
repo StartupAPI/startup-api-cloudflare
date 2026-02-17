@@ -209,7 +209,7 @@
             if (currentUserRole !== 1 && !data.is_admin) {
                 document.getElementById('members-section').style.display = 'none';
                 const msg = document.createElement('p');
-                msg.textContent = 'You do not have permission to manage this account's membership.';
+                msg.textContent = "You do not have permission to manage this account's membership.";
                 msg.style.color = '#666';
                 document.getElementById('account-info-section').appendChild(msg);
             } else {
