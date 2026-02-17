@@ -25,27 +25,42 @@
         </button>
     </div>
 
-    <section id="account-info-section">
-      <h2>General Information</h2>
-      <form id="account-info-form">
-        <div class="form-group">
-          <label for="account-name">Account Name</label>
-          <input type="text" id="account-name" name="name" maxlength="50" required />
-        </div>
-        <div class="form-group">
-          <label>Plan</label>
-          <input type="text" id="account-plan-display" disabled />
-        </div>
-        <button type="submit" id="save-account-btn" disabled>Save Changes</button>
-      </form>
-    </section>
+    <div class="main-layout">
+      <nav class="sidebar">
+        <ul class="nav-list">
+          <li class="nav-item">
+            <a href="/users/profile.html" class="nav-link">Profile</a>
+          </li>
+          <li class="nav-item" id="nav-account-item">
+            <a href="/users/accounts.html" class="nav-link active">Account Settings</a>
+          </li>
+        </ul>
+      </nav>
 
-    <section id="members-section">
-      <h2>Team Members</h2>
-      <div id="members-list">
-        <p>Loading members...</p>
+      <div class="content-area">
+        <section id="account-info-section">
+          <h2>General Information</h2>
+          <form id="account-info-form">
+            <div class="form-group">
+              <label for="account-name">Account Name</label>
+              <input type="text" id="account-name" name="name" maxlength="50" required />
+            </div>
+            <div class="form-group">
+              <label>Plan</label>
+              <input type="text" id="account-plan-display" disabled />
+            </div>
+            <button type="submit" id="save-account-btn" disabled>Save Changes</button>
+          </form>
+        </section>
+
+        <section id="members-section">
+          <h2>Team Members</h2>
+          <div id="members-list">
+            <p>Loading members...</p>
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
 
     <div id="toast"></div>
 

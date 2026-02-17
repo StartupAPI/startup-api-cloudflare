@@ -4,9 +4,55 @@ body {
     -apple-system,
     sans-serif;
   padding: 2rem;
-  max-width: 800px;
+  max-width: 1000px;
   margin: 0 auto;
   background: #f9f9f9;
+}
+
+.main-layout {
+  display: flex;
+  gap: 3rem;
+  margin-top: 2rem;
+}
+
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.content-area {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.nav-item {
+  margin-bottom: 0.5rem;
+}
+
+.nav-link {
+  display: block;
+  padding: 0.75rem 1rem;
+  color: #555;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  background: #f0f0f0;
+  color: #1a73e8;
+}
+
+.nav-link.active {
+  background: #e8f0fe;
+  color: #1a73e8;
 }
 
 h1.page-subtitle {
