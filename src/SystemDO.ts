@@ -1,14 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
 import { StartupAPIEnv } from './StartupAPIEnv';
 
-export class SystemDO implements DurableObject {
-  state: DurableObjectState;
-  env: StartupAPIEnv;
+export class SystemDO extends DurableObject {
   sql: SqlStorage;
 
   constructor(state: DurableObjectState, env: StartupAPIEnv) {
-    this.state = state;
-    this.env = env;
+    super(state, env);
     this.sql = state.storage.sql;
 
     this.sql.exec(`
@@ -31,66 +28,7 @@ export class SystemDO implements DurableObject {
     `);
   }
 
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
-
-    if (path === '/users') {
-      if (method === 'GET') return this.listUsers(url.searchParams);
-      if (method === 'POST') return this.registerUser(request);
-    } else if (path.startsWith('/users/')) {
-      const parts = path.split('/');
-      const userId = parts[2];
-      const subPath = parts[3];
-
-      if (userId) {
-        if (subPath === 'memberships') {
-          const stub = this.env.USER.get(this.env.USER.idFromString(userId));
-          return stub.fetch(new Request('http://do/memberships', request));
-        }
-
-        if (method === 'GET') return this.getUser(userId);
-        if (method === 'PUT') return this.updateUser(request, userId);
-        if (method === 'DELETE') return this.deleteUser(userId);
-      }
-    } else if (path === '/accounts') {
-      if (method === 'GET') return this.listAccounts(url.searchParams);
-      if (method === 'POST') return this.registerAccount(request);
-    } else if (path.startsWith('/accounts/')) {
-      const parts = path.split('/');
-      const accountId = parts[2];
-      const subPath = parts[3];
-
-      if (accountId) {
-        if (subPath === 'members') {
-          const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
-          if (parts[4]) {
-            // /accounts/:id/members/:userId
-            return stub.fetch(new Request('http://do/members/' + parts[4], request));
-          }
-          return stub.fetch(new Request('http://do/members', request));
-        }
-
-        if (method === 'GET') return this.getAccount(accountId);
-        if (method === 'PUT') return this.updateAccount(request, accountId);
-        if (method === 'DELETE') return this.deleteAccount(accountId);
-        if (path.endsWith('/increment-members')) {
-          await this.incrementMemberCount(accountId);
-          return Response.json({ success: true });
-        }
-        if (path.endsWith('/decrement-members')) {
-          await this.decrementMemberCount(accountId);
-          return Response.json({ success: true });
-        }
-      }
-    }
-
-    return new Response('Not Found', { status: 404 });
-  }
-
-  async listUsers(params: URLSearchParams): Promise<Response> {
-    const query = params.get('q');
+  async listUsers(query?: string) {
     let sql = 'SELECT * FROM users';
     const args: any[] = [];
 
@@ -107,36 +45,32 @@ export class SystemDO implements DurableObject {
       const isAdmin =
         adminIds.includes(u.id) ||
         (u.email && adminIds.includes(u.email)) ||
-        (u.provider && u.id && adminIds.includes(`${u.provider}:${u.id}`)); // This might be wrong if u.id is DO ID now.
+        (u.provider && u.id && adminIds.includes(`${u.provider}:${u.id}`));
 
       return {
         ...u,
         is_admin: isAdmin,
       };
     });
-    return Response.json(users);
+    return users;
   }
 
-  async getUser(userId: string): Promise<Response> {
+  async getUserMemberships(userId: string) {
+    const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
+    return await userStub.getMemberships();
+  }
+
+  async getUser(userId: string) {
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
-      const profileRes = await userStub.fetch('http://do/profile');
-      if (!profileRes.ok) return profileRes;
-
-      const profile = await profileRes.json();
-      return Response.json(profile);
+      const profile = await userStub.getProfile();
+      return profile;
     } catch (e: any) {
-      return new Response(e.message, { status: 500 });
+      throw new Error(e.message);
     }
   }
 
-  async registerUser(request: Request): Promise<Response> {
-    const data = (await request.json()) as {
-      id: string;
-      name: string;
-      email?: string;
-      provider?: string;
-    };
+  async registerUser(data: { id: string; name: string; email?: string; provider?: string }) {
     const now = Date.now();
 
     this.sql.exec(
@@ -148,37 +82,34 @@ export class SystemDO implements DurableObject {
       now,
     );
 
-    return Response.json({ success: true });
+    return { success: true };
   }
 
-  async deleteUser(userId: string): Promise<Response> {
+  async deleteUser(userId: string) {
     // Delete from index
     this.sql.exec('DELETE FROM users WHERE id = ?', userId);
 
     // Call UserDO to delete its data
     try {
       const stub = this.env.USER.get(this.env.USER.idFromString(userId));
-      await stub.fetch('http://do/delete', { method: 'POST' });
+      await stub.delete();
     } catch (e) {
       console.error('Failed to clear UserDO data', e);
     }
 
-    return Response.json({ success: true });
+    return { success: true };
   }
 
-  async updateUser(request: Request, userId: string): Promise<Response> {
-    const data = (await request.json()) as any;
-
+  async updateUser(userId: string, data: any) {
     // Update UserDO
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
-      await userStub.fetch('http://do/profile', { method: 'POST', body: JSON.stringify(data) });
+      await userStub.updateProfile(data);
     } catch (e) {
       console.error('Failed to update UserDO', e);
     }
 
     // Update Index
-    // Only update fields if present in data
     if (data.name || data.email) {
       const updates: string[] = [];
       const args: any[] = [];
@@ -197,11 +128,10 @@ export class SystemDO implements DurableObject {
       }
     }
 
-    return Response.json({ success: true });
+    return { success: true };
   }
 
-  async listAccounts(params: URLSearchParams): Promise<Response> {
-    const query = params.get('q');
+  async listAccounts(query?: string) {
     let sql = 'SELECT * FROM accounts';
     const args: any[] = [];
 
@@ -213,33 +143,22 @@ export class SystemDO implements DurableObject {
     sql += ' ORDER BY created_at DESC LIMIT 50';
 
     const result = this.sql.exec(sql, ...args);
-    const accounts = Array.from(result);
-    return Response.json(accounts);
+    return Array.from(result);
   }
 
-  async getAccount(accountId: string): Promise<Response> {
+  async getAccount(accountId: string) {
     try {
       const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
-      const [infoRes, billingRes] = await Promise.all([stub.fetch('http://do/info'), stub.fetch('http://do/billing')]);
+      const info = await stub.getInfo();
+      const billing = await stub.getBillingInfo();
 
-      const info = infoRes.ok ? await infoRes.json() : {};
-      const billing = billingRes.ok ? await billingRes.json() : {};
-
-      return Response.json({ ...info, billing });
+      return { ...info, billing };
     } catch (e: any) {
-      return new Response(e.message, { status: 500 });
+      throw new Error(e.message);
     }
   }
 
-  async registerAccount(request: Request): Promise<Response> {
-    const data = (await request.json()) as {
-      id?: string;
-      name: string;
-      status?: string;
-      plan?: string;
-      ownerId?: string;
-    };
-
+  async registerAccount(data: { id?: string; name: string; status?: string; plan?: string; ownerId?: string }) {
     let accountIdStr = data.id;
     if (!accountIdStr) {
       const id = this.env.ACCOUNT.newUniqueId();
@@ -247,22 +166,13 @@ export class SystemDO implements DurableObject {
 
       // Initialize AccountDO
       const stub = this.env.ACCOUNT.get(id);
-      await stub.fetch('http://do/info', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: data.name,
-        }),
+      await stub.updateInfo({
+        name: data.name,
       });
 
       // If owner provided, add them as ADMIN
       if (data.ownerId) {
-        await stub.fetch('http://do/members', {
-          method: 'POST',
-          body: JSON.stringify({
-            user_id: data.ownerId,
-            role: 1, // ADMIN
-          }),
-        });
+        await stub.addMember(data.ownerId, 1);
       }
     }
 
@@ -278,22 +188,22 @@ export class SystemDO implements DurableObject {
       now,
     );
 
-    return Response.json({ success: true, id: accountIdStr });
+    return { success: true, id: accountIdStr };
   }
 
-  async deleteAccount(accountId: string): Promise<Response> {
+  async deleteAccount(accountId: string) {
     // Delete from index
     this.sql.exec('DELETE FROM accounts WHERE id = ?', accountId);
 
     // Call AccountDO to delete its data
     try {
       const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
-      await stub.fetch('http://do/delete', { method: 'POST' });
+      await stub.delete();
     } catch (e) {
       console.error('Failed to clear AccountDO data', e);
     }
 
-    return Response.json({ success: true });
+    return { success: true };
   }
 
   async incrementMemberCount(accountId: string) {
@@ -304,13 +214,11 @@ export class SystemDO implements DurableObject {
     this.sql.exec('UPDATE accounts SET member_count = member_count - 1 WHERE id = ?', accountId);
   }
 
-  async updateAccount(request: Request, accountId: string): Promise<Response> {
-    const data = (await request.json()) as any;
-
+  async updateAccount(accountId: string, data: any) {
     // Update AccountDO
     try {
       const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
-      await stub.fetch('http://do/info', { method: 'POST', body: JSON.stringify(data) });
+      await stub.updateInfo(data);
     } catch (e) {
       console.error('Failed to update AccountDO', e);
     }
@@ -338,6 +246,6 @@ export class SystemDO implements DurableObject {
       this.sql.exec(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`, ...args);
     }
 
-    return Response.json({ success: true });
+    return { success: true };
   }
 }

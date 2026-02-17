@@ -13,6 +13,7 @@
       { "name": "USER", "class_name": "UserDO" },
       { "name": "ACCOUNT", "class_name": "AccountDO" },
       { "name": "SYSTEM", "class_name": "SystemDO" },
+      { "name": "CREDENTIAL", "class_name": "CredentialDO" },
     ],
   },
   "migrations": [
@@ -28,10 +29,15 @@
       "tag": "v3",
       "new_sqlite_classes": ["SystemDO"],
     },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["CredentialDO"],
+    },
   ],
   "vars": {
+    "ENVIRONMENT": "test",
     "SESSION_SECRET": "dev-secret",
     "ORIGIN_URL": "http://example.com",
-    "ADMIN_IDS": "35dc566be4615393c7a738bf294b1f2372bcdfc6ec567c455cc5a5b50f059a51",
+    "ADMIN_IDS": "admin",
   },
 }

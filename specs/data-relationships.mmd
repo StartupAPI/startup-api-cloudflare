@@ -1,0 +1,49 @@
+erDiagram
+    SystemDO ||--o{ UserDO : indexes
+    SystemDO ||--o{ AccountDO : indexes
+    SystemDO ||--o{ CredentialDO : indexes
+    
+    UserDO ||--o{ Session : owns
+    UserDO ||--o{ Image : "has profile/provider icons"
+    UserDO }|--o{ AccountDO : "belongs to (Memberships)"
+    UserDO ||--o{ user_credentials : "keeps list of links"
+
+    AccountDO ||--o{ Member : "contains (Users)"
+    AccountDO ||--o{ BillingState : "has one"
+
+    UserDO {
+        string id PK
+        table profile "key-value"
+        table sessions "active logins"
+        table memberships "account links"
+        table user_credentials "provider + subject_id mapping"
+    }
+
+    AccountDO {
+        string id PK
+        table account_info "metadata"
+        table members "user links"
+        table billing "plan & status"
+    }
+
+    SystemDO {
+        table users "search index"
+        table accounts "search index"
+    }
+
+    CredentialDO {
+        string id PK "provider"
+        table credentials "subject_id -> user_id mapping"
+    }
+
+    Member {
+        string user_id FK
+        int role
+        int joined_at
+    }
+
+    Credential {
+        string provider PK
+        string subject_id
+        string profile_data
+    }

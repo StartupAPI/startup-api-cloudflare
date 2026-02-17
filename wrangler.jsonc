@@ -30,6 +30,10 @@
         "name": "SYSTEM",
         "class_name": "SystemDO",
       },
+      {
+        "name": "CREDENTIAL",
+        "class_name": "CredentialDO",
+      },
     ],
   },
   "migrations": [
@@ -44,6 +48,10 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["SystemDO"],
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["CredentialDO"],
     },
   ],
   "env": {
@@ -67,6 +75,10 @@
           {
             "name": "SYSTEM",
             "class_name": "SystemDO",
+          },
+          {
+            "name": "CREDENTIAL",
+            "class_name": "CredentialDO",
           },
         ],
       },

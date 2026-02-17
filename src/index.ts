@@ -3,24 +3,18 @@ import { injectPowerStrip } from './PowerStrip';
 import { UserDO } from './UserDO';
 import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
+import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
 
 const DEFAULT_USERS_PATH = '/users/';
 
-export { UserDO, AccountDO, SystemDO };
+export { UserDO, AccountDO, SystemDO, CredentialDO };
 
 import type { StartupAPIEnv } from './StartupAPIEnv';
 
 export default {
   /**
    * Main Worker fetch handler.
-   * Intercepts requests, serves static assets from `public/users` if applicable,
-   * proxies requests to an origin URL, and injects a custom script into HTML responses.
-   *
-   * @param request - The incoming HTTP request.
-   * @param env - The environment variables and bindings.
-   * @param ctx - The execution context.
-   * @returns A Promise resolving to the HTTP response.
    */
   async fetch(request: Request, env: StartupAPIEnv, ctx): Promise<Response> {
     // Prevent infinite loops when serving assets
@@ -46,16 +40,24 @@ export default {
       return handleMeImage(request, env, 'avatar', cookieManager);
     }
 
-    if (url.pathname === usersPath + 'me/provider-icon') {
-      return handleMeImage(request, env, 'provider-icon', cookieManager);
-    }
-
     // Handle API Routes
     if (url.pathname.startsWith(usersPath + 'api/')) {
       const apiPath = url.pathname.replace(usersPath + 'api/', '/');
 
       if (apiPath === '/me') {
         return handleMe(request, env, cookieManager);
+      }
+
+      if (apiPath === '/me/profile' && request.method === 'POST') {
+        return handleUpdateProfile(request, env, cookieManager);
+      }
+
+      if (apiPath === '/me/credentials') {
+        if (request.method === 'GET') {
+          return handleListCredentials(request, env, cookieManager);
+        } else if (request.method === 'DELETE') {
+          return handleDeleteCredential(request, env, cookieManager);
+        }
       }
 
       if (apiPath === '/stop-impersonation' && request.method === 'POST') {
@@ -99,7 +101,6 @@ export default {
     }
 
     // Intercept requests to usersPath and serve them from the public/users directory.
-    // This allows us to serve our own scripts and assets.
     if (url.pathname.startsWith(usersPath)) {
       url.pathname = url.pathname.replace(usersPath, '/users/');
       const newRequest = new Request(url.toString(), request);
@@ -159,10 +160,45 @@ async function handleAdmin(
 
   if (path.startsWith('/api/')) {
     const apiPath = path.replace('/api/', '');
-    if (apiPath.startsWith('users')) {
-      return systemStub.fetch(new Request('http://do/' + apiPath + url.search, request));
-    } else if (apiPath.startsWith('accounts')) {
-      return systemStub.fetch(new Request('http://do/' + apiPath + url.search, request));
+    const parts = apiPath.split('/');
+
+    if (parts[0] === 'users') {
+        if (parts.length === 1 && request.method === 'GET') {
+            return Response.json(await systemStub.listUsers(url.searchParams.get('q') || undefined));
+        }
+        if (parts.length === 2) {
+            const userId = parts[1];
+            if (request.method === 'GET') return Response.json(await systemStub.getUser(userId));
+            if (request.method === 'DELETE') return Response.json(await systemStub.deleteUser(userId));
+        }
+        if (parts.length === 3 && parts[2] === 'memberships' && request.method === 'GET') {
+            const userId = parts[1];
+            return Response.json(await systemStub.getUserMemberships(userId));
+        }
+    } else if (parts[0] === 'accounts') {
+        if (parts.length === 1) {
+            if (request.method === 'GET') return Response.json(await systemStub.listAccounts(url.searchParams.get('q') || undefined));
+            if (request.method === 'POST') return Response.json(await systemStub.registerAccount(await request.json()));
+        }
+        if (parts.length === 2) {
+            const accountId = parts[1];
+            if (request.method === 'GET') return Response.json(await systemStub.getAccount(accountId));
+            if (request.method === 'PUT') return Response.json(await systemStub.updateAccount(accountId, await request.json()));
+            if (request.method === 'DELETE') return Response.json(await systemStub.deleteAccount(accountId));
+        }
+        if (parts.length >= 3 && parts[2] === 'members') {
+            const accountId = parts[1];
+            const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+            if (parts.length === 3) {
+                if (request.method === 'GET') return Response.json(await accountStub.getMembers());
+                if (request.method === 'POST') {
+                    const data = await request.json() as any;
+                    return Response.json(await accountStub.addMember(data.user_id, data.role));
+                }
+            } else if (parts.length === 4 && request.method === 'DELETE') {
+                return Response.json(await accountStub.removeMember(parts[3]));
+            }
+        }
     } else if (apiPath === 'impersonate' && request.method === 'POST') {
       const { userId } = (await request.json()) as { userId: string };
 
@@ -177,8 +213,7 @@ async function handleAdmin(
 
       // Create a session for the target user
       const targetUserStub = env.USER.get(env.USER.idFromString(userId));
-      const sessionRes = await targetUserStub.fetch('http://do/sessions', { method: 'POST' });
-      const { sessionId } = (await sessionRes.json()) as any;
+      const { sessionId } = await targetUserStub.createSession();
 
       const doId = userId;
       const sessionValue = `${sessionId}:${doId}`;
@@ -222,18 +257,13 @@ async function getUserFromSession(
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const validateRes = await userStub.fetch('http://do/validate-session', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId }),
-    });
+    const data = await userStub.validateSession(sessionId);
 
-    if (!validateRes.ok) return null;
-
-    const data = (await validateRes.json()) as any;
     if (data.valid) {
       return {
         id: doId,
-        ...data.profile,
+        profile: data.profile,
+        credential: data.credential,
       };
     }
   } catch (e) {
@@ -245,11 +275,21 @@ async function getUserFromSession(
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
   if (!env.ADMIN_IDS) return false;
   const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim()).filter(Boolean);
+  const profile = user.profile || {};
+  const credential = user.credential || {};
+
   return (
     adminIds.includes(user.id) ||
-    (user.email && adminIds.includes(user.email)) ||
-    (user.subject_id && adminIds.includes(user.subject_id)) ||
-    (user.provider && user.subject_id && adminIds.includes(`${user.provider}:${user.subject_id}`))
+    (env.ENVIRONMENT === 'test' && adminIds.some(id => {
+        try {
+            return user.id === env.USER.idFromName(id).toString();
+        } catch(e) {
+            return false;
+        }
+    })) ||
+    (profile.email && adminIds.includes(profile.email)) ||
+    (credential.subject_id && adminIds.includes(credential.subject_id)) ||
+    (credential.provider && credential.subject_id && adminIds.includes(`${credential.provider}:${credential.subject_id}`))
   );
 }
 
@@ -278,36 +318,130 @@ async function handleMe(
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const validateRes = await userStub.fetch('http://do/validate-session', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId }),
-    });
+    const data = await userStub.validateSession(sessionId);
 
-    if (!validateRes.ok) return validateRes;
+    if (!data.valid) return Response.json(data, { status: 401 });
 
-    const data = (await validateRes.json()) as any;
     data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
     data.is_impersonated = !!cookies['backup_session_id'];
 
     // Fetch memberships to find current account
-    const membershipsRes = await userStub.fetch('http://do/memberships');
-    const memberships = (await membershipsRes.json()) as any[];
-    const currentMembership = memberships.find((m) => m.is_current) || memberships[0];
+    const memberships = await userStub.getMemberships();
+    const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
 
     if (currentMembership) {
       const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
       const accountStub = env.ACCOUNT.get(accountId);
-      const accountInfoRes = await accountStub.fetch('http://do/info');
-      if (accountInfoRes.ok) {
-        data.account = await accountInfoRes.json();
-        data.account.id = currentMembership.account_id;
-        data.account.role = currentMembership.role;
-      }
+      const accountInfo = await accountStub.getInfo();
+      data.account = {
+          ...accountInfo,
+          id: currentMembership.account_id,
+          role: currentMembership.role
+      };
     }
 
     return Response.json(data);
   } catch (e) {
     return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleUpdateProfile(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookieEncrypted = cookies['session_id'];
+
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const data = await userStub.validateSession(sessionId);
+
+    if (!data.valid) return Response.json(data, { status: 401 });
+
+    const profileData = await request.json() as any;
+    return Response.json(await userStub.updateProfile(profileData));
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleListCredentials(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookieEncrypted = cookies['session_id'];
+
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    return Response.json(await userStub.listCredentials());
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+}
+
+async function handleDeleteCredential(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookieEncrypted = cookies['session_id'];
+
+  if (!sessionCookieEncrypted) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const [, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const { provider } = await request.json() as any;
+    return Response.json(await userStub.deleteCredential(provider));
+  } catch (e: any) {
+    return new Response(e.message, { status: 400 });
   }
 }
 
@@ -332,12 +466,30 @@ async function handleMeImage(
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const [, doId] = sessionCookie.split(':');
+  const [sessionId, doId] = sessionCookie.split(':');
 
   try {
     const id = env.USER.idFromString(doId);
     const stub = env.USER.get(id);
-    return await stub.fetch(`http://do/images/${type}`);
+
+    if (request.method === 'PUT') {
+      const contentType = request.headers.get('Content-Type');
+      if (!contentType || !contentType.startsWith('image/')) {
+        return new Response('Invalid image type', { status: 400 });
+      }
+
+      const blob = await request.arrayBuffer();
+      if (blob.byteLength > 1024 * 1024) {
+        return new Response('Image too large (max 1MB)', { status: 400 });
+      }
+
+      await stub.storeImage(type, blob, contentType);
+      return Response.json({ success: true });
+    }
+
+    const image = await stub.getImage(type);
+    if (!image) return new Response('Not Found', { status: 404 });
+    return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
   } catch (e) {
     return new Response('Error fetching image', { status: 500 });
   }
@@ -361,10 +513,7 @@ async function handleLogout(
         try {
           const id = env.USER.idFromString(doId);
           const stub = env.USER.get(id);
-          await stub.fetch('http://do/sessions', {
-            method: 'DELETE',
-            body: JSON.stringify({ sessionId }),
-          });
+          await stub.deleteSession(sessionId);
         } catch (e) {
           console.error('Error deleting session:', e);
           // Continue to clear cookie even if DO call fails
@@ -415,26 +564,18 @@ async function handleMyAccounts(
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const validateRes = await userStub.fetch('http://do/validate-session', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId }),
-    });
+    const data = await userStub.validateSession(sessionId);
 
-    if (!validateRes.ok) return validateRes;
+    if (!data.valid) return Response.json(data, { status: 401 });
 
     // Fetch memberships
-    const membershipsRes = await userStub.fetch('http://do/memberships');
-    const memberships = (await membershipsRes.json()) as any[];
+    const memberships = await userStub.getMemberships();
 
     const accounts = await Promise.all(
-      memberships.map(async (m) => {
+      memberships.map(async (m: any) => {
         const accountId = env.ACCOUNT.idFromString(m.account_id);
         const accountStub = env.ACCOUNT.get(accountId);
-        const infoRes = await accountStub.fetch('http://do/info');
-        let info = {};
-        if (infoRes.ok) {
-          info = await infoRes.json();
-        }
+        const info = await accountStub.getInfo();
         return {
           ...info,
           ...m,
@@ -478,24 +619,12 @@ async function handleSwitchAccount(
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const validateRes = await userStub.fetch('http://do/validate-session', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId }),
-    });
+    const data = await userStub.validateSession(sessionId);
 
-    if (!validateRes.ok) return validateRes;
+    if (!data.valid) return Response.json(data, { status: 401 });
 
-    const switchRes = await userStub.fetch('http://do/switch-account', {
-      method: 'POST',
-      body: JSON.stringify({ account_id }),
-    });
-
-    if (!switchRes.ok) {
-      return switchRes;
-    }
-
-    return Response.json({ success: true });
-  } catch (e) {
-    return new Response('Unauthorized', { status: 401 });
+    return Response.json(await userStub.switchAccount(account_id));
+  } catch (e: any) {
+    return new Response(e.message, { status: 400 });
   }
 }

@@ -42,21 +42,50 @@ export async function handleAuth(
         const token = await provider.getToken(code);
         const profile = await provider.getUserProfile(token.access_token);
 
-        // Store in UserDO
-        const id = env.USER.idFromName(provider.name + ':' + profile.id);
-        const stub = env.USER.get(id);
+        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
 
-        // Fetch and Store Avatar
-        if (profile.picture) {
+        // 1. Try to resolve existing user by credential
+        const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName(provider.name));
+        const resolveData = await credentialStub.get(profile.id);
+
+        let userIdStr: string | null = null;
+
+        if (resolveData) {
+          userIdStr = resolveData.user_id;
+        } else {
+          // 2. Not found, check if user is already logged in (to link account)
+          const cookieHeader = request.headers.get('Cookie');
+          if (cookieHeader) {
+            const cookies = cookieHeader.split(';').reduce(
+              (acc, cookie) => {
+                const [key, value] = cookie.split('=').map((c) => c.trim());
+                if (key && value) acc[key] = value;
+                return acc;
+              },
+              {} as Record<string, string>,
+            );
+            const sessionCookieEncrypted = cookies['session_id'];
+            if (sessionCookieEncrypted) {
+              const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+              if (sessionCookie && sessionCookie.includes(':')) {
+                userIdStr = sessionCookie.split(':')[1];
+              }
+            }
+          }
+        }
+
+        const isNewUser = !userIdStr;
+        const id = userIdStr ? env.USER.idFromString(userIdStr) : env.USER.newUniqueId();
+        const userStub = env.USER.get(id);
+        userIdStr = id.toString();
+
+        // Fetch and Store Avatar (Only for new users)
+        if (isNewUser && profile.picture) {
           try {
             const picRes = await fetch(profile.picture);
             if (picRes.ok) {
               const picBlob = await picRes.arrayBuffer();
-              await stub.fetch('http://do/images/avatar', {
-                method: 'PUT',
-                headers: { 'Content-Type': picRes.headers.get('Content-Type') || 'image/jpeg' },
-                body: picBlob,
-              });
+              await userStub.storeImage('avatar', picBlob, picRes.headers.get('Content-Type') || 'image/jpeg');
               // Update profile.picture to point to our worker
               profile.picture = usersPath + 'me/avatar';
             }
@@ -65,47 +94,34 @@ export async function handleAuth(
           }
         }
 
-        // Store Provider Icon
-        const providerSvg = provider.getIcon();
-
-        if (providerSvg) {
-          await stub.fetch('http://do/images/provider-icon', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'image/svg+xml' },
-            body: providerSvg,
-          });
-          (profile as any).provider_icon = usersPath + 'me/provider-icon';
-        }
-
-        await stub.fetch('http://do/credentials', {
-          method: 'POST',
-          body: JSON.stringify({
-            provider: provider.name,
-            subject_id: profile.id,
-            access_token: token.access_token,
-            refresh_token: token.refresh_token,
-            expires_at: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
-            scope: token.scope,
-            profile_data: profile,
-          }),
+        // Register credential in provider-specific CredentialDO
+        await credentialStub.put({
+          user_id: userIdStr,
+          provider: provider.name,
+          subject_id: profile.id,
+          access_token: token.access_token,
+          refresh_token: token.refresh_token,
+          expires_at: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
+          scope: token.scope,
+          profile_data: profile,
         });
 
-        // Register User in SystemDO
-        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-        const userIdStr = id.toString();
-        await systemStub.fetch('http://do/users', {
-          method: 'POST',
-          body: JSON.stringify({
+        // Register credential mapping in UserDO
+        await userStub.addCredential(provider.name, profile.id);
+
+        // Register User in SystemDO index (Only for new users)
+        if (isNewUser) {
+          await userStub.updateProfile(profile);
+          await systemStub.registerUser({
             id: userIdStr,
             name: profile.name || userIdStr,
             email: profile.email,
             provider: provider.name,
-          }),
-        });
+          });
+        }
 
         // Ensure user has at least one account
-        const membershipsRes = await stub.fetch('http://do/memberships');
-        const memberships = (await membershipsRes.json()) as any[];
+        const memberships = await userStub.getMemberships();
 
         if (memberships.length === 0) {
           // Create a personal account
@@ -114,55 +130,34 @@ export async function handleAuth(
           const accountIdStr = accountId.toString();
 
           // Initialize account info
-          await accountStub.fetch('http://do/info', {
-            method: 'POST',
-            body: JSON.stringify({
-              name: `${profile.name || userIdStr}'s Account`,
-              personal: true,
-            }),
+          await accountStub.updateInfo({
+            name: `${profile.name || userIdStr}'s Account`,
+            personal: true,
           });
 
           // Register Account in SystemDO
-          await systemStub.fetch('http://do/accounts', {
-            method: 'POST',
-            body: JSON.stringify({
-              id: accountIdStr,
-              name: `${profile.name || profile.id}'s Account`,
-              status: 'active',
-              plan: 'free',
-            }),
+          await systemStub.registerAccount({
+            id: accountIdStr,
+            name: `${profile.name || profile.id}'s Account`,
+            status: 'active',
+            plan: 'free',
           });
 
           // Add user as ADMIN to the account
-          await accountStub.fetch('http://do/members', {
-            method: 'POST',
-            body: JSON.stringify({
-              user_id: id.toString(),
-              role: 1, // ADMIN
-            }),
-          });
+          await accountStub.addMember(id.toString(), 1);
 
           // Add membership to user
-          await stub.fetch('http://do/memberships', {
-            method: 'POST',
-            body: JSON.stringify({
-              account_id: accountIdStr,
-              role: 1, // ADMIN
-              is_current: true,
-            }),
-          });
+          await userStub.addMembership(accountIdStr, 1, true);
         }
 
         // Create Session
-        const sessionRes = await stub.fetch('http://do/sessions', { method: 'POST' });
-        const session = (await sessionRes.json()) as any;
+        const session = await userStub.createSession({ provider: provider.name });
 
-        // Set cookie and redirect home
-        const doId = id.toString();
-        const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${doId}`);
+        // Set cookie and redirect
+        const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${userIdStr}`);
         const headers = new Headers();
         headers.set('Set-Cookie', `session_id=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-        headers.set('Location', '/');
+        headers.set('Location', !isNewUser ? usersPath + 'profile.html' : '/');
 
         return new Response(null, { status: 302, headers });
       } catch (e: any) {

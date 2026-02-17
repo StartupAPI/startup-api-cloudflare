@@ -12,17 +12,17 @@ describe('Admin Administration', () => {
     const userIdStr = userId.toString();
 
     // Create session
-    const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await userStub.createSession();
 
     // Add profile data (not admin email)
-    await userStub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({
-        provider: 'test',
-        subject_id: '123',
-        profile_data: { email: 'normal@example.com' },
-      }),
+    await userStub.addCredential('test', '123');
+    await userStub.updateProfile({ email: 'normal@example.com' });
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
+    await credentialStub.put({
+      provider: 'test',
+      subject_id: '123',
+      user_id: userIdStr,
+      profile_data: { email: 'normal@example.com' },
     });
 
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
@@ -36,23 +36,23 @@ describe('Admin Administration', () => {
   });
 
   it('should allow access to admin users', async () => {
-    // 1. Get an admin user ID from environment
+    // 1. Get an admin user ID
     const userId = env.USER.idFromName('admin');
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
 
     // Create session
-    const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await userStub.createSession();
 
     // Add profile data
-    await userStub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({
-        provider: 'test',
-        subject_id: 'admin123',
-        profile_data: { email: 'admin@example.com' },
-      }),
+    await userStub.addCredential('test', 'admin123');
+    await userStub.updateProfile({ email: 'admin@example.com' });
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
+    await credentialStub.put({
+      provider: 'test',
+      subject_id: 'admin123',
+      user_id: userIdStr,
+      profile_data: { email: 'admin@example.com' },
     });
 
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
@@ -68,23 +68,23 @@ describe('Admin Administration', () => {
   });
 
   it('should serve admin dashboard at /users/admin/', async () => {
-    // 1. Get an admin user ID from environment
+    // 1. Get an admin user ID
     const userId = env.USER.idFromName('admin');
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
 
     // Create session
-    const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await userStub.createSession();
 
     // Add profile data
-    await userStub.fetch('http://do/credentials', {
-      method: 'POST',
-      body: JSON.stringify({
-        provider: 'test',
-        subject_id: 'admin123',
-        profile_data: { email: 'admin@example.com' },
-      }),
+    await userStub.addCredential('test', 'admin123');
+    await userStub.updateProfile({ email: 'admin@example.com' });
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test'));
+    await credentialStub.put({
+      provider: 'test',
+      subject_id: 'admin123',
+      user_id: userIdStr,
+      profile_data: { email: 'admin@example.com' },
     });
 
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
@@ -104,46 +104,37 @@ describe('Admin Administration', () => {
     const systemStub = env.SYSTEM.get(systemId);
 
     // Register a user
-    await systemStub.fetch('http://do/users', {
-      method: 'POST',
-      body: JSON.stringify({
-        id: 'user1',
-        name: 'Alice',
-        email: 'alice@example.com',
-      }),
+    await systemStub.registerUser({
+      id: 'user1',
+      name: 'Alice',
+      email: 'alice@example.com',
     });
 
     // Register an account
-    await systemStub.fetch('http://do/accounts', {
-      method: 'POST',
-      body: JSON.stringify({
-        id: 'acc1',
-        name: 'Alice Inc',
-      }),
+    await systemStub.registerAccount({
+      id: 'acc1',
+      name: 'Alice Inc',
     });
 
     // List users
-    const usersRes = await systemStub.fetch('http://do/users');
-    const users = (await usersRes.json()) as any[];
+    const users = await systemStub.listUsers();
     expect(users.length).toBeGreaterThanOrEqual(1);
-    expect(users.find((u) => u.id === 'user1')).toBeDefined();
+    expect(users.find((u: any) => u.id === 'user1')).toBeDefined();
 
     // List accounts
-    const accountsRes = await systemStub.fetch('http://do/accounts');
-    const accounts = (await accountsRes.json()) as any[];
+    const accounts = await systemStub.listAccounts();
     expect(accounts.length).toBeGreaterThanOrEqual(1);
-    expect(accounts.find((a) => a.id === 'acc1')).toBeDefined();
+    expect(accounts.find((a: any) => a.id === 'acc1')).toBeDefined();
   });
 
   it('should create a new account via admin API', async () => {
-    // 1. Get an admin user ID from environment
+    // 1. Get an admin user ID
     const userId = env.USER.idFromName('admin');
     const userStub = env.USER.get(userId);
     const userIdStr = userId.toString();
 
     // Create session
-    const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await userStub.createSession();
 
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
 
@@ -177,8 +168,7 @@ describe('Admin Administration', () => {
 
     // 4. Verify AccountDO info
     const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(result.id));
-    const infoRes = await accountStub.fetch('http://do/info');
-    const info = (await infoRes.json()) as any;
+    const info = await accountStub.getInfo();
     expect(info.name).toBe(accountName);
   });
 
@@ -188,20 +178,16 @@ describe('Admin Administration', () => {
     const adminStub = env.USER.get(adminId);
     const adminIdStr = adminId.toString();
 
-    const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await adminStub.createSession();
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create a target user who will be the owner
     const ownerId = env.USER.newUniqueId();
     const ownerIdStr = ownerId.toString();
     const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.fetch('http://do/users', {
-      method: 'POST',
-      body: JSON.stringify({
-        id: ownerIdStr,
-        name: 'Target Owner',
-      }),
+    await systemStub.registerUser({
+      id: ownerIdStr,
+      name: 'Target Owner',
     });
 
     // 3. Create a new account with this owner
@@ -224,15 +210,13 @@ describe('Admin Administration', () => {
 
     // 4. Verify AccountDO has the member
     const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
-    const membersRes = await accountStub.fetch('http://do/members');
-    const members = (await membersRes.json()) as any[];
-    expect(members.find((m) => m.user_id === ownerIdStr && m.role === 1)).toBeDefined();
+    const members = await accountStub.getMembers();
+    expect(members.find((m: any) => m.user_id === ownerIdStr && m.role === 1)).toBeDefined();
 
     // 5. Verify UserDO has the membership
     const ownerStub = env.USER.get(ownerId);
-    const membershipsRes = await ownerStub.fetch('http://do/memberships');
-    const memberships = (await membershipsRes.json()) as any[];
-    expect(memberships.find((m) => m.account_id === accountId && m.role === 1)).toBeDefined();
+    const memberships = await ownerStub.getMemberships();
+    expect(memberships.find((m: any) => m.account_id === accountId && m.role === 1)).toBeDefined();
   });
 
   it('should manage account members via admin API', async () => {
@@ -241,8 +225,7 @@ describe('Admin Administration', () => {
     const adminStub = env.USER.get(adminId);
     const adminIdStr = adminId.toString();
 
-    const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await adminStub.createSession();
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create an account
@@ -299,8 +282,7 @@ describe('Admin Administration', () => {
     const adminStub = env.USER.get(adminId);
     const adminIdStr = adminId.toString();
 
-    const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await adminStub.createSession();
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create an account
@@ -362,8 +344,7 @@ describe('Admin Administration', () => {
     const adminStub = env.USER.get(adminId);
     const adminIdStr = adminId.toString();
 
-    const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await adminStub.createSession();
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create an account
@@ -393,8 +374,7 @@ describe('Admin Administration', () => {
 
     // 5. Verify AccountDO is cleared (should return 404 or empty info)
     const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
-    const infoRes = await accountStub.fetch('http://do/info');
-    const info = (await infoRes.json()) as any;
+    const info = await accountStub.getInfo();
     expect(Object.keys(info).length).toBe(0);
   });
 
@@ -404,20 +384,16 @@ describe('Admin Administration', () => {
     const adminStub = env.USER.get(adminId);
     const adminIdStr = adminId.toString();
 
-    const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await adminStub.createSession();
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create a user to delete
     const userId = env.USER.newUniqueId();
     const userIdStr = userId.toString();
     const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.fetch('http://do/users', {
-      method: 'POST',
-      body: JSON.stringify({
-        id: userIdStr,
-        name: 'Delete Me User',
-      }),
+    await systemStub.registerUser({
+      id: userIdStr,
+      name: 'Delete Me User',
     });
 
     // 3. Delete the user
@@ -436,8 +412,7 @@ describe('Admin Administration', () => {
 
     // 5. Verify UserDO is cleared
     const targetUserStub = env.USER.get(userId);
-    const profileRes = await targetUserStub.fetch('http://do/profile');
-    const profile = (await profileRes.json()) as any;
+    const profile = await targetUserStub.getProfile();
     expect(Object.keys(profile).length).toBe(0);
   });
 
@@ -447,8 +422,7 @@ describe('Admin Administration', () => {
     const adminStub = env.USER.get(adminId);
     const adminIdStr = adminId.toString();
 
-    const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await adminStub.createSession();
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Create an account with an owner
@@ -466,9 +440,8 @@ describe('Admin Administration', () => {
 
     // 3. Verify membership exists in UserDO
     const ownerStub = env.USER.get(ownerId);
-    let membershipsRes = await ownerStub.fetch('http://do/memberships');
-    let memberships = (await membershipsRes.json()) as any[];
-    expect(memberships.find((m) => m.account_id === accountId)).toBeDefined();
+    let memberships = await ownerStub.getMemberships();
+    expect(memberships.find((m: any) => m.account_id === accountId)).toBeDefined();
 
     // 4. Delete the account
     await SELF.fetch(`http://example.com/users/admin/api/accounts/${accountId}`, {
@@ -477,9 +450,8 @@ describe('Admin Administration', () => {
     });
 
     // 5. Verify membership is gone from UserDO
-    membershipsRes = await ownerStub.fetch('http://do/memberships');
-    memberships = (await membershipsRes.json()) as any[];
-    expect(memberships.find((m) => m.account_id === accountId)).toBeUndefined();
+    memberships = await ownerStub.getMemberships();
+    expect(memberships.find((m: any) => m.account_id === accountId)).toBeUndefined();
   });
 
   it('should support stop-impersonation', async () => {
@@ -488,8 +460,7 @@ describe('Admin Administration', () => {
     const adminStub = env.USER.get(adminId);
     const adminIdStr = adminId.toString();
 
-    const sessionRes = await adminStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId: adminSessionId } = (await sessionRes.json()) as any;
+    const { sessionId: adminSessionId } = await adminStub.createSession();
     const encryptedAdminSession = await cookieManager.encrypt(`${adminSessionId}:${adminIdStr}`);
     const adminCookie = `session_id=${encryptedAdminSession}`;
 
@@ -542,8 +513,7 @@ describe('Admin Administration', () => {
     const adminIdStr = adminId.toString();
 
     const userStub = env.USER.get(adminId);
-    const sessionRes = await userStub.fetch('http://do/sessions', { method: 'POST' });
-    const { sessionId } = (await sessionRes.json()) as any;
+    const { sessionId } = await userStub.createSession();
     const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
 
     // 2. Try to impersonate themselves

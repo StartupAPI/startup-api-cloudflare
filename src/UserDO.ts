@@ -1,13 +1,12 @@
-import type { StartupAPIEnv } from './StartupAPIEnv';
+import { DurableObject } from 'cloudflare:workers';
+import { StartupAPIEnv } from './StartupAPIEnv';
 
 /**
  * A Durable Object representing a User.
  * This class handles the storage and management of user profiles,
  * OAuth2 credentials, and login sessions using a SQLite backend.
  */
-export class UserDO implements DurableObject {
-  state: DurableObjectState;
-  env: StartupAPIEnv;
+export class UserDO extends DurableObject {
   sql: SqlStorage;
 
   /**
@@ -18,8 +17,7 @@ export class UserDO implements DurableObject {
    * @param env - The environment variables and bindings.
    */
   constructor(state: DurableObjectState, env: StartupAPIEnv) {
-    this.state = state;
-    this.env = env;
+    super(state, env);
     this.sql = state.storage.sql;
 
     // Initialize database schema
@@ -29,19 +27,6 @@ export class UserDO implements DurableObject {
         value TEXT
       );
       
-      CREATE TABLE IF NOT EXISTS credentials (
-        provider TEXT NOT NULL,
-        subject_id TEXT NOT NULL,
-        access_token TEXT,
-        refresh_token TEXT,
-        expires_at INTEGER,
-        scope TEXT,
-        profile_data TEXT,
-        created_at INTEGER,
-        updated_at INTEGER,
-        PRIMARY KEY (provider)
-      );
-
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         created_at INTEGER,
@@ -60,123 +45,74 @@ export class UserDO implements DurableObject {
         role INTEGER,
         is_current INTEGER
       );
+
+      CREATE TABLE IF NOT EXISTS user_credentials (
+        provider TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        PRIMARY KEY (provider, subject_id)
+      );
     `);
-  }
-
-  /**
-   * Handles incoming HTTP requests to the Durable Object.
-   * Routes requests to the appropriate handler based on path and method.
-   *
-   * @param request - The incoming HTTP request.
-   * @returns A Promise resolving to the HTTP response.
-   */
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
-
-    if (path === '/profile' && method === 'GET') {
-      return this.getProfile();
-    } else if (path === '/profile' && method === 'POST') {
-      return this.updateProfile(request);
-    } else if (path === '/credentials' && method === 'POST') {
-      return this.addCredential(request);
-    } else if (path === '/sessions' && method === 'POST') {
-      return this.createSession(request);
-    } else if (path === '/sessions' && method === 'DELETE') {
-      return this.deleteSession(request);
-    } else if (path === '/validate-session' && method === 'POST') {
-      return this.validateSession(request);
-    } else if (path === '/memberships' && method === 'GET') {
-      return this.getMemberships();
-    } else if (path === '/memberships' && method === 'POST') {
-      return this.addMembership(request);
-    } else if (path === '/memberships' && method === 'DELETE') {
-      return this.deleteMembership(request);
-    } else if (path === '/switch-account' && method === 'POST') {
-      return this.switchAccount(request);
-    } else if (path === '/current-account' && method === 'GET') {
-      return this.getCurrentAccount();
-    } else if (path.startsWith('/images/') && method === 'GET') {
-      const key = path.replace('/images/', '');
-      return this.getImage(key);
-    } else if (path.startsWith('/images/') && method === 'PUT') {
-      const key = path.replace('/images/', '');
-      return this.storeImage(request, key);
-    } else if (path === '/delete' && method === 'POST') {
-      this.sql.exec('DELETE FROM profile');
-      this.sql.exec('DELETE FROM credentials');
-      this.sql.exec('DELETE FROM sessions');
-      this.sql.exec('DELETE FROM images');
-      this.sql.exec('DELETE FROM memberships');
-      return Response.json({ success: true });
-    }
-
-    return new Response('Not Found', { status: 404 });
-  }
-
-  async getImage(key: string): Promise<Response> {
-    const result = this.sql.exec('SELECT value, mime_type FROM images WHERE key = ?', key);
-    const row = result.next().value as any;
-
-    if (!row) {
-      return new Response('Not Found', { status: 404 });
-    }
-
-    const headers = new Headers();
-    headers.set('Content-Type', row.mime_type);
-    // Convert ArrayBuffer/Uint8Array to Response body
-    return new Response(row.value, { headers });
-  }
-
-  async storeImage(request: Request, key: string): Promise<Response> {
-    const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
-    const buffer = await request.arrayBuffer();
-
-    this.sql.exec('INSERT OR REPLACE INTO images (key, value, mime_type) VALUES (?, ?, ?)', key, buffer, contentType);
-    return Response.json({ success: true });
   }
 
   /**
    * Validates a session ID and returns the user profile if valid.
    *
-   * @param request - The HTTP request containing the sessionId.
+   * @param sessionId - The sessionId to validate.
    * @returns A Promise resolving to the session status and user profile.
    */
-  async validateSession(request: Request): Promise<Response> {
-    const { sessionId } = (await request.json()) as { sessionId: string };
-
+  async validateSession(sessionId: string) {
     // Check session
     const sessionResult = this.sql.exec('SELECT * FROM sessions WHERE id = ?', sessionId);
     const session = sessionResult.next().value as any;
 
     if (!session) {
-      return Response.json({ valid: false }, { status: 401 });
+      return { valid: false };
     }
 
     if (session.expires_at < Date.now()) {
-      return Response.json({ valid: false, error: 'Expired' }, { status: 401 });
+      return { valid: false, error: 'Expired' };
     }
 
-    // Get latest profile data
-    const credsResult = this.sql.exec(
-      'SELECT profile_data, provider, subject_id FROM credentials ORDER BY updated_at DESC LIMIT 1',
-    );
-    const creds = credsResult.next().value as any;
+    let profile: Record<string, any> = {};
 
-    let profile = {};
-    if (creds && creds.profile_data) {
+    // Get profile data from local 'profile' table
+    const customProfileResult = this.sql.exec('SELECT key, value FROM profile');
+    for (const row of customProfileResult) {
       try {
-        profile = JSON.parse(creds.profile_data as string);
-        // Ensure the ID is our internal DO ID
-        (profile as any).id = this.state.id.toString();
-        // Add provider info for the UI icon
-        (profile as any).provider = creds.provider;
-        (profile as any).subject_id = creds.subject_id;
+        // @ts-ignore
+        profile[row.key] = JSON.parse(row.value as string);
       } catch (e) {}
     }
 
-    return Response.json({ valid: true, profile });
+    // Determine login context (provider and subject_id)
+    const sessionMeta = session.meta ? JSON.parse(session.meta) : {};
+    const loginProvider = sessionMeta.provider;
+    let credential: Record<string, any> = {};
+
+    if (loginProvider) {
+      credential.provider = loginProvider;
+      const credResult = this.sql.exec(
+        'SELECT subject_id FROM user_credentials WHERE provider = ?',
+        loginProvider,
+      );
+      const credRow = credResult.next().value as any;
+      if (credRow) {
+        credential.subject_id = credRow.subject_id;
+      }
+    } else {
+      // Fallback: get first available credential if no provider in session
+      const credResult = this.sql.exec('SELECT provider, subject_id FROM user_credentials LIMIT 1');
+      const credRow = credResult.next().value as any;
+      if (credRow) {
+        credential.provider = credRow.provider;
+        credential.subject_id = credRow.subject_id;
+      }
+    }
+
+    // Ensure the ID is set
+    profile.id = this.ctx.id.toString();
+
+    return { valid: true, profile, credential };
   }
 
   /**
@@ -184,115 +120,111 @@ export class UserDO implements DurableObject {
    *
    * @returns A Promise resolving to a JSON response containing the profile key-value pairs.
    */
-  async getProfile(): Promise<Response> {
+  async getProfile() {
     const result = this.sql.exec('SELECT key, value FROM profile');
     const profile: Record<string, any> = {};
     for (const row of result) {
       // @ts-ignore
       profile[row.key] = JSON.parse(row.value as string);
     }
-    return Response.json(profile);
+    return profile;
   }
 
   /**
    * Updates the user's profile data.
    * Uses a transaction to ensure atomic updates of multiple fields.
    *
-   * @param request - The HTTP request containing the JSON profile data to update.
+   * @param data - The JSON profile data to update.
    * @returns A Promise resolving to a success or error response.
    */
-  async updateProfile(request: Request): Promise<Response> {
-    const data = (await request.json()) as Record<string, any>;
-
+  async updateProfile(data: Record<string, any>) {
     try {
-      this.state.storage.transactionSync(() => {
+      this.ctx.storage.transactionSync(() => {
         for (const [key, value] of Object.entries(data)) {
           this.sql.exec('INSERT OR REPLACE INTO profile (key, value) VALUES (?, ?)', key, JSON.stringify(value));
         }
       });
-      return Response.json({ success: true });
+      return { success: true };
     } catch (e: any) {
-      return new Response(e.message, { status: 500 });
+      return { success: false, error: e.message };
     }
   }
 
-  /**
-   * Adds or updates OAuth2 credentials for a specific provider.
-   *
-   * @param request - The HTTP request containing the credential details.
-   * @returns A Promise resolving to a success or error response.
-   */
-  async addCredential(request: Request): Promise<Response> {
-    const data = (await request.json()) as any;
-    const { provider, subject_id, access_token, refresh_token, expires_at, scope, profile_data } = data;
+  async addCredential(provider: string, subject_id: string) {
+    this.sql.exec('INSERT OR REPLACE INTO user_credentials (provider, subject_id) VALUES (?, ?)', provider, subject_id);
+    return { success: true };
+  }
 
-    if (!provider || !subject_id) {
-      return new Response('Missing provider or subject_id', { status: 400 });
+  async listCredentials() {
+    const credentialsMapping = this.sql.exec('SELECT DISTINCT provider FROM user_credentials');
+    const credentials = [];
+    for (const row of credentialsMapping) {
+      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
+      const providerCreds = await stub.list(this.ctx.id.toString());
+      credentials.push(...providerCreds.map((c: any) => ({ provider: row.provider, ...c })));
+    }
+    return credentials;
+  }
+
+  async deleteCredential(provider: string) {
+    const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials');
+    const all = Array.from(result) as any[];
+
+    if (all.length <= 1) {
+      throw new Error('Cannot delete the last credential');
     }
 
-    const now = Date.now();
+    const cred = all.find(c => c.provider === provider);
+    if (cred) {
+      const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(cred.provider));
+      await stub.delete(cred.subject_id);
+      this.sql.exec('DELETE FROM user_credentials WHERE provider = ? AND subject_id = ?', cred.provider, cred.subject_id);
+    }
 
-    this.sql.exec(
-      `INSERT OR REPLACE INTO credentials 
-      (provider, subject_id, access_token, refresh_token, expires_at, scope, profile_data, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      provider,
-      subject_id,
-      access_token,
-      refresh_token,
-      expires_at,
-      scope,
-      JSON.stringify(profile_data),
-      now,
-      now,
-    );
-
-    return Response.json({ success: true });
+    return { success: true };
   }
 
   /**
    * Creates a new login session for the user.
    * Generates a random session ID and sets a 24-hour expiration.
    *
-   * @param request - The HTTP request initiating the session.
+   * @param meta - Optional metadata to store with the session.
    * @returns A Promise resolving to a JSON response with the session ID and expiration time.
    */
-  async createSession(request: Request): Promise<Response> {
+  async createSession(meta?: Record<string, any>) {
     // Basic session creation
     const sessionId = crypto.randomUUID();
     const now = Date.now();
     const expiresAt = now + 24 * 60 * 60 * 1000; // 24 hours
 
-    this.sql.exec('INSERT INTO sessions (id, created_at, expires_at) VALUES (?, ?, ?)', sessionId, now, expiresAt);
+    this.sql.exec(
+      'INSERT INTO sessions (id, created_at, expires_at, meta) VALUES (?, ?, ?, ?)',
+      sessionId,
+      now,
+      expiresAt,
+      meta ? JSON.stringify(meta) : null,
+    );
 
-    return Response.json({ sessionId, expiresAt });
+    return { sessionId, expiresAt };
   }
 
   /**
    * Deletes a login session.
    *
-   * @param request - The HTTP request containing the sessionId.
+   * @param sessionId - The sessionId to delete.
    * @returns A Promise resolving to a JSON response indicating success.
    */
-  async deleteSession(request: Request): Promise<Response> {
-    const { sessionId } = (await request.json()) as { sessionId: string };
+  async deleteSession(sessionId: string) {
     this.sql.exec('DELETE FROM sessions WHERE id = ?', sessionId);
-    return Response.json({ success: true });
+    return { success: true };
   }
 
-  async getMemberships(): Promise<Response> {
+  async getMemberships() {
     const result = this.sql.exec('SELECT account_id, role, is_current FROM memberships');
-    const memberships = Array.from(result);
-    return Response.json(memberships);
+    return Array.from(result);
   }
 
-  async addMembership(request: Request): Promise<Response> {
-    const { account_id, role, is_current } = (await request.json()) as {
-      account_id: string;
-      role: number;
-      is_current?: boolean;
-    };
-
+  async addMembership(account_id: string, role: number, is_current?: boolean) {
     if (is_current) {
       this.sql.exec('UPDATE memberships SET is_current = 0');
     }
@@ -303,40 +235,37 @@ export class UserDO implements DurableObject {
       role,
       is_current ? 1 : 0,
     );
-    return Response.json({ success: true });
+    return { success: true };
   }
 
-  async deleteMembership(request: Request): Promise<Response> {
-    const { account_id } = (await request.json()) as { account_id: string };
+  async deleteMembership(account_id: string) {
     this.sql.exec('DELETE FROM memberships WHERE account_id = ?', account_id);
-    return Response.json({ success: true });
+    return { success: true };
   }
 
-  async switchAccount(request: Request): Promise<Response> {
-    const { account_id } = (await request.json()) as { account_id: string };
-
+  async switchAccount(account_id: string) {
     // Verify membership exists
     const result = this.sql.exec('SELECT account_id FROM memberships WHERE account_id = ?', account_id);
     const membership = result.next().value;
 
     if (!membership) {
-      return new Response('Membership not found', { status: 404 });
+      throw new Error('Membership not found');
     }
 
     try {
-      this.state.storage.transactionSync(() => {
+      this.ctx.storage.transactionSync(() => {
         // Unset current
         this.sql.exec('UPDATE memberships SET is_current = 0');
         // Set new current
         this.sql.exec('UPDATE memberships SET is_current = 1 WHERE account_id = ?', account_id);
       });
-      return Response.json({ success: true });
+      return { success: true };
     } catch (e: any) {
-      return new Response(e.message, { status: 500 });
+      throw new Error(e.message);
     }
   }
 
-  async getCurrentAccount(): Promise<Response> {
+  async getCurrentAccount() {
     const result = this.sql.exec('SELECT account_id, role FROM memberships WHERE is_current = 1');
     const membership = result.next().value;
 
@@ -345,11 +274,31 @@ export class UserDO implements DurableObject {
       const fallback = this.sql.exec('SELECT account_id, role FROM memberships LIMIT 1');
       const fallbackMembership = fallback.next().value;
       if (fallbackMembership) {
-        return Response.json(fallbackMembership);
+        return fallbackMembership;
       }
-      return new Response(null, { status: 404 });
+      return null;
     }
 
-    return Response.json(membership);
+    return membership;
+  }
+
+  async getImage(key: string) {
+    const result = this.sql.exec('SELECT value, mime_type FROM images WHERE key = ?', key);
+    const row = result.next().value as any;
+    return row || null;
+  }
+
+  async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
+    this.sql.exec('INSERT OR REPLACE INTO images (key, value, mime_type) VALUES (?, ?, ?)', key, value, mime_type);
+    return { success: true };
+  }
+
+  async delete() {
+    this.sql.exec('DELETE FROM profile');
+    this.sql.exec('DELETE FROM sessions');
+    this.sql.exec('DELETE FROM images');
+    this.sql.exec('DELETE FROM memberships');
+    this.sql.exec('DELETE FROM user_credentials');
+    return { success: true };
   }
 }

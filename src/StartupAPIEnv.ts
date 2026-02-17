@@ -8,5 +8,6 @@ export type StartupAPIEnv = {
   TWITCH_CLIENT_SECRET: string;
   ADMIN_IDS: string;
   SESSION_SECRET: string;
+  ENVIRONMENT?: string;
   SYSTEM: DurableObjectNamespace;
 } & Env;

@@ -32,6 +32,12 @@ class PowerStrip extends HTMLElement {
     this.addEventListeners();
   }
 
+  async refresh() {
+    await this.fetchUser();
+    this.render();
+    this.addEventListeners();
+  }
+
   async fetchUser() {
     try {
       const res = await fetch(`${this.basePath}/api/me`);
@@ -40,6 +46,7 @@ class PowerStrip extends HTMLElement {
         if (data.valid) {
           this.user = {
             profile: data.profile,
+            credential: data.credential,
             is_admin: data.is_admin,
             is_impersonated: data.is_impersonated,
           };
@@ -126,7 +133,7 @@ class PowerStrip extends HTMLElement {
 
     if (providers.length > 0 && providers[0] !== '') {
       if (this.user) {
-        const providerIcon = this.getProviderIcon(this.user.profile.provider);
+        const providerIcon = this.getProviderIcon(this.user.credential.provider);
         const currentAccount = this.accounts.find((a) => a.is_current) || (this.accounts.length > 0 ? this.accounts[0] : null);
         const accountName = currentAccount ? (currentAccount.personal ? this.user.profile.name : currentAccount.name) : 'No Account';
 
@@ -189,12 +196,12 @@ class PowerStrip extends HTMLElement {
               ${accountContainer}
               <div class="avatar-container">
                   <img src="${this.user.profile.picture}" alt="${this.user.profile.name}" title="${this.user.profile.name}" class="avatar" width="16" height="16" />
-                  <div class="provider-badge ${this.user.profile.provider}">
+                  <div class="provider-badge ${this.user.credential.provider}">
                       ${providerIcon}
                   </div>
               </div>
               <div class="user-info">
-                  <span class="user-name">${this.user.profile.name}</span>
+                  <a href="${this.basePath}/profile.html" class="user-name" title="Edit Profile">${this.user.profile.name}</a>
               </div>
               <a href="${logoutLink}" class="trigger logout-btn" title="Logout">Logout</a>
             </div>
@@ -325,6 +332,13 @@ class PowerStrip extends HTMLElement {
             overflow: hidden;
             text-overflow: ellipsis;
             font-weight: 600;
+            text-decoration: none;
+            display: block;
+        }
+
+        .user-name:hover {
+            text-decoration: underline;
+            color: #1a73e8;
         }
         
         .account-label {

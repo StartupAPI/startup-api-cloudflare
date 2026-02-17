@@ -8,16 +8,10 @@ describe('AccountDO Durable Object', () => {
 
     // Update info
     const infoData = { name: 'Test Account', plan: 'pro' };
-    let res = await stub.fetch('http://do/info', {
-      method: 'POST',
-      body: JSON.stringify(infoData),
-    });
-    expect(res.status).toBe(200);
-    await res.json(); // Drain body
+    await stub.updateInfo(infoData);
 
     // Get info
-    res = await stub.fetch('http://do/info');
-    const data = await res.json();
+    const data = await stub.getInfo();
     expect(data).toEqual(infoData);
   });
 
@@ -29,28 +23,19 @@ describe('AccountDO Durable Object', () => {
     const role = 1; // ADMIN
 
     // Add member
-    let res = await stub.fetch('http://do/members', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: userId, role }),
-    });
-    expect(res.status).toBe(200);
+    await stub.addMember(userId, role);
 
     // Get members
-    res = await stub.fetch('http://do/members');
-    const members: any[] = await res.json();
+    const members = await stub.getMembers();
     expect(members).toHaveLength(1);
     expect(members[0].user_id).toBe(userId);
     expect(members[0].role).toBe(role);
 
     // Remove member
-    res = await stub.fetch(`http://do/members/${userId}`, {
-      method: 'DELETE',
-    });
-    expect(res.status).toBe(200);
+    await stub.removeMember(userId);
 
     // Verify member is removed
-    res = await stub.fetch('http://do/members');
-    const membersAfter: any[] = await res.json();
+    const membersAfter = await stub.getMembers();
     expect(membersAfter).toHaveLength(0);
   });
 });

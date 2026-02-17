@@ -6,9 +6,7 @@ describe('Billing Logic in AccountDO', () => {
     const id = env.ACCOUNT.newUniqueId();
     const stub = env.ACCOUNT.get(id);
 
-    const res = await stub.fetch('http://do/billing');
-    expect(res.status).toBe(200);
-    const data: any = await res.json();
+    const data: any = await stub.getBillingInfo();
 
     expect(data.state.plan_slug).toBe('free');
     expect(data.state.status).toBe('active');
@@ -20,20 +18,14 @@ describe('Billing Logic in AccountDO', () => {
     const stub = env.ACCOUNT.get(id);
 
     // Subscribe to Pro
-    const res = await stub.fetch('http://do/billing/subscribe', {
-      method: 'POST',
-      body: JSON.stringify({ plan_slug: 'pro', schedule_idx: 0 }),
-    });
-    expect(res.status).toBe(200);
-    const result: any = await res.json();
+    const result: any = await stub.subscribe('pro', 0);
     expect(result.success).toBe(true);
     expect(result.state.plan_slug).toBe('pro');
     expect(result.state.status).toBe('active');
     expect(result.state.next_billing_date).toBeDefined();
 
     // Verify persistence
-    const infoRes = await stub.fetch('http://do/billing');
-    const info: any = await infoRes.json();
+    const info: any = await stub.getBillingInfo();
     expect(info.state.plan_slug).toBe('pro');
   });
 
@@ -41,11 +33,7 @@ describe('Billing Logic in AccountDO', () => {
     const id = env.ACCOUNT.newUniqueId();
     const stub = env.ACCOUNT.get(id);
 
-    const res = await stub.fetch('http://do/billing/subscribe', {
-      method: 'POST',
-      body: JSON.stringify({ plan_slug: 'invalid-plan' }),
-    });
-    expect(res.status).toBe(400);
+    await expect(stub.subscribe('invalid-plan')).rejects.toThrow('Plan not found');
   });
 
   it('should cancel subscription', async () => {
@@ -53,17 +41,10 @@ describe('Billing Logic in AccountDO', () => {
     const stub = env.ACCOUNT.get(id);
 
     // Subscribe first
-    await stub.fetch('http://do/billing/subscribe', {
-      method: 'POST',
-      body: JSON.stringify({ plan_slug: 'pro' }),
-    });
+    await stub.subscribe('pro');
 
     // Cancel
-    const res = await stub.fetch('http://do/billing/cancel', {
-      method: 'POST',
-    });
-    expect(res.status).toBe(200);
-    const result: any = await res.json();
+    const result: any = await stub.cancelSubscription();
     expect(result.state.status).toBe('canceled');
     expect(result.state.next_plan_slug).toBe('free'); // Based on plansConfig.ts
   });
