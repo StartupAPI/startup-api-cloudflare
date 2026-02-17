@@ -175,14 +175,18 @@
         const file = e.target.files[0];
         if (!file) return;
 
+        if (file.size > 1024 * 1024) {
+          showToast('Image too large (max 1MB)');
+          return;
+        }
+
         try {
-          const resizedBlob = await resizeImage(file, 500, 500);
           const res = await fetch('/users/me/avatar', {
             method: 'PUT',
             headers: {
-              'Content-Type': 'image/jpeg'
+              'Content-Type': file.type
             },
-            body: resizedBlob
+            body: await file.arrayBuffer()
           });
 
           if (res.ok) {
@@ -240,39 +244,6 @@
         toast.innerText = msg;
         toast.style.opacity = 1;
         setTimeout(() => (toast.style.opacity = 0), 3000);
-      }
-
-      function resizeImage(file, maxWidth, maxHeight) {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-              const canvas = document.createElement('canvas');
-              let width = img.width;
-              let height = img.height;
-
-              // Crop to square
-              const size = Math.min(width, height);
-              canvas.width = maxWidth;
-              canvas.height = maxHeight;
-
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(
-                img,
-                (width - size) / 2, (height - size) / 2, size, size,
-                0, 0, maxWidth, maxHeight
-              );
-
-              canvas.toBlob((blob) => {
-                resolve(blob);
-              }, 'image/jpeg', 0.8);
-            };
-            img.src = e.target.result;
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
       }
 
       async function loadCredentials() {
