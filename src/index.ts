@@ -99,6 +99,13 @@ export default {
           return handleAccountMembers(request, env, parts[3], parts.slice(5), cookieManager);
         }
       }
+
+      if (apiPath.startsWith('/users/') && apiPath.endsWith('/avatar')) {
+        const parts = apiPath.split('/');
+        if (parts.length === 4) {
+          return handleUserImage(request, env, parts[2], 'avatar', cookieManager);
+        }
+      }
     }
 
     if (url.pathname === usersPath + 'logout') {
@@ -420,6 +427,14 @@ async function handleMe(
 
     if (!data.valid) return Response.json(data, { status: 401 });
 
+    const profile = { ...data.profile };
+    const image = await userStub.getImage('avatar');
+    if (image) {
+      const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+      profile.picture = usersPath + 'me/avatar';
+    }
+
+    data.profile = profile;
     data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
     data.is_impersonated = !!cookies['backup_session_id'];
 
@@ -584,6 +599,27 @@ async function handleMeImage(
       await stub.storeImage(type, blob, contentType);
       return Response.json({ success: true });
     }
+
+    return handleUserImage(request, env, doId, type, cookieManager);
+  } catch (e) {
+    return new Response('Error fetching image', { status: 500 });
+  }
+}
+
+async function handleUserImage(
+  request: Request,
+  env: StartupAPIEnv,
+  userId: string,
+  type: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  // Public access to user avatars (if we want them to be public in member lists)
+  // Or we could check if current user has permission to see it.
+  // For now, let's make it public if you know the ID.
+
+  try {
+    const id = env.USER.idFromString(userId);
+    const stub = env.USER.get(id);
 
     const image = await stub.getImage(type);
     if (!image) return new Response('Not Found', { status: 404 });

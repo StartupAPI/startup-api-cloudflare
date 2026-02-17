@@ -72,10 +72,17 @@ export class AccountDO extends DurableObject {
         try {
           const userStub = this.env.USER.get(this.env.USER.idFromString(m.user_id));
           const profile = await userStub.getProfile();
+          const image = await userStub.getImage('avatar');
+          
+          let picture = profile.picture || null;
+          if (image) {
+            picture = `/users/api/users/${m.user_id}/avatar`;
+          }
+
           return {
             ...m,
             name: profile.name || 'Unknown User',
-            picture: profile.picture || null,
+            picture: picture,
           };
         } catch (e) {
           return { ...m, name: 'Unknown User', picture: null };
