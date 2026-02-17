@@ -76,6 +76,24 @@ describe('Account Membership Management', () => {
     expect(details.id).toBe(accIdStr);
     expect(details.billing).toBeDefined();
     expect(details.billing.state.plan_slug).toBe('free');
+
+    // 9. Update Account Name
+    const updateRes = await SELF.fetch(`http://example.com/users/api/me/accounts/${accIdStr}`, {
+      method: 'POST',
+      headers: { 
+          'Cookie': adminCookie,
+          'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name: 'Updated Account Name' }),
+    });
+    expect(updateRes.status).toBe(200);
+    
+    // Verify name updated in details
+    const detailsRes2 = await SELF.fetch(`http://example.com/users/api/me/accounts/${accIdStr}`, {
+      headers: { 'Cookie': adminCookie },
+    });
+    const details2 = await detailsRes2.json() as any;
+    expect(details2.name).toBe('Updated Account Name');
   });
 
   it('should not allow non-admin to add members', async () => {

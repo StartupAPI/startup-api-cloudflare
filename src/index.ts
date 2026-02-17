@@ -363,6 +363,23 @@ async function handleAccountDetails(
   }
 
   const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+
+  if (request.method === 'POST') {
+    const data = await request.json() as any;
+    const result = await accountStub.updateInfo(data);
+    
+    // Sync with SystemDO index if name changed
+    if (data.name) {
+      try {
+        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+        await systemStub.updateAccount(accountId, { name: data.name });
+      } catch (e) {
+        console.error('Failed to sync account name to SystemDO', e);
+      }
+    }
+    return Response.json(result);
+  }
+
   const info = await accountStub.getInfo();
   const billing = await accountStub.getBillingInfo();
 

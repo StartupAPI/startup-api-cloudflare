@@ -164,14 +164,21 @@
 
     <section id="account-info-section">
       <h2>General Information</h2>
-      <div class="form-group">
-        <label>Account ID</label>
-        <input type="text" id="account-id-display" disabled />
-      </div>
-      <div class="form-group">
-        <label>Plan</label>
-        <input type="text" id="account-plan-display" disabled />
-      </div>
+      <form id="account-info-form">
+        <div class="form-group">
+          <label for="account-name">Account Name</label>
+          <input type="text" id="account-name" name="name" required />
+        </div>
+        <div class="form-group">
+          <label>Account ID</label>
+          <input type="text" id="account-id-display" disabled />
+        </div>
+        <div class="form-group">
+          <label>Plan</label>
+          <input type="text" id="account-plan-display" disabled />
+        </div>
+        <button type="submit" id="save-account-btn" disabled>Save Changes</button>
+      </form>
     </section>
 
     <section id="members-section">
@@ -188,6 +195,7 @@
       let currentAccountId = null;
       let currentUserRole = 0;
       let currentUserId = null;
+      let initialAccountInfo = {};
 
       async function init() {
         try {
@@ -206,11 +214,15 @@
             currentUserId = data.profile.id;
 
             document.getElementById('account-name-heading').textContent = `Settings: ${data.account.name || 'Account'}`;
+            document.getElementById('account-name').value = data.account.name || '';
+            initialAccountInfo.name = data.account.name || '';
             document.getElementById('account-id-display').value = currentAccountId;
             
             // Check if user is admin of the account or system admin
             if (currentUserRole !== 1 && !data.is_admin) {
                 document.getElementById('members-section').style.display = 'none';
+                document.getElementById('account-name').disabled = true;
+                document.getElementById('save-account-btn').style.display = 'none';
                 const msg = document.createElement('p');
                 msg.textContent = "You do not have permission to manage this account's membership.";
                 msg.style.color = '#666';
@@ -219,7 +231,6 @@
                 loadMembers();
             }
 
-            // Billing info might be separate
             loadAccountDetails();
           }
         } catch (e) {
@@ -227,11 +238,50 @@
         }
       }
 
+      document.getElementById('account-name').addEventListener('input', (e) => {
+        const hasChanged = e.target.value !== initialAccountInfo.name;
+        document.getElementById('save-account-btn').disabled = !hasChanged;
+      });
+
+      document.getElementById('account-info-form').onsubmit = async (e) => {
+          e.preventDefault();
+          const name = document.getElementById('account-name').value;
+          
+          try {
+              const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name })
+              });
+              
+              if (res.ok) {
+                  showToast('Account name updated');
+                  initialAccountInfo.name = name;
+                  document.getElementById('account-name-heading').textContent = `Settings: ${name}`;
+                  document.getElementById('save-account-btn').disabled = true;
+                  
+                  // Refresh power-strip
+                  const powerStrip = document.querySelector('power-strip');
+                  if (powerStrip && typeof powerStrip.refresh === 'function') {
+                      powerStrip.refresh();
+                  }
+              } else {
+                  throw new Error('Failed to update account name');
+              }
+          } catch (e) {
+              showToast(e.message);
+          }
+      };
+
       async function loadAccountDetails() {
           try {
               const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`);
               if (res.ok) {
                   const data = await res.json();
+                  if (data.name) {
+                      document.getElementById('account-name').value = data.name;
+                      initialAccountInfo.name = data.name;
+                  }
                   if (data.billing && data.billing.plan_details) {
                       document.getElementById('account-plan-display').value = data.billing.plan_details.name;
                   } else if (data.billing && data.billing.state) {
