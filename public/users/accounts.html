@@ -192,9 +192,19 @@
           list.innerHTML = members.map(m => {
             const isAdmin = m.role === 1;
             const isSelf = m.user_id === currentUserId;
+            const avatarContent = m.picture 
+                ? `<img src="${m.picture}" class="member-avatar" alt="${m.name}" />`
+                : `<div class="member-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                   </div>`;
+
             return `
               <div class="member-item">
                 <div class="member-info">
+                  ${avatarContent}
                   <div class="member-details">
                     <div class="member-name" title="${m.name}${isSelf ? ' (You)' : ''}">${m.name} ${isSelf ? '(You)' : ''}</div>
                     <div class="member-role">

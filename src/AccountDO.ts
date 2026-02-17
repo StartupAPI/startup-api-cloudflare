@@ -72,9 +72,13 @@ export class AccountDO extends DurableObject {
         try {
           const userStub = this.env.USER.get(this.env.USER.idFromString(m.user_id));
           const profile = await userStub.getProfile();
-          return { ...m, name: profile.name || 'Unknown User' };
+          return {
+            ...m,
+            name: profile.name || 'Unknown User',
+            picture: profile.picture || null,
+          };
         } catch (e) {
-          return { ...m, name: 'Unknown User' };
+          return { ...m, name: 'Unknown User', picture: null };
         }
       }),
     );
