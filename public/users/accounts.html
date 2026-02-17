@@ -102,6 +102,22 @@
         display: flex;
         align-items: center;
         gap: 1rem;
+        min-width: 0; /* Important for ellipsis in flex child */
+      }
+      .member-details {
+        min-width: 0;
+      }
+      .member-name {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 300px;
+      }
+      .member-id {
+        font-size: 0.75rem;
+        color: #999;
+        font-family: monospace;
       }
       .role-badge {
         font-size: 0.75rem;
@@ -247,8 +263,9 @@
             return `
               <div class="member-item">
                 <div class="member-info">
-                  <div>
-                    <div style="font-weight: 600;">${m.user_id} ${isSelf ? '(You)' : ''}</div>
+                  <div class="member-details">
+                    <div class="member-name" title="${m.name}${isSelf ? ' (You)' : ''}">${m.name} ${isSelf ? '(You)' : ''}</div>
+                    <div class="member-id">${m.user_id}</div>
                     <div class="role-badge ${isAdmin ? 'admin' : ''}">${isAdmin ? 'Admin' : 'Member'}</div>
                   </div>
                 </div>

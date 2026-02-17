@@ -62,8 +62,19 @@ export class AccountDO extends DurableObject {
   }
 
   async getMembers() {
-    const result = this.sql.exec('SELECT user_id, role, joined_at FROM members');
-    return Array.from(result);
+    const result = Array.from(this.sql.exec('SELECT user_id, role, joined_at FROM members'));
+    const membersWithNames = await Promise.all(
+      result.map(async (m: any) => {
+        try {
+          const userStub = this.env.USER.get(this.env.USER.idFromString(m.user_id));
+          const profile = await userStub.getProfile();
+          return { ...m, name: profile.name || 'Unknown User' };
+        } catch (e) {
+          return { ...m, name: 'Unknown User' };
+        }
+      }),
+    );
+    return membersWithNames;
   }
 
   async addMember(user_id: string, role: number) {
