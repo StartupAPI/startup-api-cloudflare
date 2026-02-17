@@ -4,9 +4,14 @@ body {
     -apple-system,
     sans-serif;
   padding: 2rem;
-  max-width: 1000px;
   margin: 0 auto;
   background: #f9f9f9;
+}
+
+.main-layout, .header-area {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .main-layout {
@@ -27,7 +32,7 @@ body {
 
 .header-area {
   margin-bottom: 2rem;
-  margin-left: calc(200px + 3rem);
+  padding-left: calc(200px + 3rem);
 }
 
 @media (max-width: 768px) {
@@ -39,7 +44,7 @@ body {
     width: 100%;
   }
   .header-area {
-    margin-left: 0;
+    padding-left: 0;
   }
 }
 
