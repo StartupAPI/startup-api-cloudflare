@@ -27,6 +27,20 @@ body {
 
 .header-area {
   margin-bottom: 2rem;
+  margin-left: calc(200px + 3rem);
+}
+
+@media (max-width: 768px) {
+  .main-layout {
+    flex-direction: column;
+    gap: 2rem;
+  }
+  .sidebar {
+    width: 100%;
+  }
+  .header-area {
+    margin-left: 0;
+  }
 }
 
 .nav-list {
