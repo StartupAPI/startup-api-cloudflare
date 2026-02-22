@@ -59,22 +59,33 @@
                 </svg>
               </div>
               <input type="file" id="avatar-input" accept="image/*" style="display: none" />
-              <button
-                type="button"
-                id="change-avatar-btn"
-                class="secondary-btn"
+              <div
                 style="
                   position: absolute;
                   bottom: -0.5rem;
                   left: 50%;
                   transform: translateX(-50%);
-                  padding: 0.25rem 0.5rem;
-                  font-size: 0.75rem;
-                  white-space: nowrap;
+                  display: flex;
+                  gap: 0.25rem;
                 "
               >
-                Change
-              </button>
+                <button
+                  type="button"
+                  id="change-avatar-btn"
+                  class="secondary-btn"
+                  style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap"
+                >
+                  Change
+                </button>
+                <button
+                  type="button"
+                  id="remove-avatar-btn"
+                  class="secondary-btn"
+                  style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap; display: none"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
             <div>
               <h2 id="display-account-name" style="margin: 0; color: #333">Loading...</h2>
@@ -198,6 +209,7 @@
             img.src = `${API_BASE}/me/accounts/${currentAccountId}/avatar?t=${Date.now()}`;
             img.style.display = 'block';
             document.getElementById('account-avatar-placeholder').style.display = 'none';
+            document.getElementById('remove-avatar-btn').style.display = 'block';
 
             // Refresh power-strip
             const powerStrip = document.querySelector('power-strip');
@@ -243,6 +255,32 @@
         }
       };
 
+      document.getElementById('remove-avatar-btn').onclick = async () => {
+        if (!confirm('Are you sure you want to remove the account profile picture?')) return;
+
+        try {
+          const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/avatar`, {
+            method: 'DELETE',
+          });
+
+          if (res.ok) {
+            showToast('Account avatar removed');
+            loadAccountDetails();
+
+            // Refresh power-strip
+            const powerStrip = document.querySelector('power-strip');
+            if (powerStrip && typeof powerStrip.refresh === 'function') {
+              powerStrip.refresh();
+            }
+          } else {
+            const err = await res.text();
+            throw new Error(err || 'Failed to remove account avatar');
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      };
+
       async function loadAccountDetails() {
         try {
           const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`);
@@ -268,6 +306,11 @@
               img.src = `${API_BASE}/me/accounts/${currentAccountId}/avatar`;
               img.style.display = 'block';
               document.getElementById('account-avatar-placeholder').style.display = 'none';
+              document.getElementById('remove-avatar-btn').style.display = 'block';
+            } else {
+              document.getElementById('account-avatar').style.display = 'none';
+              document.getElementById('account-avatar-placeholder').style.display = 'flex';
+              document.getElementById('remove-avatar-btn').style.display = 'none';
             }
           }
         } catch (e) {

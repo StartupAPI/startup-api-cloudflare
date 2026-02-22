@@ -48,22 +48,33 @@
             <div style="position: relative">
               <img id="profile-picture" class="avatar-large" src="" alt="Profile Picture" style="display: none" />
               <input type="file" id="avatar-input" accept="image/*" style="display: none" />
-              <button
-                type="button"
-                id="change-avatar-btn"
-                class="secondary-btn"
+              <div
                 style="
                   position: absolute;
                   bottom: -0.5rem;
                   left: 50%;
                   transform: translateX(-50%);
-                  padding: 0.25rem 0.5rem;
-                  font-size: 0.75rem;
-                  white-space: nowrap;
+                  display: flex;
+                  gap: 0.25rem;
                 "
               >
-                Change
-              </button>
+                <button
+                  type="button"
+                  id="change-avatar-btn"
+                  class="secondary-btn"
+                  style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap"
+                >
+                  Change
+                </button>
+                <button
+                  type="button"
+                  id="remove-avatar-btn"
+                  class="secondary-btn"
+                  style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap; display: none"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
             <div>
               <p id="display-email" style="margin: 0.25rem 0 0 0; color: #666"></p>
@@ -173,10 +184,12 @@
               const img = document.getElementById('profile-picture');
               img.src = p.picture;
               img.style.display = 'block';
+              document.getElementById('remove-avatar-btn').style.display = 'block';
             } else {
               const img = document.getElementById('profile-picture');
               img.src = '';
               img.style.display = 'none';
+              document.getElementById('remove-avatar-btn').style.display = 'none';
             }
 
             const emailLabel = document.querySelector('label[for="email"]');
@@ -237,6 +250,32 @@
           } else {
             const err = await res.text();
             throw new Error(err || 'Failed to upload avatar');
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      };
+
+      document.getElementById('remove-avatar-btn').onclick = async () => {
+        if (!confirm('Are you sure you want to remove your profile picture?')) return;
+
+        try {
+          const res = await fetch('/users/me/avatar', {
+            method: 'DELETE',
+          });
+
+          if (res.ok) {
+            showToast('Avatar removed');
+            loadProfile();
+
+            // Refresh power-strip
+            const powerStrip = document.querySelector('power-strip');
+            if (powerStrip && typeof powerStrip.refresh === 'function') {
+              powerStrip.refresh();
+            }
+          } else {
+            const err = await res.text();
+            throw new Error(err || 'Failed to remove avatar');
           }
         } catch (e) {
           showToast(e.message);

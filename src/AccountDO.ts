@@ -89,6 +89,12 @@ export class AccountDO extends DurableObject {
     return { success: true };
   }
 
+  async deleteImage(key: string) {
+    const r2Key = `account/${this.ctx.id.toString()}/${key}`;
+    await this.env.IMAGE_STORAGE.delete(r2Key);
+    return { success: true };
+  }
+
   async getInfo() {
     const result = this.sql.exec('SELECT key, value FROM account_info');
     const info: Record<string, any> = {};

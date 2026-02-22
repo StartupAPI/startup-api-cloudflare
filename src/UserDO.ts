@@ -324,6 +324,12 @@ export class UserDO extends DurableObject {
     return { success: true };
   }
 
+  async deleteImage(key: string) {
+    const r2Key = `user/${this.ctx.id.toString()}/${key}`;
+    await this.env.IMAGE_STORAGE.delete(r2Key);
+    return { success: true };
+  }
+
   async delete() {
     this.sql.exec('DELETE FROM profile');
     this.sql.exec('DELETE FROM sessions');
