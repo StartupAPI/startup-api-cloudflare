@@ -31,6 +31,18 @@ export default {
 
     const cookieManager = new CookieManager(env.SESSION_SECRET);
 
+    // SSR Routes
+    const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
+    if (url.pathname.startsWith(usersPathNormalized)) {
+      const subPath = url.pathname.slice(usersPathNormalized.length);
+      const isProfile = subPath === 'profile.html' || subPath === 'profile';
+      const isAccounts = subPath === 'accounts.html' || subPath === 'accounts';
+
+      if (isProfile || isAccounts) {
+        return handleSSR(request, env, url, usersPath, cookieManager);
+      }
+    }
+
     // Handle OAuth Routes
     if (url.pathname.startsWith(usersPath + 'auth/')) {
       return handleAuth(request, env, url, usersPath, cookieManager);
@@ -138,14 +150,7 @@ export default {
       newRequest.headers.set('Host', url.host);
 
       const response = await fetch(newRequest);
-
-      const providers: string[] = [];
-      if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
-        providers.push('google');
-      }
-      if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) {
-        providers.push('twitch');
-      }
+      const providers = getActiveProviders(env);
 
       return injectPowerStrip(response, usersPath, providers);
     }
@@ -153,7 +158,18 @@ export default {
     // do not modify the request as it will loop through the same worker again
     return env.ASSETS.fetch(request);
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<StartupAPIEnv>;
+
+function getActiveProviders(env: StartupAPIEnv): string[] {
+  const providers: string[] = [];
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+    providers.push('google');
+  }
+  if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) {
+    providers.push('twitch');
+  }
+  return providers;
+}
 
 async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
@@ -168,7 +184,17 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
     url.pathname = '/users/admin/';
     const newRequest = new Request(url.toString(), request);
     newRequest.headers.set('x-skip-worker', 'true');
-    return env.ASSETS.fetch(newRequest);
+    const response = await env.ASSETS.fetch(newRequest);
+    if (!response.ok) return response;
+
+    let html = await response.text();
+    html = renderSSR(html, {
+      providers: getActiveProviders(env).join(','),
+    });
+
+    return new Response(html, {
+      headers: { 'Content-Type': 'text/html' },
+    });
   }
 
   const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
@@ -214,33 +240,30 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
           return Response.json(await accountStub.removeMember(parts[3]));
         }
       }
-    } else if (apiPath === 'impersonate' && request.method === 'POST') {
-      const { userId } = (await request.json()) as { userId: string };
+    } else if (parts[0] === 'impersonate' && request.method === 'POST') {
+      const { user_id } = (await request.json()) as { user_id: string };
+      if (!user_id) return new Response('Missing user_id', { status: 400 });
 
-      if (user.id === userId) {
+      if (user_id === user.id) {
         return new Response('Cannot impersonate yourself', { status: 400 });
       }
 
-      // Get current session to backup
+      const userDOId = env.USER.idFromString(user_id);
+      const userStub = env.USER.get(userDOId);
+      const session = await userStub.createSession({ provider: 'admin-impersonation', impersonator: user.id });
+
       const cookieHeader = request.headers.get('Cookie');
       const cookies = parseCookies(cookieHeader || '');
       const currentSessionEncrypted = cookies['session_id'];
 
-      // Create a session for the target user
-      const targetUserStub = env.USER.get(env.USER.idFromString(userId));
-      const { sessionId } = await targetUserStub.createSession();
-
-      const doId = userId;
-      const sessionValue = `${sessionId}:${doId}`;
-      const encryptedSession = await cookieManager.encrypt(sessionValue);
-
       const headers = new Headers();
-      headers.set('Set-Cookie', `session_id=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+      const newSessionIdEncrypted = await cookieManager.encrypt(`${session.sessionId}:${user_id}`);
+      headers.set('Set-Cookie', `session_id=${newSessionIdEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
       if (currentSessionEncrypted) {
-        const decryptedCurrentSession = await cookieManager.decrypt(currentSessionEncrypted);
-        if (decryptedCurrentSession) {
-          const encryptedBackup = await cookieManager.encrypt(decryptedCurrentSession);
-          headers.append('Set-Cookie', `backup_session_id=${encryptedBackup}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        const backupSession = await cookieManager.decrypt(currentSessionEncrypted);
+        if (backupSession) {
+          const backupSessionEncrypted = await cookieManager.encrypt(backupSession);
+          headers.append('Set-Cookie', `backup_session_id=${backupSessionEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
         }
       }
 
@@ -248,39 +271,75 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
     }
   }
 
-  return new Response('Not Found', { status: 404 });
+  url.pathname = '/users/admin' + path;
+  const newRequest = new Request(url.toString(), request);
+  newRequest.headers.set('x-skip-worker', 'true');
+  return env.ASSETS.fetch(newRequest);
 }
 
-async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<any> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return null;
+async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) return null;
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) return null;
-
-  const [sessionId, doId] = sessionCookie.split(':');
+  const { id: doId, sessionId, profile: initialProfile, credential } = user;
 
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
 
-    if (data.valid) {
-      return {
-        id: doId,
-        profile: data.profile,
-        credential: data.credential,
+    const data: any = {
+      valid: true,
+      profile: { ...initialProfile },
+      credential,
+    };
+
+    const image = await userStub.getImage('avatar');
+    if (image) {
+      const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+      data.profile.picture = usersPath + 'me/avatar';
+    } else {
+      data.profile.picture = null;
+    }
+
+    data.is_admin = isAdmin({ id: doId, profile: data.profile, credential }, env);
+
+    const cookieHeader = request.headers.get('Cookie') || '';
+    const cookies = parseCookies(cookieHeader);
+    data.is_impersonated = !!cookies['backup_session_id'];
+
+    // Fetch credentials
+    data.credentials = await userStub.listCredentials();
+
+    // Fetch memberships to find current account
+    const memberships = await userStub.getMemberships();
+    const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
+
+    if (currentMembership) {
+      const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
+      const accountStub = env.ACCOUNT.get(accountId);
+      const accountInfo = await accountStub.getInfo();
+      data.account = {
+        ...accountInfo,
+        id: currentMembership.account_id,
+        role: currentMembership.role,
       };
     }
+
+    return Response.json(data);
   } catch (e) {
-    return null;
+    return new Response('Unauthorized', { status: 401 });
   }
-  return null;
+}
+
+async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const profileData = await request.json();
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  await userStub.updateProfile(profileData);
+
+  return Response.json({ success: true });
 }
 
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
@@ -311,7 +370,7 @@ async function handleAccountMembers(
   request: Request,
   env: StartupAPIEnv,
   accountId: string,
-  extraParts: string[],
+  pathParts: string[],
   cookieManager: CookieManager,
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
@@ -321,7 +380,7 @@ async function handleAccountMembers(
   const memberships = await userStub.getMemberships();
   const membership = memberships.find((m: any) => m.account_id === accountId);
 
-  const isAccountAdmin = membership && membership.role === AccountDO.ROLE_ADMIN;
+  const isAccountAdmin = membership && (membership as any).role === AccountDO.ROLE_ADMIN;
   const isSysAdmin = isAdmin(user, env);
 
   if (!isAccountAdmin && !isSysAdmin) {
@@ -330,7 +389,7 @@ async function handleAccountMembers(
 
   const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
 
-  if (extraParts.length === 0) {
+  if (pathParts.length === 0) {
     if (request.method === 'GET') {
       return Response.json(await accountStub.getMembers());
     }
@@ -338,20 +397,20 @@ async function handleAccountMembers(
       const { user_id, role } = (await request.json()) as { user_id: string; role: number };
       return Response.json(await accountStub.addMember(user_id, role));
     }
-  } else if (extraParts.length === 1) {
-    const userIdToManage = extraParts[0];
+  } else if (pathParts.length === 1) {
+    const targetUserId = pathParts[0];
     if (request.method === 'DELETE') {
-      if (userIdToManage === user.id) {
+      if (targetUserId === user.id) {
         return new Response('Cannot remove yourself', { status: 400 });
       }
-      return Response.json(await accountStub.removeMember(userIdToManage));
+      return Response.json(await accountStub.removeMember(targetUserId));
     }
     if (request.method === 'PATCH') {
       const { role } = (await request.json()) as { role: number };
-      if (userIdToManage === user.id && role !== AccountDO.ROLE_ADMIN) {
+      if (targetUserId === user.id && role !== AccountDO.ROLE_ADMIN) {
         return new Response('Cannot demote yourself', { status: 400 });
       }
-      return Response.json(await accountStub.updateMemberRole(userIdToManage, role));
+      return Response.json(await accountStub.updateMemberRole(targetUserId, role));
     }
   }
 
@@ -371,7 +430,7 @@ async function handleAccountDetails(
   const memberships = await userStub.getMemberships();
   const membership = memberships.find((m: any) => m.account_id === accountId);
 
-  const isAccountAdmin = membership && membership.role === AccountDO.ROLE_ADMIN;
+  const isAccountAdmin = membership && (membership as any).role === AccountDO.ROLE_ADMIN;
   const isSysAdmin = isAdmin(user, env);
 
   if (!isAccountAdmin && !isSysAdmin) {
@@ -380,8 +439,14 @@ async function handleAccountDetails(
 
   const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
 
+  if (request.method === 'GET') {
+    const info = await accountStub.getInfo();
+    const billing = await accountStub.getBillingInfo();
+    return Response.json({ ...info, billing, role: membership?.role });
+  }
+
   if (request.method === 'POST') {
-    const data = (await request.json()) as any;
+    const data = await request.json();
     const result = await accountStub.updateInfo(data);
 
     // Sync with SystemDO index if name changed
@@ -396,157 +461,46 @@ async function handleAccountDetails(
     return Response.json(result);
   }
 
-  const info = await accountStub.getInfo();
-  const billing = await accountStub.getBillingInfo();
-
-  return Response.json({
-    ...info,
-    id: accountId,
-    role: membership ? membership.role : null,
-    billing,
-  });
+  return new Response('Method Not Allowed', { status: 405 });
 }
 
-async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
+async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<any> {
   const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+  if (!cookieHeader) return null;
 
   const cookies = parseCookies(cookieHeader);
   const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  if (!sessionCookieEncrypted) return null;
 
   const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  if (!sessionCookie || !sessionCookie.includes(':')) return null;
 
   const [sessionId, doId] = sessionCookie.split(':');
-
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
     const data = await userStub.validateSession(sessionId);
-
-    if (!data.valid) return Response.json(data, { status: 401 });
-
-    const profile = { ...data.profile };
-    const image = await userStub.getImage('avatar');
-    if (image) {
-      const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
-      profile.picture = usersPath + 'me/avatar';
-    } else {
-      profile.picture = null;
-    }
-
-    data.profile = profile;
-    data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
-    data.is_impersonated = !!cookies['backup_session_id'];
-
-    // Fetch memberships to find current account
-    const memberships = await userStub.getMemberships();
-    const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
-
-    if (currentMembership) {
-      const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
-      const accountStub = env.ACCOUNT.get(accountId);
-      const accountInfo = await accountStub.getInfo();
-      data.account = {
-        ...accountInfo,
-        id: currentMembership.account_id,
-        role: currentMembership.role,
-      };
-    }
-
-    return Response.json(data);
-  } catch (e) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-}
-
-async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
-
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [sessionId, doId] = sessionCookie.split(':');
-
-  try {
-    const id = env.USER.idFromString(doId);
-    const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
-
-    if (!data.valid) return Response.json(data, { status: 401 });
-
-    const profileData = (await request.json()) as any;
-    return Response.json(await userStub.updateProfile(profileData));
-  } catch (e) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+    if (data.valid) return { id: doId, sessionId, profile: data.profile, credential: data.credential };
+  } catch (e) {}
+  return null;
 }
 
 async function handleListCredentials(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [, doId] = sessionCookie.split(':');
-
-  try {
-    const id = env.USER.idFromString(doId);
-    const userStub = env.USER.get(id);
-    return Response.json(await userStub.listCredentials());
-  } catch (e) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  return Response.json(await userStub.listCredentials());
 }
 
 async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [, doId] = sessionCookie.split(':');
+  const { provider } = (await request.json()) as { provider: string };
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
 
   try {
-    const id = env.USER.idFromString(doId);
-    const userStub = env.USER.get(id);
-    const { provider } = (await request.json()) as any;
     return Response.json(await userStub.deleteCredential(provider));
   } catch (e: any) {
     return new Response(e.message, { status: 400 });
@@ -755,13 +709,18 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieMana
 
     const accounts = await Promise.all(
       memberships.map(async (m: any) => {
-        const accountId = env.ACCOUNT.idFromString(m.account_id);
-        const accountStub = env.ACCOUNT.get(accountId);
-        const info = await accountStub.getInfo();
-        return {
-          ...info,
-          ...m,
-        };
+        try {
+          const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(m.account_id));
+          const info = await accountStub.getInfo();
+          return {
+            account_id: m.account_id,
+            name: info.name || 'Unknown Account',
+            role: m.role,
+            is_current: m.is_current,
+          };
+        } catch (e) {
+          return { account_id: m.account_id, name: 'Unknown Account', role: m.role, is_current: m.is_current };
+        }
       }),
     );
 
@@ -805,4 +764,272 @@ async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieM
   } catch (e: any) {
     return new Response(e.message, { status: 400 });
   }
+}
+
+async function handleSSR(
+  request: Request,
+  env: StartupAPIEnv,
+  url: URL,
+  usersPath: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  const cookies = parseCookies(cookieHeader || '');
+  const sessionCookieEncrypted = cookies['session_id'];
+
+  if (!sessionCookieEncrypted) {
+    return Response.redirect(url.origin + '/', 302);
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return Response.redirect(url.origin + '/', 302);
+  }
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const data = await userStub.validateSession(sessionId);
+
+    if (!data.valid) {
+      return Response.redirect(url.origin + '/', 302);
+    }
+
+    // Get HTML from assets
+    const assetUrl = new URL(url.toString());
+    assetUrl.pathname = url.pathname.replace(usersPath, '/users/');
+    const assetRequest = new Request(assetUrl.toString(), request);
+    assetRequest.headers.set('x-skip-worker', 'true');
+    let assetResponse = await env.ASSETS.fetch(assetRequest);
+
+    // Follow one level of redirect if needed (e.g. for canonical URLs)
+    if (assetResponse.status === 301 || assetResponse.status === 302) {
+      const location = assetResponse.headers.get('Location');
+      if (location) {
+        const followUrl = new URL(location, assetUrl.toString());
+        const followRequest = new Request(followUrl.toString(), request);
+        followRequest.headers.set('x-skip-worker', 'true');
+        assetResponse = await env.ASSETS.fetch(followRequest);
+      }
+    }
+
+    if (!assetResponse.ok) {
+      return assetResponse;
+    }
+
+    let html = await assetResponse.text();
+
+    const profile = { ...data.profile };
+    const image = await userStub.getImage('avatar');
+    if (image) {
+      const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
+      profile.picture = usersPathNormalized + 'me/avatar';
+    } else {
+      profile.picture = null;
+    }
+
+    data.profile = profile;
+    data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
+
+    // Fetch memberships to find current account
+    const memberships = await userStub.getMemberships();
+    const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
+
+    // Fetch credentials
+    const credentials = await userStub.listCredentials();
+
+    let account = null;
+    let accountMembers = null;
+    if (currentMembership) {
+      const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
+      const accountStub = env.ACCOUNT.get(accountId);
+      const accountInfo = await accountStub.getInfo();
+      const billing = await accountStub.getBillingInfo();
+      account = {
+        ...accountInfo,
+        billing,
+        id: currentMembership.account_id,
+        role: currentMembership.role,
+      };
+      // Fetch members only if it's the accounts page or if needed
+      if (url.pathname.endsWith('/accounts.html') || url.pathname.endsWith('/accounts')) {
+        accountMembers = await accountStub.getMembers();
+      }
+    }
+
+    // Prepare SSR values
+    const replacements: Record<string, string> = {
+      providers: getActiveProviders(env).join(','),
+      profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
+      credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),
+      profile_name: profile.name || 'Anonymous',
+      profile_id: doId,
+      profile_email: profile.email || '',
+      profile_picture: profile.picture || '',
+      profile_picture_display: profile.picture ? 'display: block;' : 'display: none;',
+      profile_placeholder_display: profile.picture ? 'display: none;' : 'display: flex;',
+      profile_remove_btn_display: profile.picture ? 'display: flex;' : 'display: none;',
+      profile_provider_label: profile.provider ? `(from ${profile.provider.charAt(0).toUpperCase() + profile.provider.slice(1)})` : '',
+      nav_account_display: account && (account.role === 1 || data.is_admin) ? 'display: block;' : 'display: none;',
+      credentials_list_html: renderCredentialsList(credentials, data.credential?.provider),
+      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env)),
+    };
+
+    if (account) {
+      replacements['account_json'] = JSON.stringify(account).replace(/"/g, '&quot;');
+      replacements['account_name'] = account.name || 'Account';
+      replacements['account_id'] = account.id;
+      replacements['account_plan_name'] = account.billing?.plan_details?.name || account.billing?.state?.plan_slug || 'free';
+
+      const accountAvatar = await env.ACCOUNT.get(env.ACCOUNT.idFromString(account.id)).getImage('avatar');
+      const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
+      const accountPicture = accountAvatar ? `${usersPathNormalized}api/me/accounts/${account.id}/avatar` : null;
+
+      replacements['account_picture'] = accountPicture || '';
+      replacements['account_picture_display'] = accountPicture ? 'display: block;' : 'display: none;';
+      replacements['account_placeholder_display'] = accountPicture ? 'display: none;' : 'display: flex;';
+      replacements['account_remove_btn_display'] = accountPicture ? 'display: flex;' : 'display: none;';
+
+      const isAccountAdmin = account.role === 1 || data.is_admin;
+      replacements['account_info_section_display'] = isAccountAdmin ? 'display: block;' : 'display: none;';
+      replacements['account_members_section_display'] = isAccountAdmin ? 'display: block;' : 'display: none;';
+
+      if (accountMembers) {
+        replacements['account_members_json'] = JSON.stringify(accountMembers).replace(/"/g, '&quot;');
+        replacements['account_members_list_html'] = renderAccountMembersList(accountMembers, doId);
+      } else {
+        replacements['account_members_json'] = '[]';
+        replacements['account_members_list_html'] = '<p>Loading members...</p>';
+      }
+    } else {
+      replacements['account_json'] = 'null';
+      replacements['account_name'] = '';
+      replacements['account_id'] = '';
+      replacements['account_plan_name'] = '';
+      replacements['account_picture'] = '';
+      replacements['account_picture_display'] = 'display: none;';
+      replacements['account_placeholder_display'] = 'display: flex;';
+      replacements['account_remove_btn_display'] = 'display: none;';
+      replacements['account_info_section_display'] = 'display: none;';
+      replacements['account_members_section_display'] = 'display: none;';
+      replacements['account_members_json'] = '[]';
+      replacements['account_members_list_html'] = '';
+    }
+
+    html = renderSSR(html, replacements);
+
+    return new Response(html, {
+      headers: {
+        'Content-Type': 'text/html',
+      },
+    });
+  } catch (e: any) {
+    console.error('[handleSSR] Error:', e.message, e.stack);
+    return new Response('Error rendering page: ' + e.message, { status: 500 });
+  }
+}
+
+function renderSSR(html: string, replacements: Record<string, string>): string {
+  return html.replace(/\{\{ssr:([a-z0-9_]+)\}\}/g, (match, key) => {
+    return replacements[key] !== undefined ? replacements[key] : match;
+  });
+}
+
+function renderCredentialsList(credentials: any[], currentProvider?: string): string {
+  if (!credentials || credentials.length === 0) {
+    return '<p>No credentials linked.</p>';
+  }
+
+  return credentials
+    .map((c) => {
+      const isCurrent = c.provider === currentProvider;
+      return `
+      <div class="credential-item ${isCurrent ? 'active' : ''}">
+        <div class="credential-info">
+          <div class="provider-icon">
+            ${getProviderIcon(c.provider)}
+          </div>
+          <div>
+            <div style="font-weight: 600;">
+              ${c.provider.charAt(0).toUpperCase() + c.provider.slice(1)}
+              ${isCurrent ? '<span class="current-badge">logged in</span>' : ''}
+            </div>
+            <div style="font-size: 0.8rem; color: #666;">${c.profile_data?.email || c.subject_id}</div>
+          </div>
+        </div>
+        <button class="remove-btn" onclick="removeCredential('${c.provider}')" ${isCurrent || credentials.length === 1 ? 'disabled title="' + (isCurrent ? 'Cannot remove the method you are currently logged in with' : 'Cannot remove your last login method') + '"' : ''}>
+          Remove
+        </button>
+      </div>
+    `;
+    })
+    .join('');
+}
+
+function getProviderIcon(provider: string): string {
+  if (provider === 'google') {
+    return '<svg viewBox="0 0 24 24" width="24" height="24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>';
+  } else if (provider === 'twitch') {
+    return '<svg viewBox="0 0 24 24" width="24" height="24" class="twitch-icon"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z" fill="currentColor"/></svg>';
+  }
+  return '';
+}
+
+function renderLinkCredentialsList(providers: string[]): string {
+  if (providers.length === 0) {
+    return '';
+  }
+
+  return providers
+    .map((provider) => {
+      return `
+      <a href="/users/auth/${provider}" class="link-account-btn ${provider}">
+        ${getProviderIcon(provider).replace('width="24" height="24"', 'width="20" height="20"')}
+        ${provider.charAt(0).toUpperCase() + provider.slice(1)}
+      </a>
+    `;
+    })
+    .join('');
+}
+
+function renderAccountMembersList(members: any[], currentUserId: string): string {
+  if (!members || members.length === 0) {
+    return '<p>No members found.</p>';
+  }
+
+  return members
+    .map((m) => {
+      const isSelf = m.user_id === currentUserId;
+      const avatarContent = m.picture
+        ? `<img src="${m.picture}" class="member-avatar" alt="${m.name}" />`
+        : `<div class="member-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+           </div>`;
+
+      return `
+      <div class="member-item">
+        <div class="member-info">
+          ${avatarContent}
+          <div class="member-details">
+            <div class="member-name" title="${m.name}${isSelf ? ' (You)' : ''}">${m.name} ${isSelf ? '(You)' : ''}</div>
+            <div class="member-role">
+              <select onchange="updateRole('${m.user_id}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role"' : ''} class="role-select">
+                <option value="0" ${m.role === 0 ? 'selected' : ''}>Member</option>
+                <option value="1" ${m.role === 1 ? 'selected' : ''}>Admin</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <button class="remove-btn" onclick="removeMember('${m.user_id}')" ${isSelf ? 'disabled title="You cannot remove yourself"' : ''}>
+          Remove
+        </button>
+      </div>
+    `;
+    })
+    .join('');
 }

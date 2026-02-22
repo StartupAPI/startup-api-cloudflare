@@ -14,6 +14,7 @@ describe('Integration Tests', () => {
     // 1. Manually set up a UserDO with a session
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
+    const userIdStr = id.toString();
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -52,6 +53,10 @@ describe('Integration Tests', () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
     const doId = id.toString();
+
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: doId, name: 'Original Name' });
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -157,6 +162,7 @@ describe('Integration Tests', () => {
   it('should serve avatar image from /me/avatar', async () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
+    const userIdStr = id.toString();
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -215,6 +221,10 @@ describe('Integration Tests', () => {
     const userStub = env.USER.get(id);
     const userIdStr = id.toString();
 
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: userIdStr, name: 'Integration Tester' });
+
     // Store initial avatar
     const initialAvatar = new Uint8Array([1, 1, 1, 1]);
     await userStub.storeImage('avatar', initialAvatar.buffer, 'image/png');
@@ -259,5 +269,88 @@ describe('Integration Tests', () => {
     expect(storedImage).not.toBeNull();
     expect(storedImage.mime_type).toBe('image/png');
     expect(new Uint8Array(storedImage.value)).toEqual(initialAvatar);
+  });
+
+  it('should server-side render profile.html', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+    const userIdStr = id.toString();
+
+    // Create session
+    const { sessionId } = await stub.createSession();
+    await stub.updateProfile({ name: 'SSR Tester' });
+
+    // Add credentials
+    const googleCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
+    await googleCredStub.put({
+      user_id: userIdStr,
+      provider: 'google',
+      subject_id: 'google-123',
+      profile_data: { email: 'google@example.com' },
+    });
+    await stub.addCredential('google', 'google-123');
+
+    const twitchCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('twitch'));
+    await twitchCredStub.put({
+      user_id: userIdStr,
+      provider: 'twitch',
+      subject_id: 'twitch-456',
+      profile_data: { email: 'twitch@example.com' },
+    });
+    await stub.addCredential('twitch', 'twitch-456');
+
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
+
+    const res = await SELF.fetch('http://example.com/users/profile.html', {
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('SSR Tester');
+    expect(html).toContain('google');
+    expect(html).toContain('twitch');
+    expect(html).toContain('google@example.com');
+    expect(html).toContain('twitch@example.com');
+    expect(html).toContain('providers="google,twitch"');
+    expect(html).not.toContain('{{ssr:profile_name}}');
+  });
+
+  it('should render correct providers in "Link another account" section', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+    const userIdStr = id.toString();
+
+    const { sessionId } = await stub.createSession();
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
+
+    const res = await SELF.fetch('http://example.com/users/profile.html', {
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // Check that configured providers are present
+    expect(html).toContain('link-account-btn google');
+    expect(html).toContain('link-account-btn twitch');
+
+    // Check that some non-existent provider is NOT present
+    expect(html).not.toContain('link-account-btn github');
+  });
+
+  it('should inject correct providers into login overlay via PowerStrip', async () => {
+    // When proxying to origin (example.com), it should inject the power-strip
+    const res = await SELF.fetch('http://example.com/');
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // Check that power-strip element was injected with correct providers
+    expect(html).toContain('<power-strip providers="google,twitch"');
   });
 });
