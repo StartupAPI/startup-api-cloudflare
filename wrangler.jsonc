@@ -18,10 +18,13 @@
   },
   "r2_buckets": [
     {
-      "binding": "IMAGES",
+      "binding": "IMAGE_STORAGE",
       "bucket_name": "startup-api-images",
     },
   ],
+  "images": {
+    "binding": "IMAGES",
+  },
   "durable_objects": {
     "bindings": [
       {
@@ -70,7 +73,7 @@
       },
       "r2_buckets": [
         {
-          "binding": "IMAGES",
+          "binding": "IMAGE_STORAGE",
           "bucket_name": "startup-api-images",
         },
       ],
