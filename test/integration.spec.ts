@@ -260,4 +260,27 @@ describe('Integration Tests', () => {
     expect(storedImage.mime_type).toBe('image/png');
     expect(new Uint8Array(storedImage.value)).toEqual(initialAvatar);
   });
+
+  it('should server-side render profile.html', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+    const userIdStr = id.toString();
+
+    // Create session
+    const { sessionId } = await stub.createSession();
+    await stub.updateProfile({ name: 'SSR Tester' });
+
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
+
+    const res = await SELF.fetch('http://example.com/users/profile.html', {
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('SSR Tester');
+    expect(html).not.toContain('{{ssr:profile_name}}');
+  });
 });

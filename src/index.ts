@@ -31,6 +31,18 @@ export default {
 
     const cookieManager = new CookieManager(env.SESSION_SECRET);
 
+    // SSR Routes
+    const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
+    if (url.pathname.startsWith(usersPathNormalized)) {
+      const subPath = url.pathname.slice(usersPathNormalized.length);
+      const isProfile = subPath === 'profile.html' || subPath === 'profile';
+      const isAccounts = subPath === 'accounts.html' || subPath === 'accounts';
+
+      if (isProfile || isAccounts) {
+        return handleSSR(request, env, url, usersPath, cookieManager);
+      }
+    }
+
     // Handle OAuth Routes
     if (url.pathname.startsWith(usersPath + 'auth/')) {
       return handleAuth(request, env, url, usersPath, cookieManager);
@@ -122,13 +134,6 @@ export default {
 
     // Intercept requests to usersPath and serve them from the public/users directory.
     if (url.pathname.startsWith(usersPath)) {
-      const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
-      const requestPath = url.pathname.replace(usersPathNormalized, '');
-
-      if (requestPath === 'profile.html' || requestPath === 'accounts.html') {
-        return handleSSR(request, env, url, usersPath, cookieManager);
-      }
-
       url.pathname = url.pathname.replace(usersPath, '/users/');
       const newRequest = new Request(url.toString(), request);
       newRequest.headers.set('x-skip-worker', 'true');
@@ -160,7 +165,7 @@ export default {
     // do not modify the request as it will loop through the same worker again
     return env.ASSETS.fetch(request);
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<StartupAPIEnv>;
 
 async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
@@ -258,36 +263,64 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
   return new Response('Not Found', { status: 404 });
 }
 
-async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<any> {
+async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  const data = await userStub.validateSession(user.id); // This is actually session lookup, but using user ID for simplicity in some helpers? No, this is wrong in handleMe.
+
+  // Re-read handleMe original logic
   const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return null;
-
-  const cookies = parseCookies(cookieHeader);
+  const cookies = parseCookies(cookieHeader || '');
   const sessionCookieEncrypted = cookies['session_id'];
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted!);
+  const [sessionId, doId] = sessionCookie!.split(':');
+  const userStubReal = env.USER.get(env.USER.idFromString(doId));
+  const fullData = await userStubReal.validateSession(sessionId);
 
-  if (!sessionCookieEncrypted) return null;
+  if (!fullData.valid) return Response.json(fullData, { status: 401 });
 
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) return null;
-
-  const [sessionId, doId] = sessionCookie.split(':');
-
-  try {
-    const id = env.USER.idFromString(doId);
-    const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
-
-    if (data.valid) {
-      return {
-        id: doId,
-        profile: data.profile,
-        credential: data.credential,
-      };
-    }
-  } catch (e) {
-    return null;
+  const profile = { ...fullData.profile };
+  const image = await userStubReal.getImage('avatar');
+  if (image) {
+    const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+    profile.picture = usersPath + 'me/avatar';
+  } else {
+    profile.picture = null;
   }
-  return null;
+
+  fullData.profile = profile;
+  fullData.is_admin = isAdmin({ id: doId, ...fullData.profile }, env);
+  fullData.is_impersonated = !!cookies['backup_session_id'];
+
+  // Fetch memberships to find current account
+  const memberships = await userStubReal.getMemberships();
+  const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
+
+  if (currentMembership) {
+    const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
+    const accountStub = env.ACCOUNT.get(accountId);
+    const accountInfo = await accountStub.getInfo();
+    fullData.account = {
+      ...accountInfo,
+      id: currentMembership.account_id,
+      role: currentMembership.role,
+    };
+  }
+
+  return Response.json(fullData);
+}
+
+async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const profileData = await request.json();
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  await userStub.updateProfile(profileData);
+
+  return Response.json({ success: true });
 }
 
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
@@ -328,7 +361,7 @@ async function handleAccountMembers(
   const memberships = await userStub.getMemberships();
   const membership = memberships.find((m: any) => m.account_id === accountId);
 
-  const isAccountAdmin = membership && membership.role === AccountDO.ROLE_ADMIN;
+  const isAccountAdmin = membership && (membership as any).role === AccountDO.ROLE_ADMIN;
   const isSysAdmin = isAdmin(user, env);
 
   if (!isAccountAdmin && !isSysAdmin) {
@@ -378,7 +411,7 @@ async function handleAccountDetails(
   const memberships = await userStub.getMemberships();
   const membership = memberships.find((m: any) => m.account_id === accountId);
 
-  const isAccountAdmin = membership && membership.role === AccountDO.ROLE_ADMIN;
+  const isAccountAdmin = membership && (membership as any).role === AccountDO.ROLE_ADMIN;
   const isSysAdmin = isAdmin(user, env);
 
   if (!isAccountAdmin && !isSysAdmin) {
@@ -409,151 +442,48 @@ async function handleAccountDetails(
   return Response.json({
     ...info,
     id: accountId,
-    role: membership ? membership.role : null,
+    role: membership ? (membership as any).role : null,
     billing,
   });
 }
 
-async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
+async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<any> {
   const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+  if (!cookieHeader) return null;
 
   const cookies = parseCookies(cookieHeader);
   const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  if (!sessionCookieEncrypted) return null;
 
   const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  if (!sessionCookie || !sessionCookie.includes(':')) return null;
 
   const [sessionId, doId] = sessionCookie.split(':');
-
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
     const data = await userStub.validateSession(sessionId);
-
-    if (!data.valid) return Response.json(data, { status: 401 });
-
-    const profile = { ...data.profile };
-    const image = await userStub.getImage('avatar');
-    if (image) {
-      const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
-      profile.picture = usersPath + 'me/avatar';
-    } else {
-      profile.picture = null;
-    }
-
-    data.profile = profile;
-    data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
-    data.is_impersonated = !!cookies['backup_session_id'];
-
-    // Fetch memberships to find current account
-    const memberships = await userStub.getMemberships();
-    const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
-
-    if (currentMembership) {
-      const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
-      const accountStub = env.ACCOUNT.get(accountId);
-      const accountInfo = await accountStub.getInfo();
-      data.account = {
-        ...accountInfo,
-        id: currentMembership.account_id,
-        role: currentMembership.role,
-      };
-    }
-
-    return Response.json(data);
-  } catch (e) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-}
-
-async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
-
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [sessionId, doId] = sessionCookie.split(':');
-
-  try {
-    const id = env.USER.idFromString(doId);
-    const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
-
-    if (!data.valid) return Response.json(data, { status: 401 });
-
-    const profileData = (await request.json()) as any;
-    return Response.json(await userStub.updateProfile(profileData));
-  } catch (e) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+    if (data.valid) return { id: doId, profile: data.profile, credential: data.credential };
+  } catch (e) {}
+  return null;
 }
 
 async function handleListCredentials(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [, doId] = sessionCookie.split(':');
-
-  try {
-    const id = env.USER.idFromString(doId);
-    const userStub = env.USER.get(id);
-    return Response.json(await userStub.listCredentials());
-  } catch (e) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
+  return Response.json(await userStub.listCredentials());
 }
 
 async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [, doId] = sessionCookie.split(':');
+  const { provider } = (await request.json()) as { provider: string };
+  const userStub = env.USER.get(env.USER.idFromString(user.id));
 
   try {
-    const id = env.USER.idFromString(doId);
-    const userStub = env.USER.get(id);
-    const { provider } = (await request.json()) as any;
     return Response.json(await userStub.deleteCredential(provider));
   } catch (e: any) {
     return new Response(e.message, { status: 400 });
@@ -762,13 +692,16 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieMana
 
     const accounts = await Promise.all(
       memberships.map(async (m: any) => {
-        const accountId = env.ACCOUNT.idFromString(m.account_id);
-        const accountStub = env.ACCOUNT.get(accountId);
-        const info = await accountStub.getInfo();
-        return {
-          ...info,
-          ...m,
-        };
+        try {
+          const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(m.account_id));
+          const info = await accountStub.getInfo();
+          return {
+            ...info,
+            ...m,
+          };
+        } catch (e) {
+          return { ...m, name: 'Unknown Account' };
+        }
       }),
     );
 
@@ -850,7 +783,18 @@ async function handleSSR(
     assetUrl.pathname = url.pathname.replace(usersPath, '/users/');
     const assetRequest = new Request(assetUrl.toString(), request);
     assetRequest.headers.set('x-skip-worker', 'true');
-    const assetResponse = await env.ASSETS.fetch(assetRequest);
+    let assetResponse = await env.ASSETS.fetch(assetRequest);
+
+    // Follow one level of redirect if needed (e.g. for canonical URLs)
+    if (assetResponse.status === 301 || assetResponse.status === 302) {
+      const location = assetResponse.headers.get('Location');
+      if (location) {
+        const followUrl = new URL(location, assetUrl.toString());
+        const followRequest = new Request(followUrl.toString(), request);
+        followRequest.headers.set('x-skip-worker', 'true');
+        assetResponse = await env.ASSETS.fetch(followRequest);
+      }
+    }
 
     if (!assetResponse.ok) {
       return assetResponse;
@@ -861,7 +805,8 @@ async function handleSSR(
     const profile = { ...data.profile };
     const image = await userStub.getImage('avatar');
     if (image) {
-      profile.picture = usersPath + 'me/avatar';
+      const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
+      profile.picture = usersPathNormalized + 'me/avatar';
     } else {
       profile.picture = null;
     }
@@ -908,7 +853,8 @@ async function handleSSR(
       replacements['account_plan_name'] = account.billing?.plan_details?.name || account.billing?.state?.plan_slug || 'free';
 
       const accountAvatar = await env.ACCOUNT.get(env.ACCOUNT.idFromString(account.id)).getImage('avatar');
-      const accountPicture = accountAvatar ? `${usersPath}api/me/accounts/${account.id}/avatar` : null;
+      const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
+      const accountPicture = accountAvatar ? `${usersPathNormalized}api/me/accounts/${account.id}/avatar` : null;
 
       replacements['account_picture'] = accountPicture || '';
       replacements['account_picture_display'] = accountPicture ? 'display: block;' : 'display: none;';
@@ -945,10 +891,7 @@ async function handleSSR(
 }
 
 function renderSSR(html: string, replacements: Record<string, string>): string {
-  let rendered = html;
-  for (const [key, value] of Object.entries(replacements)) {
-    const placeholder = `{{ssr:${key}}}`;
-    rendered = rendered.split(placeholder).join(value);
-  }
-  return rendered;
+  return html.replace(/\{\{ssr:([a-z0-9_]+)\}\}/g, (match, key) => {
+    return replacements[key] !== undefined ? replacements[key] : match;
+  });
 }

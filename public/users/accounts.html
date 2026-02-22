@@ -154,12 +154,7 @@
           const ssrProfileJson = document.body.getAttribute('data-ssr-profile');
           const ssrAccountJson = document.body.getAttribute('data-ssr-account');
 
-          if (
-            ssrProfileJson &&
-            !ssrProfileJson.startsWith('{{ssr:') &&
-            ssrAccountJson &&
-            !ssrAccountJson.startsWith('{{ssr:')
-          ) {
+          if (ssrProfileJson && !ssrProfileJson.startsWith('{{ssr:') && ssrAccountJson && !ssrAccountJson.startsWith('{{ssr:')) {
             try {
               const profile = JSON.parse(ssrProfileJson);
               const account = JSON.parse(ssrAccountJson);
