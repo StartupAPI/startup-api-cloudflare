@@ -358,6 +358,58 @@ describe('Admin Administration', () => {
     expect(account.member_count).toBe(0);
   });
 
+  it('should restore member_count in SystemDO from AccountDO truth', async () => {
+    // 1. Get an admin user
+    const adminId = env.USER.idFromName('admin');
+    const adminStub = env.USER.get(adminId);
+    const adminIdStr = adminId.toString();
+
+    const { sessionId } = await adminStub.createSession();
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
+
+    // 2. Create an account
+    const createRes = await SELF.fetch('http://example.com/users/admin/api/accounts', {
+      method: 'POST',
+      headers: {
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: 'Sync Test Account' }),
+    });
+    const { id: accountId } = (await createRes.json()) as any;
+
+    // 3. Manually break the count in SystemDO (set it to 100)
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.updateMemberCount(accountId, 100);
+
+    // Verify it is broken
+    let listRes = await SELF.fetch('http://example.com/users/admin/api/accounts', {
+      headers: { Cookie: cookieHeader },
+    });
+    let accounts = (await listRes.json()) as any[];
+    let account = accounts.find((a) => a.id === accountId);
+    expect(account.member_count).toBe(100);
+
+    // 4. Add a member via API, which should trigger syncMemberCount()
+    const userId = env.USER.newUniqueId().toString();
+    await SELF.fetch(`http://example.com/users/admin/api/accounts/${accountId}/members`, {
+      method: 'POST',
+      headers: {
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, role: 0 }),
+    });
+
+    // 5. Verify count is restored to 1 (actual number of members in AccountDO)
+    listRes = await SELF.fetch('http://example.com/users/admin/api/accounts', {
+      headers: { Cookie: cookieHeader },
+    });
+    accounts = (await listRes.json()) as any[];
+    account = accounts.find((a) => a.id === accountId);
+    expect(account.member_count).toBe(1);
+  });
+
   it('should delete an account via admin API', async () => {
     // 1. Get an admin user
     const adminId = env.USER.idFromName('admin');
