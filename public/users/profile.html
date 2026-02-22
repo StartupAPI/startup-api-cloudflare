@@ -47,6 +47,24 @@
           <div class="avatar-section">
             <div style="position: relative">
               <img id="profile-picture" class="avatar-large" src="" alt="Profile Picture" style="display: none" />
+              <div
+                id="profile-avatar-placeholder"
+                class="avatar-large"
+                style="background: #f1f3f4; display: flex; align-items: center; justify-content: center; color: #5f6368"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  style="width: 48px; height: 48px"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+              </div>
               <input type="file" id="avatar-input" accept="image/*" style="display: none" />
               <button
                 type="button"
@@ -200,11 +218,13 @@
               const img = document.getElementById('profile-picture');
               img.src = p.picture;
               img.style.display = 'block';
+              document.getElementById('profile-avatar-placeholder').style.display = 'none';
               document.getElementById('remove-avatar-btn').style.display = 'flex';
             } else {
               const img = document.getElementById('profile-picture');
               img.src = '';
               img.style.display = 'none';
+              document.getElementById('profile-avatar-placeholder').style.display = 'flex';
               document.getElementById('remove-avatar-btn').style.display = 'none';
             }
 
@@ -257,6 +277,11 @@
             // Refresh image by appending timestamp to bypass cache
             const img = document.getElementById('profile-picture');
             img.src = `/users/me/avatar?t=${Date.now()}`;
+            img.style.display = 'block';
+            document.getElementById('profile-avatar-placeholder').style.display = 'none';
+            document.getElementById('remove-avatar-btn').style.display = 'flex';
+
+            loadProfile();
 
             // Refresh power-strip
             const powerStrip = document.querySelector('power-strip');
