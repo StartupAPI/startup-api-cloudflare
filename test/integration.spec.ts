@@ -271,14 +271,23 @@ describe('Integration Tests', () => {
     await stub.updateProfile({ name: 'SSR Tester' });
 
     // Add credentials
-    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test-provider'));
-    await credentialStub.put({
+    const googleCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
+    await googleCredStub.put({
       user_id: userIdStr,
-      provider: 'test-provider',
-      subject_id: 'ssr-123',
-      profile_data: { name: 'SSR Tester' },
+      provider: 'google',
+      subject_id: 'google-123',
+      profile_data: { email: 'google@example.com' },
     });
-    await stub.addCredential('test-provider', 'ssr-123');
+    await stub.addCredential('google', 'google-123');
+
+    const twitchCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('twitch'));
+    await twitchCredStub.put({
+      user_id: userIdStr,
+      provider: 'twitch',
+      subject_id: 'twitch-456',
+      profile_data: { email: 'twitch@example.com' },
+    });
+    await stub.addCredential('twitch', 'twitch-456');
 
     const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
 
@@ -291,9 +300,10 @@ describe('Integration Tests', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('SSR Tester');
-    expect(html).toContain('data-ssr-credentials="[{&quot;provider&quot;:&quot;test-provider&quot;');
-    expect(html).toContain('credential-item');
-    expect(html).toContain('test-provider');
+    expect(html).toContain('google');
+    expect(html).toContain('twitch');
+    expect(html).toContain('google@example.com');
+    expect(html).toContain('twitch@example.com');
     expect(html).not.toContain('{{ssr:profile_name}}');
   });
 });

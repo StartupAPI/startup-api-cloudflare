@@ -287,13 +287,15 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
     profile.picture = null;
   }
 
-  data.profile = profile;
-  data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
-  data.is_impersonated = !!cookies['backup_session_id'];
-
-  // Fetch memberships to find current account
-  const memberships = await userStub.getMemberships();
-  const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
+      data.profile = profile;
+      data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
+      data.is_impersonated = !!cookies['backup_session_id'];
+  
+      // Fetch credentials
+      data.credentials = await userStub.listCredentials();
+  
+      // Fetch memberships to find current account
+      const memberships = await userStub.getMemberships();  const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
 
   if (currentMembership) {
     const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);

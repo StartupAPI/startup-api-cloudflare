@@ -262,6 +262,8 @@
               document.getElementById('nav-account-item').style.display = 'block';
             }
 
+            loadCredentials(data.credentials);
+
             document.getElementById('save-btn').disabled = true;
           }
         } catch (e) {
@@ -384,17 +386,20 @@
         setTimeout(() => (toast.style.opacity = 0), 3000);
       }
 
-      async function loadCredentials() {
+      async function loadCredentials(passedCredentials) {
         const list = document.getElementById('credentials-list');
         try {
-          // Try to get data from SSR first
-          let credentials = null;
-          const ssrCredentialsJson = document.body.getAttribute('data-ssr-credentials');
-          if (ssrCredentialsJson && !ssrCredentialsJson.startsWith('{{ssr:')) {
-            try {
-              credentials = JSON.parse(ssrCredentialsJson);
-            } catch (e) {
-              console.error('Failed to parse SSR credentials', e);
+          // Try to get data from passed credentials or SSR first
+          let credentials = passedCredentials;
+
+          if (!credentials) {
+            const ssrCredentialsJson = document.body.getAttribute('data-ssr-credentials');
+            if (ssrCredentialsJson && !ssrCredentialsJson.startsWith('{{ssr:')) {
+              try {
+                credentials = JSON.parse(ssrCredentialsJson);
+              } catch (e) {
+                console.error('Failed to parse SSR credentials', e);
+              }
             }
           }
 
@@ -477,7 +482,7 @@
       }
 
       loadProfile();
-      loadCredentials();
+      // loadCredentials(); // Handled within loadProfile if data exists
     </script>
   </body>
 </html>
