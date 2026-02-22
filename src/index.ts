@@ -124,7 +124,7 @@ export default {
     }
 
     if (url.pathname === usersPath + 'logout') {
-      return handleLogout(request, env, usersPath, cookieManager);
+      return handleLogout(request, env, url, usersPath, cookieManager);
     }
 
     // Admin Routes
@@ -690,7 +690,13 @@ async function handleAccountImage(
   }
 }
 
-async function handleLogout(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
+async function handleLogout(
+  request: Request,
+  env: StartupAPIEnv,
+  url: URL,
+  usersPath: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (cookieHeader) {
     const cookies = parseCookies(cookieHeader);
@@ -714,7 +720,24 @@ async function handleLogout(request: Request, env: StartupAPIEnv, usersPath: str
 
   const headers = new Headers();
   headers.set('Set-Cookie', 'session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
-  headers.set('Location', '/');
+
+  let redirectUrl = '/';
+  const returnUrl = url.searchParams.get('return_url');
+  if (returnUrl) {
+    const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
+    try {
+      const parsedReturn = new URL(returnUrl, origin);
+      if (parsedReturn.origin === origin) {
+        redirectUrl = parsedReturn.toString();
+      }
+    } catch (e) {
+      if (returnUrl.startsWith('/')) {
+        redirectUrl = returnUrl;
+      }
+    }
+  }
+
+  headers.set('Location', redirectUrl);
   return new Response(null, { status: 302, headers });
 }
 
@@ -872,6 +895,7 @@ async function handleSSR(
 
     // Prepare SSR values
     const replacements: Record<string, string> = {
+      home_url: env.ORIGIN_URL || url.origin,
       providers: getActiveProviders(env).join(','),
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
       credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),
@@ -887,7 +911,7 @@ async function handleSSR(
         : '',
       nav_account_display: account && (account.role === 1 || data.is_admin) ? 'display: block;' : 'display: none;',
       credentials_list_html: renderCredentialsList(credentials, data.credential?.provider),
-      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env)),
+      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env), url.href),
     };
 
     if (account) {
@@ -990,15 +1014,17 @@ function getProviderIcon(provider: string): string {
   return '';
 }
 
-function renderLinkCredentialsList(providers: string[]): string {
+function renderLinkCredentialsList(providers: string[], returnUrl?: string): string {
   if (providers.length === 0) {
     return '';
   }
 
+  const query = returnUrl ? `?return_url=${encodeURIComponent(returnUrl)}` : '';
+
   return providers
     .map((provider) => {
       return `
-      <a href="/users/auth/${provider}" class="link-account-btn ${provider}">
+      <a href="/users/auth/${provider}${query}" class="link-account-btn ${provider}">
         ${getProviderIcon(provider).replace('width="24" height="24"', 'width="20" height="20"')}
         ${provider.charAt(0).toUpperCase() + provider.slice(1)}
       </a>

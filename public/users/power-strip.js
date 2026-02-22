@@ -98,9 +98,10 @@ class PowerStrip extends HTMLElement {
   }
 
   render() {
-    const googleLink = `${this.basePath}/auth/google`;
-    const twitchLink = `${this.basePath}/auth/twitch`;
-    const logoutLink = `${this.basePath}/logout`;
+    const returnUrl = encodeURIComponent(window.location.href);
+    const googleLink = `${this.basePath}/auth/google?return_url=${returnUrl}`;
+    const twitchLink = `${this.basePath}/auth/twitch?return_url=${returnUrl}`;
+    const logoutLink = `${this.basePath}/logout?return_url=${returnUrl}`;
 
     const providersStr = this.getAttribute('providers') || '';
     const providers = providersStr.split(',');
