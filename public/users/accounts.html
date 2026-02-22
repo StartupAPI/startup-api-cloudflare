@@ -144,6 +144,7 @@
       let currentUserRole = 0;
       let currentUserId = null;
       let initialAccountInfo = {};
+      let isInitialLoad = true;
 
       async function init() {
         try {
@@ -222,6 +223,7 @@
             }
 
             loadAccountDetails(data.account);
+            isInitialLoad = false;
           }
         } catch (e) {
           showToast(e.message);
@@ -376,7 +378,7 @@
         const list = document.getElementById('members-list');
         try {
           let members = ssrData;
-          if (!members) {
+          if (!members && isInitialLoad) {
             const ssrMembersJson = document.body.getAttribute('data-ssr-members');
             if (ssrMembersJson && !ssrMembersJson.startsWith('{{ssr:')) {
               try {

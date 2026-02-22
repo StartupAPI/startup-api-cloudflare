@@ -159,17 +159,20 @@
       const API_BASE = '/users/api';
       let currentProvider = null;
       let initialProfile = {};
+      let isInitialLoad = true;
 
       async function loadProfile() {
         try {
           // Try to get data from SSR first
           let data = null;
-          const ssrProfileJson = document.body.getAttribute('data-ssr-profile');
-          if (ssrProfileJson && !ssrProfileJson.startsWith('{{ssr:')) {
-            try {
-              data = JSON.parse(ssrProfileJson);
-            } catch (e) {
-              console.error('Failed to parse SSR profile', e);
+          if (isInitialLoad) {
+            const ssrProfileJson = document.body.getAttribute('data-ssr-profile');
+            if (ssrProfileJson && !ssrProfileJson.startsWith('{{ssr:')) {
+              try {
+                data = JSON.parse(ssrProfileJson);
+              } catch (e) {
+                console.error('Failed to parse SSR profile', e);
+              }
             }
           }
 
@@ -234,6 +237,7 @@
             loadCredentials(data.credentials);
 
             document.getElementById('save-btn').disabled = true;
+            isInitialLoad = false;
           }
         } catch (e) {
           showToast(e.message);
@@ -361,7 +365,7 @@
           // Try to get data from passed credentials or SSR first
           let credentials = passedCredentials;
 
-          if (!credentials) {
+          if (!credentials && isInitialLoad) {
             const ssrCredentialsJson = document.body.getAttribute('data-ssr-credentials');
             if (ssrCredentialsJson && !ssrCredentialsJson.startsWith('{{ssr:')) {
               try {
