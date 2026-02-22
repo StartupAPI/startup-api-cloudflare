@@ -5,6 +5,8 @@ import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
 import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
+import { initPlans } from './billing/plansConfig';
+import { Plan } from './billing/Plan';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -17,6 +19,8 @@ export default {
    * Main Worker fetch handler.
    */
   async fetch(request: Request, env: StartupAPIEnv, ctx): Promise<Response> {
+    initPlans();
+
     // Prevent infinite loops when serving assets
     if (request.headers.has('x-skip-worker')) {
       return env.ASSETS.fetch(request);
@@ -189,6 +193,7 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 
     let html = await response.text();
     html = renderSSR(html, {
+      plans_json: JSON.stringify(Plan.getAll()).replace(/"/g, '&quot;'),
       providers: getActiveProviders(env).join(','),
     });
 
@@ -300,6 +305,7 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
       valid: true,
       profile: { ...initialProfile },
       credential,
+      plans: Plan.getAll(),
     };
 
     const image = await userStub.getImage('avatar');
@@ -327,8 +333,10 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
       const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
       const accountStub = env.ACCOUNT.get(accountId);
       const accountInfo = await accountStub.getInfo();
+      const billing = await accountStub.getBillingInfo();
       data.account = {
         ...accountInfo,
+        billing,
         id: currentMembership.account_id,
         role: currentMembership.role,
       };
@@ -461,13 +469,16 @@ async function handleAccountDetails(
     const data = await request.json();
     const result = await accountStub.updateInfo(data);
 
-    // Sync with SystemDO index if name changed
-    if (data.name) {
+    // Sync with SystemDO index if name or plan changed
+    if (data.name || data.plan) {
       try {
         const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-        await systemStub.updateAccount(accountId, { name: data.name });
+        const updates: any = {};
+        if (data.name) updates.name = data.name;
+        if (data.plan) updates.plan = data.plan;
+        await systemStub.updateAccount(accountId, updates);
       } catch (e) {
-        console.error('Failed to sync account name to SystemDO', e);
+        console.error('Failed to sync account updates to SystemDO', e);
       }
     }
     return Response.json(result);
@@ -899,6 +910,7 @@ async function handleSSR(
 
     // Prepare SSR values
     const replacements: Record<string, string> = {
+      plans_json: JSON.stringify(Plan.getAll()).replace(/"/g, '&quot;'),
       providers: getActiveProviders(env).join(','),
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
       credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),

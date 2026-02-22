@@ -31,3 +31,7 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 
 - All non-admin API paths start with `/${usersPath}/api/`
 - All admin API paths start with `/${usersPath}/admin/api/`
+
+## Implementation
+
+- When coding new features, create tests that cover the new code

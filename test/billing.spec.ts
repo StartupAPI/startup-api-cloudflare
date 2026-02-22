@@ -27,6 +27,10 @@ describe('Billing Logic in AccountDO', () => {
     // Verify persistence
     const info: any = await stub.getBillingInfo();
     expect(info.state.plan_slug).toBe('pro');
+
+    // Verify getInfo also has the correct plan
+    const accountInfo: any = await stub.getInfo();
+    expect(accountInfo.plan).toBe('pro');
   });
 
   it('should fail to subscribe to invalid plan', async () => {
@@ -47,5 +51,16 @@ describe('Billing Logic in AccountDO', () => {
     const result: any = await stub.cancelSubscription();
     expect(result.state.status).toBe('canceled');
     expect(result.state.next_plan_slug).toBe('free'); // Based on plansConfig.ts
+  });
+
+  it('should support enterprise plan', async () => {
+    const id = env.ACCOUNT.newUniqueId();
+    const stub = env.ACCOUNT.get(id);
+
+    await stub.subscribe('enterprise');
+    const info: any = await stub.getBillingInfo();
+    expect(info.state.plan_slug).toBe('enterprise');
+    expect(info.plan_details.name).toBe('Enterprise');
+    expect(info.plan_details.capabilities.can_access_enterprise).toBe(true);
   });
 });

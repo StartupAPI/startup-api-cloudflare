@@ -120,7 +120,7 @@
       }
     </style>
   </head>
-  <body>
+  <body data-ssr-plans="{{ssr:plans_json}}">
     <power-strip
       providers="{{ssr:providers}}"
       style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
@@ -254,9 +254,7 @@
       <div class="form-group">
         <label for="edit-account-plan">Plan</label>
         <select id="edit-account-plan">
-          <option value="free">Free</option>
-          <option value="pro">Pro</option>
-          <option value="enterprise">Enterprise</option>
+          <!-- Populated dynamically -->
         </select>
       </div>
       <div class="modal-actions">
@@ -282,9 +280,7 @@
       <div class="form-group">
         <label for="create-account-plan">Initial Plan</label>
         <select id="create-account-plan">
-          <option value="free">Free</option>
-          <option value="pro">Pro</option>
-          <option value="enterprise">Enterprise</option>
+          <!-- Populated dynamically -->
         </select>
       </div>
       <div class="modal-actions">
@@ -336,6 +332,29 @@
       const API_BASE = '/users/admin/api';
       let currentUsers = [];
       let currentAccounts = [];
+      let availablePlans = [];
+
+      function getPlans() {
+        if (availablePlans.length > 0) return availablePlans;
+        const ssrPlans = document.body.getAttribute('data-ssr-plans');
+        if (ssrPlans && !ssrPlans.startsWith('{{ssr:')) {
+          try {
+            availablePlans = JSON.parse(ssrPlans);
+            return availablePlans;
+          } catch (e) {
+            console.error('Failed to parse SSR plans', e);
+          }
+        }
+        return [];
+      }
+
+      function populatePlanSelect(selectId, selectedValue) {
+        const select = document.getElementById(selectId);
+        const plans = getPlans();
+        select.innerHTML = plans
+          .map((p) => `<option value="${p.slug}" ${p.slug === selectedValue ? 'selected' : ''}>${p.name}</option>`)
+          .join('');
+      }
 
       async function fetchAPI(endpoint, options = {}) {
         try {
@@ -401,14 +420,17 @@
 
       function renderAccounts(accounts) {
         const tbody = document.getElementById('accounts-table');
+        const plans = getPlans();
         tbody.innerHTML = accounts
-          .map(
-            (a) => `
+          .map((a) => {
+            const plan = plans.find((p) => p.slug === a.plan);
+            const planName = plan ? plan.name : a.plan;
+            return `
                 <tr>
                     <td>${a.id.substring(0, 8)}...</td>
                     <td>${a.name || '-'}</td>
                     <td>${a.status || '-'}</td>
-                    <td>${a.plan || '-'}</td>
+                    <td>${planName || '-'}</td>
                     <td>${a.member_count || 0}</td>
                     <td>${new Date(a.created_at).toLocaleDateString()}</td>
                     <td class="actions">
@@ -417,8 +439,8 @@
                          <button style="background: #d93025;" onclick="deleteAccount('${a.id}')">Delete</button>
                     </td>
                 </tr>
-            `,
-          )
+            `;
+          })
           .join('');
       }
 
@@ -453,7 +475,7 @@
         document.getElementById('edit-account-id').value = account.id;
         document.getElementById('edit-account-name').value = account.name || '';
         document.getElementById('edit-account-status').value = account.status || 'active';
-        document.getElementById('edit-account-plan').value = account.plan || 'free';
+        populatePlanSelect('edit-account-plan', account.plan || 'free');
         document.getElementById('edit-account-modal').showModal();
       }
 
@@ -469,7 +491,7 @@
         });
 
         document.getElementById('create-account-name').value = '';
-        document.getElementById('create-account-plan').value = 'free';
+        populatePlanSelect('create-account-plan', 'free');
         document.getElementById('create-account-modal').showModal();
       }
 

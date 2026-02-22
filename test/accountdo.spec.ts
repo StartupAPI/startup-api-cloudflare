@@ -11,8 +11,11 @@ describe('AccountDO Durable Object', () => {
     await stub.updateInfo(infoData);
 
     // Get info
-    const data = await stub.getInfo();
-    expect(data).toEqual(infoData);
+    const data: any = await stub.getInfo();
+    expect(data.name).toBe(infoData.name);
+    expect(data.plan).toBe(infoData.plan);
+    expect(data.billing).toBeDefined();
+    expect(data.billing.plan_slug).toBe('pro');
   });
 
   it('should manage members', async () => {
