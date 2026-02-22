@@ -44,8 +44,14 @@ export class SystemDO extends DurableObject {
       const adminIds = (this.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
       const isAdmin =
         adminIds.includes(u.id) ||
-        (u.email && adminIds.includes(u.email)) ||
-        (u.provider && u.id && adminIds.includes(`${u.provider}:${u.id}`));
+        (this.env.ENVIRONMENT === 'test' &&
+          adminIds.some((id) => {
+            try {
+              return u.id === this.env.USER.idFromName(id).toString();
+            } catch (e) {
+              return false;
+            }
+          }));
 
       return {
         ...u,

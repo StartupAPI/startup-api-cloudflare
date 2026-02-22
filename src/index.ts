@@ -352,9 +352,6 @@ function isAdmin(user: any, env: StartupAPIEnv): boolean {
     .filter(Boolean);
 
   const userId = user.id;
-  const profile = user.profile || user || {};
-  const credential = user.credential || user || {};
-  const email = profile.email || user.email;
 
   return (
     adminIds.includes(userId) ||
@@ -365,10 +362,7 @@ function isAdmin(user: any, env: StartupAPIEnv): boolean {
         } catch (e) {
           return false;
         }
-      })) ||
-    (email && adminIds.includes(email)) ||
-    (credential.subject_id && adminIds.includes(credential.subject_id)) ||
-    (credential.provider && credential.subject_id && adminIds.includes(`${credential.provider}:${credential.subject_id}`))
+      }))
   );
 }
 
