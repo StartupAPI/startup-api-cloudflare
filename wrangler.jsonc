@@ -68,6 +68,12 @@
         "run_worker_first": true,
         "binding": "ASSETS",
       },
+      "r2_buckets": [
+        {
+          "binding": "IMAGES",
+          "bucket_name": "startup-api-images",
+        },
+      ],
       "durable_objects": {
         "bindings": [
           {
