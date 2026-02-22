@@ -9,8 +9,8 @@
   },
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
-    "start": "wrangler dev",
+    "dev": "wrangler dev -c wrangler.local.jsonc",
+    "start": "wrangler dev -c wrangler.local.jsonc",
     "preview": "wrangler dev --env preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage --coverage.provider=istanbul",

@@ -165,7 +165,9 @@ dist
 .env*
 !.env.example
 .wrangler/
+wrangler.local.jsonc
 
 # Mac folder index
 
 .DS_Store
+
