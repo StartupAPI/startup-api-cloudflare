@@ -49,6 +49,7 @@ export async function handleAuth(
         const resolveData = await credentialStub.get(profile.id);
 
         let userIdStr: string | null = null;
+        let staleSessionId: string | null = null;
 
         if (resolveData) {
           userIdStr = resolveData.user_id;
@@ -68,24 +69,32 @@ export async function handleAuth(
             if (sessionCookieEncrypted) {
               const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
               if (sessionCookie && sessionCookie.includes(':')) {
-                userIdStr = sessionCookie.split(':')[1];
+                const parts = sessionCookie.split(':');
+                staleSessionId = parts[0];
+                userIdStr = parts[1];
               }
             }
           }
         }
 
-        let isNewUser = !userIdStr;
-        const id = userIdStr ? env.USER.idFromString(userIdStr) : env.USER.newUniqueId();
-        const userStub = env.USER.get(id);
-
         if (userIdStr) {
           // Verify user still exists (has a profile)
+          const userStub = env.USER.get(env.USER.idFromString(userIdStr));
           const profileData = await userStub.getProfile();
           if (Object.keys(profileData).length === 0) {
-            isNewUser = true;
+            // User was deleted!
+            if (staleSessionId) {
+              try {
+                await userStub.deleteSession(staleSessionId);
+              } catch (e) {}
+            }
+            userIdStr = null;
           }
         }
 
+        const isNewUser = !userIdStr;
+        const id = userIdStr ? env.USER.idFromString(userIdStr) : env.USER.newUniqueId();
+        const userStub = env.USER.get(id);
         userIdStr = id.toString();
 
         // Fetch and Store Avatar (Only for new users)

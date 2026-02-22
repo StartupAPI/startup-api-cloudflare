@@ -174,7 +174,7 @@ function getActiveProviders(env: StartupAPIEnv): string[] {
 async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user || !isAdmin(user, env)) {
-    return new Response('Forbidden', { status: 403 });
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Forbidden', { status: 403 }));
   }
 
   const url = new URL(request.url);
@@ -282,7 +282,9 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 
 async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const { id: doId, profile: initialProfile, credential } = user;
 
@@ -336,7 +338,9 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
 
 async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const profileData = await request.json();
   const userStub = env.USER.get(env.USER.idFromString(user.id));
@@ -374,7 +378,9 @@ async function handleAccountMembers(
   cookieManager: CookieManager,
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const userStub = env.USER.get(env.USER.idFromString(user.id));
   const memberships = await userStub.getMemberships();
@@ -424,7 +430,9 @@ async function handleAccountDetails(
   cookieManager: CookieManager,
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const userStub = env.USER.get(env.USER.idFromString(user.id));
   const memberships = await userStub.getMemberships();
@@ -479,15 +487,67 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieMa
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
-    if (data.valid) return { id: doId, sessionId, profile: data.profile, credential: data.credential };
+    const result = await userStub.validateSession(sessionId);
+    if (result.valid) return { id: doId, sessionId, profile: result.profile, credential: result.credential };
   } catch (e) {}
   return null;
 }
 
+async function checkAndClearStaleSession(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+  originalResponse: Response,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return originalResponse;
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookieEncrypted = cookies['session_id'];
+  if (!sessionCookieEncrypted) return originalResponse;
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) return originalResponse;
+
+  const [sessionId, doId] = sessionCookie.split(':');
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+
+    // If we are here, it means getUserFromSession already returned null.
+    // We want to know IF it's because the user was deleted.
+    const profile = await userStub.getProfile();
+    if (Object.keys(profile).length === 0) {
+      // User was deleted! Clear session in DO and remove cookie.
+      await userStub.deleteSession(sessionId);
+
+      const headers = new Headers(originalResponse.headers);
+      headers.set('Set-Cookie', 'session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+
+      // If it was a redirect, we just update the headers
+      if (originalResponse.status === 301 || originalResponse.status === 302) {
+        return new Response(null, {
+          status: originalResponse.status,
+          headers,
+        });
+      }
+
+      // Otherwise return new response with same body/status but updated headers
+      return new Response(originalResponse.body, {
+        status: originalResponse.status,
+        headers,
+      });
+    }
+  } catch (e) {}
+
+  return originalResponse;
+}
+
 async function handleListCredentials(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const userStub = env.USER.get(env.USER.idFromString(user.id));
   return Response.json(await userStub.listCredentials());
@@ -495,7 +555,9 @@ async function handleListCredentials(request: Request, env: StartupAPIEnv, cooki
 
 async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const { provider } = (await request.json()) as { provider: string };
   const userStub = env.USER.get(env.USER.idFromString(user.id));
@@ -509,7 +571,9 @@ async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cook
 
 async function handleMeImage(request: Request, env: StartupAPIEnv, type: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   try {
     const id = env.USER.idFromString(user.id);
@@ -667,7 +731,9 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 
 async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   try {
     const id = env.USER.idFromString(user.id);
@@ -701,7 +767,9 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieMana
 
 async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const { account_id } = (await request.json()) as { account_id: string };
 
@@ -727,7 +795,7 @@ async function handleSSR(
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user) {
-    return Response.redirect(url.origin + '/', 302);
+    return checkAndClearStaleSession(request, env, cookieManager, Response.redirect(url.origin + '/', 302));
   }
 
   const { id: doId, sessionId, profile: initialProfile, credential } = user;
