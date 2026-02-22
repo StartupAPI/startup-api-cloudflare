@@ -307,4 +307,40 @@ describe('Integration Tests', () => {
     expect(html).toContain('providers="google,twitch"');
     expect(html).not.toContain('{{ssr:profile_name}}');
   });
+
+  it('should render correct providers in "Link another account" section', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+    const userIdStr = id.toString();
+
+    const { sessionId } = await stub.createSession();
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
+
+    const res = await SELF.fetch('http://example.com/users/profile.html', {
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // Check that configured providers are present
+    expect(html).toContain('link-account-btn google');
+    expect(html).toContain('link-account-btn twitch');
+
+    // Check that some non-existent provider is NOT present
+    expect(html).not.toContain('link-account-btn github');
+  });
+
+  it('should inject correct providers into login overlay via PowerStrip', async () => {
+    // When proxying to origin (example.com), it should inject the power-strip
+    const res = await SELF.fetch('http://example.com/');
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // Check that power-strip element was injected with correct providers
+    expect(html).toContain('<power-strip providers="google,twitch"');
+  });
 });
