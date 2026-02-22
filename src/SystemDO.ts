@@ -214,12 +214,8 @@ export class SystemDO extends DurableObject {
     return { success: true };
   }
 
-  async incrementMemberCount(accountId: string) {
-    this.sql.exec('UPDATE accounts SET member_count = member_count + 1 WHERE id = ?', accountId);
-  }
-
-  async decrementMemberCount(accountId: string) {
-    this.sql.exec('UPDATE accounts SET member_count = member_count - 1 WHERE id = ?', accountId);
+  async updateMemberCount(accountId: string, count: number) {
+    this.sql.exec('UPDATE accounts SET member_count = ? WHERE id = ?', count, accountId);
   }
 
   async updateAccount(accountId: string, data: any) {

@@ -162,12 +162,7 @@ export class AccountDO extends DurableObject {
     this.sql.exec('INSERT OR REPLACE INTO members (user_id, role, joined_at) VALUES (?, ?, ?)', user_id, role, now);
 
     // Update SystemDO index
-    try {
-      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
-      await systemStub.incrementMemberCount(this.ctx.id.toString());
-    } catch (e) {
-      console.error('Failed to update member count in SystemDO', e);
-    }
+    await this.syncMemberCount();
 
     // Sync with User DO
     try {
@@ -198,12 +193,7 @@ export class AccountDO extends DurableObject {
     this.sql.exec('DELETE FROM members WHERE user_id = ?', userId);
 
     // Update SystemDO index
-    try {
-      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
-      await systemStub.decrementMemberCount(this.ctx.id.toString());
-    } catch (e) {
-      console.error('Failed to update member count in SystemDO', e);
-    }
+    await this.syncMemberCount();
 
     // Sync with User DO
     try {
@@ -214,6 +204,19 @@ export class AccountDO extends DurableObject {
     }
 
     return { success: true };
+  }
+
+  private async syncMemberCount() {
+    try {
+      const result = this.sql.exec('SELECT COUNT(*) as count FROM members');
+      const row = result.next().value as any;
+      const count = row ? row.count : 0;
+
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.updateMemberCount(this.ctx.id.toString(), count);
+    } catch (e) {
+      console.error('Failed to update member count in SystemDO', e);
+    }
   }
 
   async delete() {
