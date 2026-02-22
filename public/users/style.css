@@ -244,6 +244,33 @@ button:disabled {
   background: #f8f9fa;
 }
 
+.remove-image-btn {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #bdc1c6;
+  color: white;
+  border: 2px solid white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  font-weight: bold;
+  font-size: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.2s;
+  z-index: 10;
+}
+
+.remove-image-btn:hover {
+  background: #ea4335;
+}
+
 /* Profile specific */
 .avatar-section {
   display: flex;
