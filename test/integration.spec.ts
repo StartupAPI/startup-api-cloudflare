@@ -16,10 +16,6 @@ describe('Integration Tests', () => {
     const stub = env.USER.get(id);
     const userIdStr = id.toString();
 
-    // Register user in SystemDO index
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerUser({ id: userIdStr, name: 'Integration Tester' });
-
     // Create session
     const { sessionId } = await stub.createSession();
 
@@ -108,10 +104,6 @@ describe('Integration Tests', () => {
     const stub = env.USER.get(id);
     const doId = id.toString();
 
-    // Register user in SystemDO index
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerUser({ id: doId, name: 'Credentials Tester' });
-
     // Create session
     const { sessionId } = await stub.createSession();
 
@@ -171,10 +163,6 @@ describe('Integration Tests', () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
     const userIdStr = id.toString();
-
-    // Register user in SystemDO index
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerUser({ id: userIdStr, name: 'Integration Tester' });
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -288,10 +276,6 @@ describe('Integration Tests', () => {
     const stub = env.USER.get(id);
     const userIdStr = id.toString();
 
-    // Register user in SystemDO index
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerUser({ id: userIdStr, name: 'SSR Tester' });
-
     // Create session
     const { sessionId } = await stub.createSession();
     await stub.updateProfile({ name: 'SSR Tester' });
@@ -338,10 +322,6 @@ describe('Integration Tests', () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
     const userIdStr = id.toString();
-
-    // Register user in SystemDO index
-    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-    await systemStub.registerUser({ id: userIdStr, name: 'SSR Tester' });
 
     const { sessionId } = await stub.createSession();
     const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
