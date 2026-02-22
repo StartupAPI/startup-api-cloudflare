@@ -292,6 +292,8 @@ describe('Integration Tests', () => {
     const html = await res.text();
     expect(html).toContain('SSR Tester');
     expect(html).toContain('data-ssr-credentials="[{&quot;provider&quot;:&quot;test-provider&quot;');
+    expect(html).toContain('credential-item');
+    expect(html).toContain('test-provider');
     expect(html).not.toContain('{{ssr:profile_name}}');
   });
 });
