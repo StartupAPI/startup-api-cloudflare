@@ -215,6 +215,35 @@ describe('Integration Tests', () => {
     expect(validData.valid).toBe(false);
   });
 
+  it('should proactively clear stale session cookie for deleted user', async () => {
+    // 1. Create a user and session
+    const id = env.USER.newUniqueId();
+    const idStr = id.toString();
+    const stub = env.USER.get(id);
+    await stub.updateProfile({ name: 'Deletable' });
+    const { sessionId } = await stub.createSession();
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${idStr}`);
+
+    // 2. Delete the user
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.deleteUser(idStr);
+
+    // 3. Try to access a page with the stale cookie
+    const res = await SELF.fetch('http://example.com/users/profile.html', {
+      headers: {
+        Cookie: `session_id=${encryptedCookie}`,
+      },
+      redirect: 'manual',
+    });
+
+    // Should be redirected to clear the cookie
+    expect(res.status).toBe(302);
+    const cookies = res.headers.getSetCookie();
+    const sessionCookieClear = cookies.find((c) => c.startsWith('session_id=;'));
+    expect(sessionCookieClear).toBeDefined();
+    expect(sessionCookieClear).toContain('Max-Age=0');
+  });
+
   it('should not change profile picture when logging in with a secondary credential', async () => {
     // 1. Setup a user with an initial credential and avatar
     const id = env.USER.newUniqueId();

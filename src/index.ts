@@ -124,7 +124,7 @@ export default {
     }
 
     if (url.pathname === usersPath + 'logout') {
-      return handleLogout(request, env, usersPath, cookieManager);
+      return handleLogout(request, env, url, usersPath, cookieManager);
     }
 
     // Admin Routes
@@ -174,7 +174,7 @@ function getActiveProviders(env: StartupAPIEnv): string[] {
 async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user || !isAdmin(user, env)) {
-    return new Response('Forbidden', { status: 403 });
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Forbidden', { status: 403 }));
   }
 
   const url = new URL(request.url);
@@ -282,7 +282,9 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 
 async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const { id: doId, profile: initialProfile, credential } = user;
 
@@ -336,7 +338,9 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
 
 async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const profileData = await request.json();
   const userStub = env.USER.get(env.USER.idFromString(user.id));
@@ -374,7 +378,9 @@ async function handleAccountMembers(
   cookieManager: CookieManager,
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const userStub = env.USER.get(env.USER.idFromString(user.id));
   const memberships = await userStub.getMemberships();
@@ -424,7 +430,9 @@ async function handleAccountDetails(
   cookieManager: CookieManager,
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const userStub = env.USER.get(env.USER.idFromString(user.id));
   const memberships = await userStub.getMemberships();
@@ -479,15 +487,67 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieMa
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
-    if (data.valid) return { id: doId, sessionId, profile: data.profile, credential: data.credential };
+    const result = await userStub.validateSession(sessionId);
+    if (result.valid) return { id: doId, sessionId, profile: result.profile, credential: result.credential };
   } catch (e) {}
   return null;
 }
 
+async function checkAndClearStaleSession(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+  originalResponse: Response,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return originalResponse;
+
+  const cookies = parseCookies(cookieHeader);
+  const sessionCookieEncrypted = cookies['session_id'];
+  if (!sessionCookieEncrypted) return originalResponse;
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) return originalResponse;
+
+  const [sessionId, doId] = sessionCookie.split(':');
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+
+    // If we are here, it means getUserFromSession already returned null.
+    // We want to know IF it's because the user was deleted.
+    const profile = await userStub.getProfile();
+    if (Object.keys(profile).length === 0) {
+      // User was deleted! Clear session in DO and remove cookie.
+      await userStub.deleteSession(sessionId);
+
+      const headers = new Headers(originalResponse.headers);
+      headers.set('Set-Cookie', 'session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+
+      // If it was a redirect, we just update the headers
+      if (originalResponse.status === 301 || originalResponse.status === 302) {
+        return new Response(null, {
+          status: originalResponse.status,
+          headers,
+        });
+      }
+
+      // Otherwise return new response with same body/status but updated headers
+      return new Response(originalResponse.body, {
+        status: originalResponse.status,
+        headers,
+      });
+    }
+  } catch (e) {}
+
+  return originalResponse;
+}
+
 async function handleListCredentials(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const userStub = env.USER.get(env.USER.idFromString(user.id));
   return Response.json(await userStub.listCredentials());
@@ -495,7 +555,9 @@ async function handleListCredentials(request: Request, env: StartupAPIEnv, cooki
 
 async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const { provider } = (await request.json()) as { provider: string };
   const userStub = env.USER.get(env.USER.idFromString(user.id));
@@ -509,7 +571,9 @@ async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cook
 
 async function handleMeImage(request: Request, env: StartupAPIEnv, type: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   try {
     const id = env.USER.idFromString(user.id);
@@ -626,7 +690,13 @@ async function handleAccountImage(
   }
 }
 
-async function handleLogout(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
+async function handleLogout(
+  request: Request,
+  env: StartupAPIEnv,
+  url: URL,
+  usersPath: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (cookieHeader) {
     const cookies = parseCookies(cookieHeader);
@@ -650,7 +720,24 @@ async function handleLogout(request: Request, env: StartupAPIEnv, usersPath: str
 
   const headers = new Headers();
   headers.set('Set-Cookie', 'session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
-  headers.set('Location', '/');
+
+  let redirectUrl = '/';
+  const returnUrl = url.searchParams.get('return_url');
+  if (returnUrl) {
+    const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
+    try {
+      const parsedReturn = new URL(returnUrl, origin);
+      if (parsedReturn.origin === origin) {
+        redirectUrl = parsedReturn.toString();
+      }
+    } catch (e) {
+      if (returnUrl.startsWith('/')) {
+        redirectUrl = returnUrl;
+      }
+    }
+  }
+
+  headers.set('Location', redirectUrl);
   return new Response(null, { status: 302, headers });
 }
 
@@ -667,7 +754,9 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 
 async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   try {
     const id = env.USER.idFromString(user.id);
@@ -701,7 +790,9 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieMana
 
 async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  if (!user) {
+    return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
+  }
 
   const { account_id } = (await request.json()) as { account_id: string };
 
@@ -727,7 +818,7 @@ async function handleSSR(
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user) {
-    return Response.redirect(url.origin + '/', 302);
+    return checkAndClearStaleSession(request, env, cookieManager, Response.redirect(url.origin + '/', 302));
   }
 
   const { id: doId, sessionId, profile: initialProfile, credential } = user;
@@ -819,7 +910,7 @@ async function handleSSR(
         : '',
       nav_account_display: account && (account.role === 1 || data.is_admin) ? 'display: block;' : 'display: none;',
       credentials_list_html: renderCredentialsList(credentials, data.credential?.provider),
-      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env)),
+      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env), url.href),
     };
 
     if (account) {
@@ -922,15 +1013,17 @@ function getProviderIcon(provider: string): string {
   return '';
 }
 
-function renderLinkCredentialsList(providers: string[]): string {
+function renderLinkCredentialsList(providers: string[], returnUrl?: string): string {
   if (providers.length === 0) {
     return '';
   }
 
+  const query = returnUrl ? `?return_url=${encodeURIComponent(returnUrl)}` : '';
+
   return providers
     .map((provider) => {
       return `
-      <a href="/users/auth/${provider}" class="link-account-btn ${provider}">
+      <a href="/users/auth/${provider}${query}" class="link-account-btn ${provider}">
         ${getProviderIcon(provider).replace('width="24" height="24"', 'width="20" height="20"')}
         ${provider.charAt(0).toUpperCase() + provider.slice(1)}
       </a>

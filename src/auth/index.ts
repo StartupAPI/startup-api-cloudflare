@@ -26,7 +26,13 @@ export async function handleAuth(
   // Handle Auth Start
   for (const provider of activeProviders) {
     if (provider.isMatch(path, authPath)) {
-      const authUrl = provider.getAuthUrl(`state-${provider.name}`);
+      const returnUrl = url.searchParams.get('return_url');
+      const stateObj = {
+        nonce: Math.random().toString(36).substring(2),
+        return_url: returnUrl,
+      };
+      const state = btoa(JSON.stringify(stateObj));
+      const authUrl = provider.getAuthUrl(state);
       return Response.redirect(authUrl, 302);
     }
   }
@@ -37,6 +43,17 @@ export async function handleAuth(
       console.log(`[Auth] Callback received for ${provider.name}`);
       const code = url.searchParams.get('code');
       if (!code) return new Response('Missing code', { status: 400 });
+
+      const stateBase64 = url.searchParams.get('state');
+      let returnUrl: string | null = null;
+      if (stateBase64) {
+        try {
+          const stateObj = JSON.parse(atob(stateBase64));
+          returnUrl = stateObj.return_url;
+        } catch (e) {
+          console.error('Failed to parse state', e);
+        }
+      }
 
       try {
         const token = await provider.getToken(code);
@@ -49,6 +66,7 @@ export async function handleAuth(
         const resolveData = await credentialStub.get(profile.id);
 
         let userIdStr: string | null = null;
+        let staleSessionId: string | null = null;
 
         if (resolveData) {
           userIdStr = resolveData.user_id;
@@ -68,9 +86,26 @@ export async function handleAuth(
             if (sessionCookieEncrypted) {
               const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
               if (sessionCookie && sessionCookie.includes(':')) {
-                userIdStr = sessionCookie.split(':')[1];
+                const parts = sessionCookie.split(':');
+                staleSessionId = parts[0];
+                userIdStr = parts[1];
               }
             }
+          }
+        }
+
+        if (userIdStr) {
+          // Verify user still exists (has a profile)
+          const userStub = env.USER.get(env.USER.idFromString(userIdStr));
+          const profileData = await userStub.getProfile();
+          if (Object.keys(profileData).length === 0) {
+            // User was deleted!
+            if (staleSessionId) {
+              try {
+                await userStub.deleteSession(staleSessionId);
+              } catch (e) {}
+            }
+            userIdStr = null;
           }
         }
 
@@ -157,8 +192,22 @@ export async function handleAuth(
         const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${userIdStr}`);
         const headers = new Headers();
         headers.set('Set-Cookie', `session_id=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-        headers.set('Location', !isNewUser ? usersPath + 'profile.html' : '/');
 
+        let redirectUrl = !isNewUser ? usersPath + 'profile.html' : '/';
+        if (returnUrl) {
+          try {
+            const parsedReturn = new URL(returnUrl, origin);
+            if (parsedReturn.origin === origin) {
+              redirectUrl = parsedReturn.toString();
+            }
+          } catch (e) {
+            if (returnUrl.startsWith('/')) {
+              redirectUrl = returnUrl;
+            }
+          }
+        }
+
+        headers.set('Location', redirectUrl);
         return new Response(null, { status: 302, headers });
       } catch (e: any) {
         return new Response('Auth failed: ' + e.message, { status: 500 });
