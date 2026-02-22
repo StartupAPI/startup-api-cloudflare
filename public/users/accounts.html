@@ -6,7 +6,7 @@
     <title>Account Settings</title>
     <link rel="stylesheet" href="/users/style.css" />
   </head>
-  <body data-ssr-account="{{ssr:account_json}}" data-ssr-profile="{{ssr:profile_json}}">
+  <body data-ssr-account="{{ssr:account_json}}" data-ssr-profile="{{ssr:profile_json}}" data-ssr-members="{{ssr:account_members_json}}">
     <power-strip
       providers="google,twitch"
       style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
@@ -132,7 +132,7 @@
         <section id="members-section" style="{{ssr:account_members_section_display}}">
           <h2>Team Members</h2>
           <div id="members-list">
-            <p>Loading members...</p>
+            {{ssr:account_members_list_html}}
           </div>
         </section>
       </div>
@@ -147,83 +147,93 @@
       let currentUserId = null;
       let initialAccountInfo = {};
 
-      async function init() {
-        try {
-          // Try to get data from SSR first
-          let data = null;
-          const ssrProfileJson = document.body.getAttribute('data-ssr-profile');
-          const ssrAccountJson = document.body.getAttribute('data-ssr-account');
-
-          if (ssrProfileJson && !ssrProfileJson.startsWith('{{ssr:') && ssrAccountJson && !ssrAccountJson.startsWith('{{ssr:')) {
-            try {
-              const profile = JSON.parse(ssrProfileJson);
-              const account = JSON.parse(ssrAccountJson);
-              if (profile.valid) {
-                data = {
-                  ...profile,
-                  account: account,
-                };
+            async function init() {
+              try {
+                // Try to get data from SSR first
+                let data = null;
+                let members = null;
+                const ssrProfileJson = document.body.getAttribute('data-ssr-profile');
+                const ssrAccountJson = document.body.getAttribute('data-ssr-account');
+                const ssrMembersJson = document.body.getAttribute('data-ssr-members');
+      
+                if (
+                  ssrProfileJson &&
+                  !ssrProfileJson.startsWith('{{ssr:') &&
+                  ssrAccountJson &&
+                  !ssrAccountJson.startsWith('{{ssr:')
+                ) {
+                  try {
+                    const profile = JSON.parse(ssrProfileJson);
+                    const account = JSON.parse(ssrAccountJson);
+                    if (ssrMembersJson && !ssrMembersJson.startsWith('{{ssr:')) {
+                      members = JSON.parse(ssrMembersJson);
+                    }
+                    if (profile.valid) {
+                      data = {
+                        ...profile,
+                        account: account,
+                      };
+                    }
+                  } catch (e) {
+                    console.error('Failed to parse SSR data', e);
+                  }
+                }
+      
+                if (!data) {
+                  const res = await fetch(`${API_BASE}/me`);
+                  if (!res.ok) {
+                    if (res.status === 401) {
+                      window.location.href = '/';
+                      return;
+                    }
+                    throw new Error('Failed to load user info');
+                  }
+                  data = await res.json();
+                }
+      
+                if (data.valid && data.account) {
+                  currentAccountId = data.account.id;
+                  currentUserRole = data.account.role;
+                  currentUserId = data.profile.id;
+      
+                  document.getElementById('account-name-heading').textContent = data.account.name || 'Account';
+                  document.getElementById('account-name').value = data.account.name || '';
+                  initialAccountInfo.name = data.account.name || '';
+                  document.getElementById('account-id-text').textContent = `ID: ${currentAccountId}`;
+      
+                  document.getElementById('copy-id-btn').onclick = () => {
+                    navigator.clipboard
+                      .writeText(currentAccountId)
+                      .then(() => {
+                        showToast('Account ID copied to clipboard');
+                      })
+                      .catch((err) => {
+                        console.error('Failed to copy: ', err);
+                      });
+                  };
+      
+                  // Check if user is admin of the account or system admin
+                  if (currentUserRole !== 1 && !data.is_admin) {
+                    document.getElementById('members-section').style.display = 'none';
+                    document.getElementById('account-info-section').style.display = 'none';
+      
+                    const section = document.createElement('section');
+                    const msg = document.createElement('p');
+                    msg.textContent = "You do not have permission to manage this account's information.";
+                    msg.style.color = '#666';
+                    msg.style.margin = '0';
+                    section.appendChild(msg);
+                    document.querySelector('.content-area').appendChild(section);
+                  } else {
+                    loadMembers(members);
+                  }
+      
+                  loadAccountDetails(data.account);
+                }
+              } catch (e) {
+                showToast(e.message);
               }
-            } catch (e) {
-              console.error('Failed to parse SSR data', e);
             }
-          }
-
-          if (!data) {
-            const res = await fetch(`${API_BASE}/me`);
-            if (!res.ok) {
-              if (res.status === 401) {
-                window.location.href = '/';
-                return;
-              }
-              throw new Error('Failed to load user info');
-            }
-            data = await res.json();
-          }
-
-          if (data.valid && data.account) {
-            currentAccountId = data.account.id;
-            currentUserRole = data.account.role;
-            currentUserId = data.profile.id;
-
-            document.getElementById('account-name-heading').textContent = data.account.name || 'Account';
-            document.getElementById('account-name').value = data.account.name || '';
-            initialAccountInfo.name = data.account.name || '';
-            document.getElementById('account-id-text').textContent = `ID: ${currentAccountId}`;
-
-            document.getElementById('copy-id-btn').onclick = () => {
-              navigator.clipboard
-                .writeText(currentAccountId)
-                .then(() => {
-                  showToast('Account ID copied to clipboard');
-                })
-                .catch((err) => {
-                  console.error('Failed to copy: ', err);
-                });
-            };
-
-            // Check if user is admin of the account or system admin
-            if (currentUserRole !== 1 && !data.is_admin) {
-              document.getElementById('members-section').style.display = 'none';
-              document.getElementById('account-info-section').style.display = 'none';
-
-              const section = document.createElement('section');
-              const msg = document.createElement('p');
-              msg.textContent = "You do not have permission to manage this account's information.";
-              msg.style.color = '#666';
-              msg.style.margin = '0';
-              section.appendChild(msg);
-              document.querySelector('.content-area').appendChild(section);
-            } else {
-              loadMembers();
-            }
-
-            loadAccountDetails(data.account);
-          }
-        } catch (e) {
-          showToast(e.message);
-        }
-      }
 
       document.getElementById('account-name').addEventListener('input', (e) => {
         const hasChanged = e.target.value !== initialAccountInfo.name;
@@ -369,12 +379,26 @@
         }
       }
 
-      async function loadMembers() {
+      async function loadMembers(ssrData) {
         const list = document.getElementById('members-list');
         try {
-          const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/members`);
-          if (!res.ok) throw new Error('Failed to load members');
-          const members = await res.json();
+          let members = ssrData;
+          if (!members) {
+            const ssrMembersJson = document.body.getAttribute('data-ssr-members');
+            if (ssrMembersJson && !ssrMembersJson.startsWith('{{ssr:')) {
+              try {
+                members = JSON.parse(ssrMembersJson);
+              } catch (e) {
+                console.error('Failed to parse SSR members', e);
+              }
+            }
+          }
+
+          if (!members) {
+            const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/members`);
+            if (!res.ok) throw new Error('Failed to load members');
+            members = await res.json();
+          }
 
           if (members.length === 0) {
             list.innerHTML = '<p>No members found.</p>';

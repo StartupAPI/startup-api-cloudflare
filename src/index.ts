@@ -264,11 +264,10 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 }
 
 async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const user = await getUserFromSession(request, env, cookieManager);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
   // Correct handleMe logic
-  const cookieHeader = request.headers.get('Cookie');
   const cookies = parseCookies(cookieHeader || '');
   const sessionCookieEncrypted = cookies['session_id'];
   const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted!);
@@ -287,15 +286,16 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
     profile.picture = null;
   }
 
-      data.profile = profile;
-      data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
-      data.is_impersonated = !!cookies['backup_session_id'];
-  
-      // Fetch credentials
-      data.credentials = await userStub.listCredentials();
-  
-      // Fetch memberships to find current account
-      const memberships = await userStub.getMemberships();  const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
+  data.profile = profile;
+  data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
+  data.is_impersonated = !!cookies['backup_session_id'];
+
+  // Fetch credentials
+  data.credentials = await userStub.listCredentials();
+
+  // Fetch memberships to find current account
+  const memberships = await userStub.getMemberships();
+  const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
 
   if (currentMembership) {
     const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
@@ -397,12 +397,7 @@ async function handleAccountMembers(
   return new Response('Not Found', { status: 404 });
 }
 
-async function handleAccountDetails(
-  request: Request,
-  env: StartupAPIEnv,
-  accountId: string,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleAccountDetails(request: Request, env: StartupAPIEnv, accountId: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user) return new Response('Unauthorized', { status: 401 });
 
@@ -821,6 +816,7 @@ async function handleSSR(
     const credentials = await userStub.listCredentials();
 
     let account = null;
+    let accountMembers = null;
     if (currentMembership) {
       const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
       const accountStub = env.ACCOUNT.get(accountId);
@@ -832,6 +828,10 @@ async function handleSSR(
         id: currentMembership.account_id,
         role: currentMembership.role,
       };
+      // Fetch members only if it's the accounts page or if needed
+      if (url.pathname.endsWith('/accounts.html') || url.pathname.endsWith('/accounts')) {
+        accountMembers = await accountStub.getMembers();
+      }
     }
 
     // Prepare SSR values
@@ -868,6 +868,14 @@ async function handleSSR(
       const isAccountAdmin = account.role === 1 || data.is_admin;
       replacements['account_info_section_display'] = isAccountAdmin ? 'display: block;' : 'display: none;';
       replacements['account_members_section_display'] = isAccountAdmin ? 'display: block;' : 'display: none;';
+
+      if (accountMembers) {
+        replacements['account_members_json'] = JSON.stringify(accountMembers).replace(/"/g, '&quot;');
+        replacements['account_members_list_html'] = renderAccountMembersList(accountMembers, doId);
+      } else {
+        replacements['account_members_json'] = '[]';
+        replacements['account_members_list_html'] = '<p>Loading members...</p>';
+      }
     } else {
       replacements['account_json'] = 'null';
       replacements['account_name'] = '';
@@ -879,6 +887,8 @@ async function handleSSR(
       replacements['account_remove_btn_display'] = 'display: none;';
       replacements['account_info_section_display'] = 'display: none;';
       replacements['account_members_section_display'] = 'display: none;';
+      replacements['account_members_json'] = '[]';
+      replacements['account_members_list_html'] = '';
     }
 
     html = renderSSR(html, replacements);
@@ -938,4 +948,44 @@ function getProviderIcon(provider: string): string {
     return '<svg viewBox="0 0 24 24" width="24" height="24" style="color: #9146FF;"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z" fill="currentColor"/></svg>';
   }
   return '';
+}
+
+function renderAccountMembersList(members: any[], currentUserId: string): string {
+  if (!members || members.length === 0) {
+    return '<p>No members found.</p>';
+  }
+
+  return members
+    .map((m) => {
+      const isSelf = m.user_id === currentUserId;
+      const avatarContent = m.picture
+        ? `<img src="${m.picture}" class="member-avatar" alt="${m.name}" />`
+        : `<div class="member-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+           </div>`;
+
+      return `
+      <div class="member-item">
+        <div class="member-info">
+          ${avatarContent}
+          <div class="member-details">
+            <div class="member-name" title="${m.name}${isSelf ? ' (You)' : ''}">${m.name} ${isSelf ? '(You)' : ''}</div>
+            <div class="member-role">
+              <select onchange="updateRole('${m.user_id}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role"' : ''} class="role-select">
+                <option value="0" ${m.role === 0 ? 'selected' : ''}>Member</option>
+                <option value="1" ${m.role === 1 ? 'selected' : ''}>Admin</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <button class="remove-btn" onclick="removeMember('${m.user_id}')" ${isSelf ? 'disabled title="You cannot remove yourself"' : ''}>
+          Remove
+        </button>
+      </div>
+    `;
+    })
+    .join('');
 }
