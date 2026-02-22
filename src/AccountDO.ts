@@ -26,8 +26,11 @@ export class AccountDO extends DurableObject {
     // Initialize database schema
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS account_info (
-        key TEXT PRIMARY KEY,
-        value TEXT
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        name TEXT,
+        plan TEXT,
+        billing TEXT,
+        personal INTEGER
       );
 
       CREATE TABLE IF NOT EXISTS members (
@@ -36,6 +39,9 @@ export class AccountDO extends DurableObject {
         joined_at INTEGER
       );
     `);
+
+    // Ensure the single row exists
+    this.sql.exec('INSERT OR IGNORE INTO account_info (id, plan) VALUES (1, "free")');
   }
 
   async getImage(key: string) {
@@ -63,42 +69,57 @@ export class AccountDO extends DurableObject {
   }
 
   async getInfo() {
-    const info: Record<string, any> = {};
     try {
-      const result = this.sql.exec('SELECT key, value FROM account_info');
-      for (const row of result) {
-        // @ts-ignore
-        info[row.key] = JSON.parse(row.value as string);
-      }
-    } catch (e) {}
-    return info;
+      const result = this.sql.exec('SELECT * FROM account_info WHERE id = 1');
+      const row = result.next().value as any;
+      if (!row) return {};
+
+      return {
+        name: row.name,
+        plan: row.plan,
+        personal: row.personal === 1,
+        billing: row.billing ? JSON.parse(row.billing) : undefined,
+      };
+    } catch (e) {
+      return {};
+    }
   }
 
   async updateInfo(data: Record<string, any>) {
     try {
-      this.ctx.storage.transactionSync(() => {
-        for (const [key, value] of Object.entries(data)) {
-          let valToStore = value;
-          if (key === 'name' && typeof value === 'string') {
-            valToStore = value.substring(0, 50);
-          }
-          this.sql.exec('INSERT OR REPLACE INTO account_info (key, value) VALUES (?, ?)', key, JSON.stringify(valToStore));
+      const updates: string[] = [];
+      const values: any[] = [];
+
+      if ('name' in data) {
+        updates.push('name = ?');
+        values.push(typeof data.name === 'string' ? data.name.substring(0, 50) : data.name);
+      }
+      if ('plan' in data) {
+        updates.push('plan = ?');
+        values.push(data.plan);
+      }
+      if ('personal' in data) {
+        updates.push('personal = ?');
+        values.push(data.personal ? 1 : 0);
+      }
+
+      if (updates.length > 0) {
+        this.ctx.storage.transactionSync(() => {
+          this.sql.exec(`UPDATE account_info SET ${updates.join(', ')} WHERE id = 1`, ...values);
 
           // If plan is updated manually (e.g. via Admin API), update billing state too
-          if (key === 'plan' && typeof value === 'string') {
+          if ('plan' in data) {
             const currentState = this.getBillingState();
-            if (currentState.plan_slug !== value) {
+            if (currentState.plan_slug !== data.plan) {
               const newState = {
                 ...currentState,
-                plan_slug: value,
-                // We don't automatically set next_billing_date or status here 
-                // as this is a manual override, but we keep the slug in sync.
+                plan_slug: data.plan,
               };
-              this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(newState));
+              this.sql.exec('UPDATE account_info SET billing = ? WHERE id = 1', JSON.stringify(newState));
             }
           }
-        }
-      });
+        });
+      }
       return { success: true };
     } catch (e: any) {
       throw new Error(e.message);
@@ -225,10 +246,10 @@ export class AccountDO extends DurableObject {
 
   private getBillingState(): any {
     try {
-      const result = this.sql.exec("SELECT value FROM account_info WHERE key = 'billing'");
-      for (const row of result) {
-        // @ts-ignore
-        return JSON.parse(row.value as string);
+      const result = this.sql.exec('SELECT billing FROM account_info WHERE id = 1');
+      const row = result.next().value as any;
+      if (row && row.billing) {
+        return JSON.parse(row.billing);
       }
     } catch (e) {}
     return {
@@ -239,9 +260,7 @@ export class AccountDO extends DurableObject {
 
   private setBillingState(state: any) {
     this.ctx.storage.transactionSync(() => {
-      this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(state));
-      // Keep plan field in sync
-      this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('plan', ?)", JSON.stringify(state.plan_slug));
+      this.sql.exec('UPDATE account_info SET billing = ?, plan = ? WHERE id = 1', JSON.stringify(state), state.plan_slug);
     });
   }
 

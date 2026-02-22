@@ -12,7 +12,12 @@ describe('UserDO Durable Object', () => {
 
     // Get profile
     const data = await stub.getProfile();
-    expect(data).toEqual(profileData);
+    expect(data).toEqual({
+      ...profileData,
+      picture: null,
+      provider: null,
+      verified_email: false,
+    });
   });
 
   it('should create session', async () => {

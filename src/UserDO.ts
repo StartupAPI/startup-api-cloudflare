@@ -23,8 +23,12 @@ export class UserDO extends DurableObject {
     // Initialize database schema
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS profile (
-        key TEXT PRIMARY KEY,
-        value TEXT
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        name TEXT,
+        email TEXT,
+        picture TEXT,
+        provider TEXT,
+        verified_email INTEGER
       );
       
       CREATE TABLE IF NOT EXISTS sessions (
@@ -46,6 +50,9 @@ export class UserDO extends DurableObject {
         PRIMARY KEY (provider, subject_id)
       );
     `);
+
+    // Ensure the single row exists
+    this.sql.exec('INSERT OR IGNORE INTO profile (id) VALUES (1)');
   }
 
   /**
@@ -68,16 +75,8 @@ export class UserDO extends DurableObject {
         return { valid: false, error: 'Expired' };
       }
 
-      let profile: Record<string, any> = {};
-
       // Get profile data from local 'profile' table
-      const customProfileResult = this.sql.exec('SELECT key, value FROM profile');
-      for (const row of customProfileResult) {
-        try {
-          // @ts-ignore
-          profile[row.key] = JSON.parse(row.value as string);
-        } catch (e) {}
-      }
+      const profile = await this.getProfile();
 
       // Determine login context (provider and subject_id)
       const sessionMeta = session.meta ? JSON.parse(session.meta) : {};
@@ -116,15 +115,21 @@ export class UserDO extends DurableObject {
    * @returns A Promise resolving to a JSON response containing the profile key-value pairs.
    */
   async getProfile() {
-    const profile: Record<string, any> = {};
     try {
-      const result = this.sql.exec('SELECT key, value FROM profile');
-      for (const row of result) {
-        // @ts-ignore
-        profile[row.key] = JSON.parse(row.value as string);
-      }
-    } catch (e) {}
-    return profile;
+      const result = this.sql.exec('SELECT * FROM profile WHERE id = 1');
+      const row = result.next().value as any;
+      if (!row) return {};
+
+      return {
+        name: row.name,
+        email: row.email,
+        picture: row.picture,
+        provider: row.provider,
+        verified_email: row.verified_email === 1,
+      };
+    } catch (e) {
+      return {};
+    }
   }
 
   /**
@@ -136,11 +141,35 @@ export class UserDO extends DurableObject {
    */
   async updateProfile(data: Record<string, any>) {
     try {
-      this.ctx.storage.transactionSync(() => {
-        for (const [key, value] of Object.entries(data)) {
-          this.sql.exec('INSERT OR REPLACE INTO profile (key, value) VALUES (?, ?)', key, JSON.stringify(value));
-        }
-      });
+      const updates: string[] = [];
+      const values: any[] = [];
+
+      if ('name' in data) {
+        updates.push('name = ?');
+        values.push(data.name);
+      }
+      if ('email' in data) {
+        updates.push('email = ?');
+        values.push(data.email);
+      }
+      if ('picture' in data) {
+        updates.push('picture = ?');
+        values.push(data.picture);
+      }
+      if ('provider' in data) {
+        updates.push('provider = ?');
+        values.push(data.provider);
+      }
+      if ('verified_email' in data) {
+        updates.push('verified_email = ?');
+        values.push(data.verified_email ? 1 : 0);
+      }
+
+      if (updates.length > 0) {
+        this.ctx.storage.transactionSync(() => {
+          this.sql.exec(`UPDATE profile SET ${updates.join(', ')} WHERE id = 1`, ...values);
+        });
+      }
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -308,7 +337,7 @@ export class UserDO extends DurableObject {
     await this.env.IMAGE_STORAGE.delete(r2Key);
 
     if (key === 'avatar') {
-      this.sql.exec("DELETE FROM profile WHERE key = 'picture'");
+      this.sql.exec('UPDATE profile SET picture = NULL WHERE id = 1');
     }
 
     return { success: true };
