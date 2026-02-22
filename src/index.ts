@@ -327,8 +327,10 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
       const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
       const accountStub = env.ACCOUNT.get(accountId);
       const accountInfo = await accountStub.getInfo();
+      const billing = await accountStub.getBillingInfo();
       data.account = {
         ...accountInfo,
+        billing,
         id: currentMembership.account_id,
         role: currentMembership.role,
       };

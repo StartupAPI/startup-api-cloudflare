@@ -316,7 +316,7 @@
       async function loadAccountDetails(ssrData) {
         try {
           let data = ssrData;
-          if (!data) {
+          if (!data || !data.billing) {
             const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`);
             if (res.ok) {
               data = await res.json();
