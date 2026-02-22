@@ -304,6 +304,7 @@ describe('Integration Tests', () => {
     expect(html).toContain('twitch');
     expect(html).toContain('google@example.com');
     expect(html).toContain('twitch@example.com');
+    expect(html).toContain('providers="google,twitch"');
     expect(html).not.toContain('{{ssr:profile_name}}');
   });
 });

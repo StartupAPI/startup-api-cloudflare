@@ -150,14 +150,7 @@ export default {
       newRequest.headers.set('Host', url.host);
 
       const response = await fetch(newRequest);
-
-      const providers: string[] = [];
-      if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
-        providers.push('google');
-      }
-      if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) {
-        providers.push('twitch');
-      }
+      const providers = getActiveProviders(env);
 
       return injectPowerStrip(response, usersPath, providers);
     }
@@ -166,6 +159,17 @@ export default {
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<StartupAPIEnv>;
+
+function getActiveProviders(env: StartupAPIEnv): string[] {
+  const providers: string[] = [];
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+    providers.push('google');
+  }
+  if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) {
+    providers.push('twitch');
+  }
+  return providers;
+}
 
 async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
@@ -180,7 +184,17 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
     url.pathname = '/users/admin/';
     const newRequest = new Request(url.toString(), request);
     newRequest.headers.set('x-skip-worker', 'true');
-    return env.ASSETS.fetch(newRequest);
+    const response = await env.ASSETS.fetch(newRequest);
+    if (!response.ok) return response;
+
+    let html = await response.text();
+    html = renderSSR(html, {
+      providers: getActiveProviders(env).join(','),
+    });
+
+    return new Response(html, {
+      headers: { 'Content-Type': 'text/html' },
+    });
   }
 
   const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
@@ -397,7 +411,12 @@ async function handleAccountMembers(
   return new Response('Not Found', { status: 404 });
 }
 
-async function handleAccountDetails(request: Request, env: StartupAPIEnv, accountId: string, cookieManager: CookieManager): Promise<Response> {
+async function handleAccountDetails(
+  request: Request,
+  env: StartupAPIEnv,
+  accountId: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user) return new Response('Unauthorized', { status: 401 });
 
@@ -836,6 +855,7 @@ async function handleSSR(
 
     // Prepare SSR values
     const replacements: Record<string, string> = {
+      providers: getActiveProviders(env).join(','),
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
       credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),
       profile_name: profile.name || 'Anonymous',
