@@ -278,51 +278,57 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 }
 
 async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
-  // Correct handleMe logic
-  const cookies = parseCookies(cookieHeader || '');
-  const sessionCookieEncrypted = cookies['session_id'];
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted!);
-  const [sessionId, doId] = sessionCookie!.split(':');
-  const userStub = env.USER.get(env.USER.idFromString(doId));
-  const data = await userStub.validateSession(sessionId);
+  const { id: doId, sessionId, profile: initialProfile, credential } = user;
 
-  if (!data.valid) return Response.json(data, { status: 401 });
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
 
-  const profile = { ...data.profile };
-  const image = await userStub.getImage('avatar');
-  if (image) {
-    const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
-    profile.picture = usersPath + 'me/avatar';
-  } else {
-    profile.picture = null;
-  }
-
-  data.profile = profile;
-  data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
-  data.is_impersonated = !!cookies['backup_session_id'];
-
-  // Fetch credentials
-  data.credentials = await userStub.listCredentials();
-
-  // Fetch memberships to find current account
-  const memberships = await userStub.getMemberships();
-  const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
-
-  if (currentMembership) {
-    const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
-    const accountStub = env.ACCOUNT.get(accountId);
-    const accountInfo = await accountStub.getInfo();
-    data.account = {
-      ...accountInfo,
-      id: currentMembership.account_id,
-      role: currentMembership.role,
+    const data: any = {
+      valid: true,
+      profile: { ...initialProfile },
+      credential,
     };
-  }
 
-  return Response.json(data);
+    const image = await userStub.getImage('avatar');
+    if (image) {
+      const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
+      data.profile.picture = usersPath + 'me/avatar';
+    } else {
+      data.profile.picture = null;
+    }
+
+    data.is_admin = isAdmin({ id: doId, profile: data.profile, credential }, env);
+
+    const cookieHeader = request.headers.get('Cookie') || '';
+    const cookies = parseCookies(cookieHeader);
+    data.is_impersonated = !!cookies['backup_session_id'];
+
+    // Fetch credentials
+    data.credentials = await userStub.listCredentials();
+
+    // Fetch memberships to find current account
+    const memberships = await userStub.getMemberships();
+    const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
+
+    if (currentMembership) {
+      const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
+      const accountStub = env.ACCOUNT.get(accountId);
+      const accountInfo = await accountStub.getInfo();
+      data.account = {
+        ...accountInfo,
+        id: currentMembership.account_id,
+        role: currentMembership.role,
+      };
+    }
+
+    return Response.json(data);
+  } catch (e) {
+    return new Response('Unauthorized', { status: 401 });
+  }
 }
 
 async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
@@ -474,7 +480,7 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieMa
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
     const data = await userStub.validateSession(sessionId);
-    if (data.valid) return { id: doId, profile: data.profile, credential: data.credential };
+    if (data.valid) return { id: doId, sessionId, profile: data.profile, credential: data.credential };
   } catch (e) {}
   return null;
 }
