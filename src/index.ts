@@ -5,6 +5,8 @@ import { AccountDO } from './AccountDO';
 import { SystemDO } from './SystemDO';
 import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
+import { initPlans } from './billing/plansConfig';
+import { Plan } from './billing/Plan';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -17,6 +19,8 @@ export default {
    * Main Worker fetch handler.
    */
   async fetch(request: Request, env: StartupAPIEnv, ctx): Promise<Response> {
+    initPlans();
+
     // Prevent infinite loops when serving assets
     if (request.headers.has('x-skip-worker')) {
       return env.ASSETS.fetch(request);
@@ -300,6 +304,7 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
       valid: true,
       profile: { ...initialProfile },
       credential,
+      plans: Plan.getAll(),
     };
 
     const image = await userStub.getImage('avatar');
@@ -904,6 +909,7 @@ async function handleSSR(
 
     // Prepare SSR values
     const replacements: Record<string, string> = {
+      plans_json: JSON.stringify(Plan.getAll()).replace(/"/g, '&quot;'),
       providers: getActiveProviders(env).join(','),
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
       credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),

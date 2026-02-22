@@ -6,7 +6,12 @@
     <title>Account Settings</title>
     <link rel="stylesheet" href="/users/style.css" />
   </head>
-  <body data-ssr-account="{{ssr:account_json}}" data-ssr-profile="{{ssr:profile_json}}" data-ssr-members="{{ssr:account_members_json}}">
+  <body
+    data-ssr-account="{{ssr:account_json}}"
+    data-ssr-profile="{{ssr:profile_json}}"
+    data-ssr-members="{{ssr:account_members_json}}"
+    data-ssr-plans="{{ssr:plans_json}}"
+  >
     <power-strip
       providers="{{ssr:providers}}"
       style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
@@ -329,13 +334,22 @@
               document.getElementById('display-account-name').textContent = data.name;
               initialAccountInfo.name = data.name;
             }
-            if (data.billing && data.billing.plan_details) {
-              document.getElementById('account-plan-display').value = data.billing.plan_details.name;
-              document.getElementById('display-account-plan').textContent = data.billing.plan_details.name;
-            } else if (data.billing && data.billing.state) {
-              document.getElementById('account-plan-display').value = data.billing.state.plan_slug;
-              document.getElementById('display-account-plan').textContent = data.billing.state.plan_slug;
+
+            // Get plan name from available plans
+            let availablePlans = [];
+            const ssrPlans = document.body.getAttribute('data-ssr-plans');
+            if (ssrPlans && !ssrPlans.startsWith('{{ssr:')) {
+              try {
+                availablePlans = JSON.parse(ssrPlans);
+              } catch (e) {}
             }
+
+            const planSlug = data.billing?.state?.plan_slug || data.plan;
+            const plan = availablePlans.find((p) => p.slug === planSlug);
+            const planName = plan ? plan.name : planSlug || 'Free';
+
+            document.getElementById('account-plan-display').value = planName;
+            document.getElementById('display-account-plan').textContent = planName;
 
             // Load avatar
             const avatarRes = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/avatar`);
