@@ -13,7 +13,7 @@ erDiagram
     SystemDO ||--o{ UserDO : indexes
     SystemDO ||--o{ AccountDO : indexes
     SystemDO ||--o{ CredentialDO : indexes
-    
+
     UserDO ||--o{ Session : owns
     UserDO ||--o{ user_credentials : "keeps list of links"
     UserDO }|--o{ AccountDO : "belongs to (Memberships)"
@@ -59,6 +59,7 @@ erDiagram
 ### 2. Authentication Flow
 
 Authentication is handled via OAuth2 (Google, Twitch). When a user logs in:
+
 1. The `handleAuth` function intercepts the OAuth callback.
 2. It identifies or creates the corresponding `UserDO`.
 3. It creates a session and returns a signed, encrypted cookie to the browser.
@@ -67,6 +68,7 @@ Authentication is handled via OAuth2 (Google, Twitch). When a user logs in:
 ### 3. Account & Membership Management
 
 Users can be members of multiple accounts.
+
 - `UserDO` maintains a `memberships` table indicating which accounts the user belongs to and which one is currently active.
 - `AccountDO` maintains a `members` table listing all users who have access to that account.
 - Changes are synchronized between both objects to ensure consistency.

@@ -12,7 +12,8 @@ body {
   background: #f9f9f9;
 }
 
-.main-layout, .header-area {
+.main-layout,
+.header-area {
   max-width: 1280px;
   margin-left: auto;
   margin-right: auto;
@@ -327,9 +328,9 @@ button:disabled {
 }
 
 .link-account-btn.twitch {
-  background: #9146FF;
+  background: #9146ff;
   color: white;
-  border-color: #9146FF;
+  border-color: #9146ff;
 }
 
 .link-account-btn.twitch:hover {

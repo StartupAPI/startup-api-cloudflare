@@ -90,7 +90,7 @@ export class AccountDO extends DurableObject {
           const userStub = this.env.USER.get(this.env.USER.idFromString(m.user_id));
           const profile = await userStub.getProfile();
           const image = await userStub.getImage('avatar');
-          
+
           let picture = profile.picture || null;
           if (image) {
             picture = `/users/api/users/${m.user_id}/avatar`;
@@ -210,20 +210,22 @@ export class AccountDO extends DurableObject {
   async getBillingInfo() {
     const state = this.getBillingState();
     const plan = Plan.get(state.plan_slug);
-    
+
     // Create a serializable version of the plan
-    const planDetails = plan ? {
-      slug: plan.slug,
-      name: plan.name,
-      capabilities: plan.capabilities,
-      downgrade_to_slug: plan.downgrade_to_slug,
-      grace_period: plan.grace_period,
-      schedules: plan.schedules.map(s => ({
-        charge_amount: s.charge_amount,
-        charge_period: s.charge_period,
-        is_default: s.is_default
-      }))
-    } : null;
+    const planDetails = plan
+      ? {
+          slug: plan.slug,
+          name: plan.name,
+          capabilities: plan.capabilities,
+          downgrade_to_slug: plan.downgrade_to_slug,
+          grace_period: plan.grace_period,
+          schedules: plan.schedules.map((s) => ({
+            charge_amount: s.charge_amount,
+            charge_period: s.charge_period,
+            is_default: s.is_default,
+          })),
+        }
+      : null;
 
     return {
       state,

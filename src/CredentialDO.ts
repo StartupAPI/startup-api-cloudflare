@@ -32,7 +32,7 @@ export class CredentialDO extends DurableObject {
     const result = this.sql.exec('SELECT * FROM credentials WHERE subject_id = ?', subjectId);
     const row = result.next().value as any;
     if (!row) return null;
-    
+
     row.profile_data = JSON.parse(row.profile_data);
     return row;
   }
@@ -62,7 +62,7 @@ export class CredentialDO extends DurableObject {
       data.scope,
       JSON.stringify(data.profile_data),
       data.created_at || now,
-      now
+      now,
     );
     return { success: true };
   }

@@ -155,12 +155,7 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function handleAdmin(
-  request: Request,
-  env: StartupAPIEnv,
-  usersPath: string,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user || !isAdmin(user, env)) {
     return new Response('Forbidden', { status: 403 });
@@ -183,42 +178,42 @@ async function handleAdmin(
     const parts = apiPath.split('/');
 
     if (parts[0] === 'users') {
-        if (parts.length === 1 && request.method === 'GET') {
-            return Response.json(await systemStub.listUsers(url.searchParams.get('q') || undefined));
-        }
-        if (parts.length === 2) {
-            const userId = parts[1];
-            if (request.method === 'GET') return Response.json(await systemStub.getUser(userId));
-            if (request.method === 'DELETE') return Response.json(await systemStub.deleteUser(userId));
-        }
-        if (parts.length === 3 && parts[2] === 'memberships' && request.method === 'GET') {
-            const userId = parts[1];
-            return Response.json(await systemStub.getUserMemberships(userId));
-        }
+      if (parts.length === 1 && request.method === 'GET') {
+        return Response.json(await systemStub.listUsers(url.searchParams.get('q') || undefined));
+      }
+      if (parts.length === 2) {
+        const userId = parts[1];
+        if (request.method === 'GET') return Response.json(await systemStub.getUser(userId));
+        if (request.method === 'DELETE') return Response.json(await systemStub.deleteUser(userId));
+      }
+      if (parts.length === 3 && parts[2] === 'memberships' && request.method === 'GET') {
+        const userId = parts[1];
+        return Response.json(await systemStub.getUserMemberships(userId));
+      }
     } else if (parts[0] === 'accounts') {
-        if (parts.length === 1) {
-            if (request.method === 'GET') return Response.json(await systemStub.listAccounts(url.searchParams.get('q') || undefined));
-            if (request.method === 'POST') return Response.json(await systemStub.registerAccount(await request.json()));
+      if (parts.length === 1) {
+        if (request.method === 'GET') return Response.json(await systemStub.listAccounts(url.searchParams.get('q') || undefined));
+        if (request.method === 'POST') return Response.json(await systemStub.registerAccount(await request.json()));
+      }
+      if (parts.length === 2) {
+        const accountId = parts[1];
+        if (request.method === 'GET') return Response.json(await systemStub.getAccount(accountId));
+        if (request.method === 'PUT') return Response.json(await systemStub.updateAccount(accountId, await request.json()));
+        if (request.method === 'DELETE') return Response.json(await systemStub.deleteAccount(accountId));
+      }
+      if (parts.length >= 3 && parts[2] === 'members') {
+        const accountId = parts[1];
+        const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+        if (parts.length === 3) {
+          if (request.method === 'GET') return Response.json(await accountStub.getMembers());
+          if (request.method === 'POST') {
+            const data = (await request.json()) as any;
+            return Response.json(await accountStub.addMember(data.user_id, data.role));
+          }
+        } else if (parts.length === 4 && request.method === 'DELETE') {
+          return Response.json(await accountStub.removeMember(parts[3]));
         }
-        if (parts.length === 2) {
-            const accountId = parts[1];
-            if (request.method === 'GET') return Response.json(await systemStub.getAccount(accountId));
-            if (request.method === 'PUT') return Response.json(await systemStub.updateAccount(accountId, await request.json()));
-            if (request.method === 'DELETE') return Response.json(await systemStub.deleteAccount(accountId));
-        }
-        if (parts.length >= 3 && parts[2] === 'members') {
-            const accountId = parts[1];
-            const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
-            if (parts.length === 3) {
-                if (request.method === 'GET') return Response.json(await accountStub.getMembers());
-                if (request.method === 'POST') {
-                    const data = await request.json() as any;
-                    return Response.json(await accountStub.addMember(data.user_id, data.role));
-                }
-            } else if (parts.length === 4 && request.method === 'DELETE') {
-                return Response.json(await accountStub.removeMember(parts[3]));
-            }
-        }
+      }
     } else if (apiPath === 'impersonate' && request.method === 'POST') {
       const { userId } = (await request.json()) as { userId: string };
 
@@ -256,11 +251,7 @@ async function handleAdmin(
   return new Response('Not Found', { status: 404 });
 }
 
-async function getUserFromSession(
-  request: Request,
-  env: StartupAPIEnv,
-  cookieManager: CookieManager,
-): Promise<any> {
+async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<any> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return null;
 
@@ -294,19 +285,22 @@ async function getUserFromSession(
 
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
   if (!env.ADMIN_IDS) return false;
-  const adminIds = env.ADMIN_IDS.split(',').map((e) => e.trim()).filter(Boolean);
+  const adminIds = env.ADMIN_IDS.split(',')
+    .map((e) => e.trim())
+    .filter(Boolean);
   const profile = user.profile || {};
   const credential = user.credential || {};
 
   return (
     adminIds.includes(user.id) ||
-    (env.ENVIRONMENT === 'test' && adminIds.some(id => {
+    (env.ENVIRONMENT === 'test' &&
+      adminIds.some((id) => {
         try {
-            return user.id === env.USER.idFromName(id).toString();
-        } catch(e) {
-            return false;
+          return user.id === env.USER.idFromName(id).toString();
+        } catch (e) {
+          return false;
         }
-    })) ||
+      })) ||
     (profile.email && adminIds.includes(profile.email)) ||
     (credential.subject_id && adminIds.includes(credential.subject_id)) ||
     (credential.provider && credential.subject_id && adminIds.includes(`${credential.provider}:${credential.subject_id}`))
@@ -387,9 +381,9 @@ async function handleAccountDetails(
   const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
 
   if (request.method === 'POST') {
-    const data = await request.json() as any;
+    const data = (await request.json()) as any;
     const result = await accountStub.updateInfo(data);
-    
+
     // Sync with SystemDO index if name changed
     if (data.name) {
       try {
@@ -413,11 +407,7 @@ async function handleAccountDetails(
   });
 }
 
-async function handleMe(
-  request: Request,
-  env: StartupAPIEnv,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
@@ -462,9 +452,9 @@ async function handleMe(
       const accountStub = env.ACCOUNT.get(accountId);
       const accountInfo = await accountStub.getInfo();
       data.account = {
-          ...accountInfo,
-          id: currentMembership.account_id,
-          role: currentMembership.role
+        ...accountInfo,
+        id: currentMembership.account_id,
+        role: currentMembership.role,
       };
     }
 
@@ -474,11 +464,7 @@ async function handleMe(
   }
 }
 
-async function handleUpdateProfile(
-  request: Request,
-  env: StartupAPIEnv,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
@@ -503,18 +489,14 @@ async function handleUpdateProfile(
 
     if (!data.valid) return Response.json(data, { status: 401 });
 
-    const profileData = await request.json() as any;
+    const profileData = (await request.json()) as any;
     return Response.json(await userStub.updateProfile(profileData));
   } catch (e) {
     return new Response('Unauthorized', { status: 401 });
   }
 }
 
-async function handleListCredentials(
-  request: Request,
-  env: StartupAPIEnv,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleListCredentials(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
@@ -541,11 +523,7 @@ async function handleListCredentials(
   }
 }
 
-async function handleDeleteCredential(
-  request: Request,
-  env: StartupAPIEnv,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
@@ -566,19 +544,14 @@ async function handleDeleteCredential(
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const { provider } = await request.json() as any;
+    const { provider } = (await request.json()) as any;
     return Response.json(await userStub.deleteCredential(provider));
   } catch (e: any) {
     return new Response(e.message, { status: 400 });
   }
 }
 
-async function handleMeImage(
-  request: Request,
-  env: StartupAPIEnv,
-  type: string,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleMeImage(request: Request, env: StartupAPIEnv, type: string, cookieManager: CookieManager): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
@@ -696,12 +669,7 @@ async function handleAccountImage(
   }
 }
 
-async function handleLogout(
-  request: Request,
-  env: StartupAPIEnv,
-  usersPath: string,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleLogout(request: Request, env: StartupAPIEnv, usersPath: string, cookieManager: CookieManager): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (cookieHeader) {
     const cookies = parseCookies(cookieHeader);
@@ -740,11 +708,7 @@ function parseCookies(cookieHeader: string): Record<string, string> {
   );
 }
 
-async function handleMyAccounts(
-  request: Request,
-  env: StartupAPIEnv,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 
@@ -790,11 +754,7 @@ async function handleMyAccounts(
   }
 }
 
-async function handleSwitchAccount(
-  request: Request,
-  env: StartupAPIEnv,
-  cookieManager: CookieManager,
-): Promise<Response> {
+async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
 

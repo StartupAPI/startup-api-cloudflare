@@ -121,8 +121,11 @@
     </style>
   </head>
   <body>
-    <power-strip providers="google,twitch" style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem;">
-      <svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="#ffcc00"/></svg>
+    <power-strip
+      providers="google,twitch"
+      style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
+    >
+      <svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="#ffcc00" /></svg>
     </power-strip>
     <script src="/users/power-strip.js" async></script>
 
@@ -158,7 +161,7 @@
     </section>
 
     <section id="accounts-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem">
         <h2>Accounts</h2>
         <button onclick="openCreateAccount()">Create Account</button>
       </div>
@@ -211,10 +214,10 @@
     </dialog>
 
     <!-- User Memberships Modal -->
-    <dialog id="user-memberships-modal" style="width: 500px;">
+    <dialog id="user-memberships-modal" style="width: 500px">
       <h3>User Memberships</h3>
       <input type="hidden" id="memberships-user-id" />
-      <table style="font-size: 0.9rem;">
+      <table style="font-size: 0.9rem">
         <thead>
           <tr>
             <th>Account</th>
@@ -291,17 +294,17 @@
     </dialog>
 
     <!-- Members Modal -->
-    <dialog id="members-modal" style="width: 600px;">
+    <dialog id="members-modal" style="width: 600px">
       <h3>Manage Members</h3>
       <input type="hidden" id="members-account-id" />
-      
-      <div style="margin-bottom: 1.5rem;">
+
+      <div style="margin-bottom: 1.5rem">
         <h4>Add Member</h4>
-        <div style="display: flex; gap: 0.5rem;">
-          <select id="add-member-user" style="flex-grow: 1; padding: 0.5rem;">
+        <div style="display: flex; gap: 0.5rem">
+          <select id="add-member-user" style="flex-grow: 1; padding: 0.5rem">
             <option value="">-- Select User --</option>
           </select>
-          <select id="add-member-role" style="width: 120px; padding: 0.5rem;">
+          <select id="add-member-role" style="width: 120px; padding: 0.5rem">
             <option value="0">User</option>
             <option value="1">Admin</option>
           </select>
@@ -310,7 +313,7 @@
       </div>
 
       <h4>Current Members</h4>
-      <table style="font-size: 0.9rem;">
+      <table style="font-size: 0.9rem">
         <thead>
           <tr>
             <th>User</th>
@@ -497,11 +500,11 @@
 
       async function openMembers(accountId) {
         document.getElementById('members-account-id').value = accountId;
-        
+
         // Populate user select
         const userSelect = document.getElementById('add-member-user');
         userSelect.innerHTML = '<option value="">-- Select User --</option>';
-        currentUsers.forEach(u => {
+        currentUsers.forEach((u) => {
           const option = document.createElement('option');
           option.value = u.id;
           option.textContent = `${u.name || u.id} (${u.email || 'no email'})`;
@@ -522,11 +525,12 @@
 
       function renderMembers(members) {
         const tbody = document.getElementById('members-table-body');
-        tbody.innerHTML = members.map(m => {
-          const user = currentUsers.find(u => u.id === m.user_id);
-          return `
+        tbody.innerHTML = members
+          .map((m) => {
+            const user = currentUsers.find((u) => u.id === m.user_id);
+            return `
             <tr>
-              <td>${user ? (user.name || user.email || m.user_id) : m.user_id}</td>
+              <td>${user ? user.name || user.email || m.user_id : m.user_id}</td>
               <td>${m.role === 1 ? 'Admin' : 'User'}</td>
               <td>${new Date(m.joined_at).toLocaleDateString()}</td>
               <td>
@@ -534,7 +538,8 @@
               </td>
             </tr>
           `;
-        }).join('');
+          })
+          .join('');
       }
 
       async function addMember() {
@@ -550,7 +555,7 @@
         const res = await fetch(`${API_BASE}/accounts/${accountId}/members`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId, role })
+          body: JSON.stringify({ user_id: userId, role }),
         });
 
         if (res.ok) {
@@ -563,10 +568,10 @@
 
       async function removeMember(userId) {
         if (!confirm('Are you sure you want to remove this member?')) return;
-        
+
         const accountId = document.getElementById('members-account-id').value;
         const res = await fetch(`${API_BASE}/accounts/${accountId}/members/${userId}`, {
-          method: 'DELETE'
+          method: 'DELETE',
         });
 
         if (res.ok) {
@@ -581,7 +586,7 @@
         if (!confirm('Are you sure you want to PERMANENTLY delete this account? All data will be lost.')) return;
 
         const res = await fetch(`${API_BASE}/accounts/${accountId}`, {
-          method: 'DELETE'
+          method: 'DELETE',
         });
 
         if (res.ok) {
@@ -635,7 +640,7 @@
         if (!confirm('Are you sure you want to PERMANENTLY delete this user? All data will be lost.')) return;
 
         const res = await fetch(`${API_BASE}/users/${userId}`, {
-          method: 'DELETE'
+          method: 'DELETE',
         });
 
         if (res.ok) {
@@ -658,9 +663,10 @@
       function renderUserMemberships(memberships) {
         const userId = document.getElementById('memberships-user-id').value;
         const tbody = document.getElementById('user-memberships-table-body');
-        tbody.innerHTML = memberships.map(m => {
-          const account = currentAccounts.find(a => a.id === m.account_id);
-          return `
+        tbody.innerHTML = memberships
+          .map((m) => {
+            const account = currentAccounts.find((a) => a.id === m.account_id);
+            return `
             <tr>
               <td>${account ? account.name : m.account_id.substring(0, 8) + '...'}</td>
               <td>${m.role === 1 ? 'Admin' : 'User'}</td>
@@ -670,14 +676,15 @@
               </td>
             </tr>
           `;
-        }).join('');
+          })
+          .join('');
       }
 
       async function removeUserFromAccount(userId, accountId) {
         if (!confirm('Are you sure you want to remove this user from the account?')) return;
-        
+
         const res = await fetch(`${API_BASE}/accounts/${accountId}/members/${userId}`, {
-          method: 'DELETE'
+          method: 'DELETE',
         });
 
         if (res.ok) {

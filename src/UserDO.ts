@@ -91,10 +91,7 @@ export class UserDO extends DurableObject {
 
     if (loginProvider) {
       credential.provider = loginProvider;
-      const credResult = this.sql.exec(
-        'SELECT subject_id FROM user_credentials WHERE provider = ?',
-        loginProvider,
-      );
+      const credResult = this.sql.exec('SELECT subject_id FROM user_credentials WHERE provider = ?', loginProvider);
       const credRow = credResult.next().value as any;
       if (credRow) {
         credential.subject_id = credRow.subject_id;
@@ -174,7 +171,7 @@ export class UserDO extends DurableObject {
       throw new Error('Cannot delete the last credential');
     }
 
-    const cred = all.find(c => c.provider === provider);
+    const cred = all.find((c) => c.provider === provider);
     if (cred) {
       const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(cred.provider));
       await stub.delete(cred.subject_id);

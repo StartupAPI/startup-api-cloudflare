@@ -242,15 +242,15 @@ describe('Integration Tests', () => {
     // 2. Simulate login with secondary credential (twitch)
     // In handleAuth, if it resolves an existing user (resolveData is found), isNewUser is false.
     // The avatar is only fetched/stored if isNewUser is true.
-    
-    // We can verify this by checking that if we simulate what handleAuth does for an existing user, 
-    // it won't call storeImage. 
-    // Since we can't easily mock fetch in handleAuth here without more setup, 
+
+    // We can verify this by checking that if we simulate what handleAuth does for an existing user,
+    // it won't call storeImage.
+    // Since we can't easily mock fetch in handleAuth here without more setup,
     // we'll verify the logic by ensuring that isNewUser would be false.
 
     const resolveData = await twitchCredStub.get('t123');
     expect(resolveData.user_id).toBe(userIdStr);
-    
+
     const isNewUser = !resolveData.user_id ? false : false; // This mimics the logic in handleAuth
     expect(isNewUser).toBe(false);
 
