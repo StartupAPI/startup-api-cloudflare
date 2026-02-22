@@ -193,6 +193,7 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 
     let html = await response.text();
     html = renderSSR(html, {
+      plans_json: JSON.stringify(Plan.getAll()).replace(/"/g, '&quot;'),
       providers: getActiveProviders(env).join(','),
     });
 

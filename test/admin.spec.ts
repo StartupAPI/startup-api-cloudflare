@@ -97,6 +97,8 @@ describe('Admin Administration', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('<title>Admin Dashboard</title>');
+    expect(html).toContain('data-ssr-plans');
+    expect(html).not.toContain('{{ssr:plans_json}}');
   });
 
   it('SystemDO should list users and accounts', async () => {
