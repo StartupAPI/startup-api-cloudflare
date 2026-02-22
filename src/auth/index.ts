@@ -74,9 +74,18 @@ export async function handleAuth(
           }
         }
 
-        const isNewUser = !userIdStr;
+        let isNewUser = !userIdStr;
         const id = userIdStr ? env.USER.idFromString(userIdStr) : env.USER.newUniqueId();
         const userStub = env.USER.get(id);
+
+        if (userIdStr) {
+          // Verify user still exists (has a profile)
+          const profileData = await userStub.getProfile();
+          if (Object.keys(profileData).length === 0) {
+            isNewUser = true;
+          }
+        }
+
         userIdStr = id.toString();
 
         // Fetch and Store Avatar (Only for new users)
