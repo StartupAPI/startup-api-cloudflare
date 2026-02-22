@@ -895,7 +895,6 @@ async function handleSSR(
 
     // Prepare SSR values
     const replacements: Record<string, string> = {
-      home_url: env.ORIGIN_URL || url.origin,
       providers: getActiveProviders(env).join(','),
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
       credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),
