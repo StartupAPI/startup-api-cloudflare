@@ -437,6 +437,8 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
     if (image) {
       const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
       profile.picture = usersPath + 'me/avatar';
+    } else {
+      profile.picture = null;
     }
 
     data.profile = profile;

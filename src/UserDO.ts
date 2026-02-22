@@ -327,6 +327,11 @@ export class UserDO extends DurableObject {
   async deleteImage(key: string) {
     const r2Key = `user/${this.ctx.id.toString()}/${key}`;
     await this.env.IMAGE_STORAGE.delete(r2Key);
+
+    if (key === 'avatar') {
+      this.sql.exec("DELETE FROM profile WHERE key = 'picture'");
+    }
+
     return { success: true };
   }
 

@@ -134,6 +134,8 @@ export class AccountDO extends DurableObject {
           let picture = profile.picture || null;
           if (image) {
             picture = `/users/api/users/${m.user_id}/avatar`;
+          } else {
+            picture = null;
           }
 
           return {
