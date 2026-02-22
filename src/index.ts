@@ -241,7 +241,8 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
         }
       }
     } else if (parts[0] === 'impersonate' && request.method === 'POST') {
-      const { user_id } = (await request.json()) as { user_id: string };
+      const data = (await request.json()) as any;
+      const user_id = data.user_id || data.userId;
       if (!user_id) return new Response('Missing user_id', { status: 400 });
 
       if (user_id === user.id) {
@@ -269,6 +270,8 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
 
       return Response.json({ success: true }, { headers });
     }
+
+    return new Response('Not Found', { status: 404 });
   }
 
   url.pathname = '/users/admin' + path;
@@ -281,7 +284,7 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const { id: doId, sessionId, profile: initialProfile, credential } = user;
+  const { id: doId, profile: initialProfile, credential } = user;
 
   try {
     const id = env.USER.idFromString(doId);
@@ -347,20 +350,23 @@ function isAdmin(user: any, env: StartupAPIEnv): boolean {
   const adminIds = env.ADMIN_IDS.split(',')
     .map((e) => e.trim())
     .filter(Boolean);
-  const profile = user.profile || {};
-  const credential = user.credential || {};
+
+  const userId = user.id;
+  const profile = user.profile || user || {};
+  const credential = user.credential || user || {};
+  const email = profile.email || user.email;
 
   return (
-    adminIds.includes(user.id) ||
+    adminIds.includes(userId) ||
     (env.ENVIRONMENT === 'test' &&
       adminIds.some((id) => {
         try {
-          return user.id === env.USER.idFromName(id).toString();
+          return userId === env.USER.idFromName(id).toString();
         } catch (e) {
           return false;
         }
       })) ||
-    (profile.email && adminIds.includes(profile.email)) ||
+    (email && adminIds.includes(email)) ||
     (credential.subject_id && adminIds.includes(credential.subject_id)) ||
     (credential.provider && credential.subject_id && adminIds.includes(`${credential.provider}:${credential.subject_id}`))
   );
@@ -508,25 +514,11 @@ async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cook
 }
 
 async function handleMeImage(request: Request, env: StartupAPIEnv, type: string, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
-
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [sessionId, doId] = sessionCookie.split(':');
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
   try {
-    const id = env.USER.idFromString(doId);
+    const id = env.USER.idFromString(user.id);
     const stub = env.USER.get(id);
 
     if (request.method === 'PUT') {
@@ -549,7 +541,7 @@ async function handleMeImage(request: Request, env: StartupAPIEnv, type: string,
       return Response.json({ success: true });
     }
 
-    return handleUserImage(request, env, doId, type, cookieManager);
+    return handleUserImage(request, env, user.id, type, cookieManager);
   } catch (e: any) {
     console.error('[handleMeImage] Error:', e.message, e.stack);
     return new Response('Error fetching image: ' + e.message, { status: 500 });
@@ -680,29 +672,12 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 }
 
 async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
-
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [sessionId, doId] = sessionCookie.split(':');
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
   try {
-    const id = env.USER.idFromString(doId);
+    const id = env.USER.idFromString(user.id);
     const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
-
-    if (!data.valid) return Response.json(data, { status: 401 });
 
     // Fetch memberships
     const memberships = await userStub.getMemberships();
@@ -731,22 +706,9 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieMana
 }
 
 async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return new Response('Unauthorized', { status: 401 });
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const cookies = parseCookies(cookieHeader);
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  const [sessionId, doId] = sessionCookie.split(':');
   const { account_id } = (await request.json()) as { account_id: string };
 
   if (!account_id) {
@@ -754,12 +716,8 @@ async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieM
   }
 
   try {
-    const id = env.USER.idFromString(doId);
+    const id = env.USER.idFromString(user.id);
     const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
-
-    if (!data.valid) return Response.json(data, { status: 401 });
-
     return Response.json(await userStub.switchAccount(account_id));
   } catch (e: any) {
     return new Response(e.message, { status: 400 });
@@ -773,29 +731,16 @@ async function handleSSR(
   usersPath: string,
   cookieManager: CookieManager,
 ): Promise<Response> {
-  const cookieHeader = request.headers.get('Cookie');
-  const cookies = parseCookies(cookieHeader || '');
-  const sessionCookieEncrypted = cookies['session_id'];
-
-  if (!sessionCookieEncrypted) {
+  const user = await getUserFromSession(request, env, cookieManager);
+  if (!user) {
     return Response.redirect(url.origin + '/', 302);
   }
 
-  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
-  if (!sessionCookie || !sessionCookie.includes(':')) {
-    return Response.redirect(url.origin + '/', 302);
-  }
-
-  const [sessionId, doId] = sessionCookie.split(':');
+  const { id: doId, sessionId, profile: initialProfile, credential } = user;
 
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const data = await userStub.validateSession(sessionId);
-
-    if (!data.valid) {
-      return Response.redirect(url.origin + '/', 302);
-    }
 
     // Get HTML from assets
     const assetUrl = new URL(url.toString());
@@ -821,17 +766,21 @@ async function handleSSR(
 
     let html = await assetResponse.text();
 
-    const profile = { ...data.profile };
+    const data: any = {
+      valid: true,
+      profile: { ...initialProfile },
+      credential,
+    };
+
     const image = await userStub.getImage('avatar');
     if (image) {
       const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
-      profile.picture = usersPathNormalized + 'me/avatar';
+      data.profile.picture = usersPathNormalized + 'me/avatar';
     } else {
-      profile.picture = null;
+      data.profile.picture = null;
     }
 
-    data.profile = profile;
-    data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
+    data.is_admin = isAdmin({ id: doId, profile: data.profile, credential }, env);
 
     // Fetch memberships to find current account
     const memberships = await userStub.getMemberships();
@@ -864,14 +813,16 @@ async function handleSSR(
       providers: getActiveProviders(env).join(','),
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
       credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),
-      profile_name: profile.name || 'Anonymous',
+      profile_name: data.profile.name || 'Anonymous',
       profile_id: doId,
-      profile_email: profile.email || '',
-      profile_picture: profile.picture || '',
-      profile_picture_display: profile.picture ? 'display: block;' : 'display: none;',
-      profile_placeholder_display: profile.picture ? 'display: none;' : 'display: flex;',
-      profile_remove_btn_display: profile.picture ? 'display: flex;' : 'display: none;',
-      profile_provider_label: profile.provider ? `(from ${profile.provider.charAt(0).toUpperCase() + profile.provider.slice(1)})` : '',
+      profile_email: data.profile.email || '',
+      profile_picture: data.profile.picture || '',
+      profile_picture_display: data.profile.picture ? 'display: block;' : 'display: none;',
+      profile_placeholder_display: data.profile.picture ? 'display: none;' : 'display: flex;',
+      profile_remove_btn_display: data.profile.picture ? 'display: flex;' : 'display: none;',
+      profile_provider_label: data.profile.provider
+        ? `(from ${data.profile.provider.charAt(0).toUpperCase() + data.profile.provider.slice(1)})`
+        : '',
       nav_account_display: account && (account.role === 1 || data.is_admin) ? 'display: block;' : 'display: none;',
       credentials_list_html: renderCredentialsList(credentials, data.credential?.provider),
       link_credentials_html: renderLinkCredentialsList(getActiveProviders(env)),

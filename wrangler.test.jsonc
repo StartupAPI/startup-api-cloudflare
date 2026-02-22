@@ -44,7 +44,7 @@
     "ENVIRONMENT": "test",
     "SESSION_SECRET": "dev-secret",
     "ORIGIN_URL": "http://example.com",
-    "ADMIN_IDS": "admin",
+    "ADMIN_IDS": "admin,admin@example.com",
     "GOOGLE_CLIENT_ID": "google-id",
     "GOOGLE_CLIENT_SECRET": "google-secret",
     "TWITCH_CLIENT_ID": "twitch-id",
