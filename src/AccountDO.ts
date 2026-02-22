@@ -83,6 +83,20 @@ export class AccountDO extends DurableObject {
             valToStore = value.substring(0, 50);
           }
           this.sql.exec('INSERT OR REPLACE INTO account_info (key, value) VALUES (?, ?)', key, JSON.stringify(valToStore));
+
+          // If plan is updated manually (e.g. via Admin API), update billing state too
+          if (key === 'plan' && typeof value === 'string') {
+            const currentState = this.getBillingState();
+            if (currentState.plan_slug !== value) {
+              const newState = {
+                ...currentState,
+                plan_slug: value,
+                // We don't automatically set next_billing_date or status here 
+                // as this is a manual override, but we keep the slug in sync.
+              };
+              this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(newState));
+            }
+          }
         }
       });
       return { success: true };
@@ -226,6 +240,8 @@ export class AccountDO extends DurableObject {
   private setBillingState(state: any) {
     this.ctx.storage.transactionSync(() => {
       this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('billing', ?)", JSON.stringify(state));
+      // Keep plan field in sync
+      this.sql.exec("INSERT OR REPLACE INTO account_info (key, value) VALUES ('plan', ?)", JSON.stringify(state.plan_slug));
     });
   }
 

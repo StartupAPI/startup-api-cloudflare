@@ -170,6 +170,24 @@ describe('Admin Administration', () => {
     const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(result.id));
     const info = await accountStub.getInfo();
     expect(info.name).toBe(accountName);
+
+    // 5. Update account plan via admin API
+    await SELF.fetch(`http://example.com/users/admin/api/accounts/${result.id}`, {
+      method: 'PUT',
+      headers: {
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: accountName,
+        plan: 'pro',
+      }),
+    });
+
+    // 6. Verify AccountDO billing info is updated
+    const billingInfo: any = await accountStub.getBillingInfo();
+    expect(billingInfo.state.plan_slug).toBe('pro');
+    expect(billingInfo.plan_details.name).toBe('Pro');
   });
 
   it('should create a new account with an owner via admin API', async () => {

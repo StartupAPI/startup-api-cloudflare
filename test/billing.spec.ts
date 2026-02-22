@@ -27,6 +27,10 @@ describe('Billing Logic in AccountDO', () => {
     // Verify persistence
     const info: any = await stub.getBillingInfo();
     expect(info.state.plan_slug).toBe('pro');
+
+    // Verify getInfo also has the correct plan
+    const accountInfo: any = await stub.getInfo();
+    expect(accountInfo.plan).toBe('pro');
   });
 
   it('should fail to subscribe to invalid plan', async () => {

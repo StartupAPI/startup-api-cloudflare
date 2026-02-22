@@ -463,13 +463,16 @@ async function handleAccountDetails(
     const data = await request.json();
     const result = await accountStub.updateInfo(data);
 
-    // Sync with SystemDO index if name changed
-    if (data.name) {
+    // Sync with SystemDO index if name or plan changed
+    if (data.name || data.plan) {
       try {
         const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-        await systemStub.updateAccount(accountId, { name: data.name });
+        const updates: any = {};
+        if (data.name) updates.name = data.name;
+        if (data.plan) updates.plan = data.plan;
+        await systemStub.updateAccount(accountId, updates);
       } catch (e) {
-        console.error('Failed to sync account name to SystemDO', e);
+        console.error('Failed to sync account updates to SystemDO', e);
       }
     }
     return Response.json(result);
