@@ -301,7 +301,7 @@ export class UserDO extends DurableObject {
           .transform({
             width: 300,
             height: 300,
-            fit: 'cover',
+            fit: 'crop',
           })
           .output({
             format: 'image/jpeg',
