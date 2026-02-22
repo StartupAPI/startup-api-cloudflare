@@ -9,6 +9,4 @@ export type StartupAPIEnv = {
   ADMIN_IDS: string;
   SESSION_SECRET: string;
   ENVIRONMENT?: string;
-  SYSTEM: DurableObjectNamespace;
-  IMAGE_STORAGE: R2Bucket;
 } & Env;
