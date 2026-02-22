@@ -818,6 +818,9 @@ async function handleSSR(
     const memberships = await userStub.getMemberships();
     const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
 
+    // Fetch credentials
+    const credentials = await userStub.listCredentials();
+
     let account = null;
     if (currentMembership) {
       const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
@@ -835,6 +838,7 @@ async function handleSSR(
     // Prepare SSR values
     const replacements: Record<string, string> = {
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
+      credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),
       profile_name: profile.name || 'Anonymous',
       profile_id: doId,
       profile_email: profile.email || '',

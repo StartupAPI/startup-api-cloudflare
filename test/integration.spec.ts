@@ -270,6 +270,16 @@ describe('Integration Tests', () => {
     const { sessionId } = await stub.createSession();
     await stub.updateProfile({ name: 'SSR Tester' });
 
+    // Add credentials
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test-provider'));
+    await credentialStub.put({
+      user_id: userIdStr,
+      provider: 'test-provider',
+      subject_id: 'ssr-123',
+      profile_data: { name: 'SSR Tester' },
+    });
+    await stub.addCredential('test-provider', 'ssr-123');
+
     const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
 
     const res = await SELF.fetch('http://example.com/users/profile.html', {
@@ -281,6 +291,7 @@ describe('Integration Tests', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('SSR Tester');
+    expect(html).toContain('data-ssr-credentials="[{&quot;provider&quot;:&quot;test-provider&quot;');
     expect(html).not.toContain('{{ssr:profile_name}}');
   });
 });

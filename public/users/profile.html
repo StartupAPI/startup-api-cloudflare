@@ -6,7 +6,7 @@
     <title>User Profile</title>
     <link rel="stylesheet" href="/users/style.css" />
   </head>
-  <body data-ssr-profile="{{ssr:profile_json}}">
+  <body data-ssr-profile="{{ssr:profile_json}}" data-ssr-credentials="{{ssr:credentials_json}}">
     <power-strip
       providers="google,twitch"
       style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
@@ -390,9 +390,22 @@
       async function loadCredentials() {
         const list = document.getElementById('credentials-list');
         try {
-          const res = await fetch(`${API_BASE}/me/credentials`);
-          if (!res.ok) throw new Error('Failed to load credentials');
-          const credentials = await res.json();
+          // Try to get data from SSR first
+          let credentials = null;
+          const ssrCredentialsJson = document.body.getAttribute('data-ssr-credentials');
+          if (ssrCredentialsJson && !ssrCredentialsJson.startsWith('{{ssr:')) {
+            try {
+              credentials = JSON.parse(ssrCredentialsJson);
+            } catch (e) {
+              console.error('Failed to parse SSR credentials', e);
+            }
+          }
+
+          if (!credentials) {
+            const res = await fetch(`${API_BASE}/me/credentials`);
+            if (!res.ok) throw new Error('Failed to load credentials');
+            credentials = await res.json();
+          }
 
           if (credentials.length === 0) {
             list.innerHTML = '<p>No credentials linked.</p>';
