@@ -122,6 +122,13 @@ export default {
 
     // Intercept requests to usersPath and serve them from the public/users directory.
     if (url.pathname.startsWith(usersPath)) {
+      const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';
+      const requestPath = url.pathname.replace(usersPathNormalized, '');
+
+      if (requestPath === 'profile.html' || requestPath === 'accounts.html') {
+        return handleSSR(request, env, url, usersPath, cookieManager);
+      }
+
       url.pathname = url.pathname.replace(usersPath, '/users/');
       const newRequest = new Request(url.toString(), request);
       newRequest.headers.set('x-skip-worker', 'true');
@@ -805,4 +812,143 @@ async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieM
   } catch (e: any) {
     return new Response(e.message, { status: 400 });
   }
+}
+
+async function handleSSR(
+  request: Request,
+  env: StartupAPIEnv,
+  url: URL,
+  usersPath: string,
+  cookieManager: CookieManager,
+): Promise<Response> {
+  const cookieHeader = request.headers.get('Cookie');
+  const cookies = parseCookies(cookieHeader || '');
+  const sessionCookieEncrypted = cookies['session_id'];
+
+  if (!sessionCookieEncrypted) {
+    return Response.redirect(url.origin + '/', 302);
+  }
+
+  const sessionCookie = await cookieManager.decrypt(sessionCookieEncrypted);
+  if (!sessionCookie || !sessionCookie.includes(':')) {
+    return Response.redirect(url.origin + '/', 302);
+  }
+
+  const [sessionId, doId] = sessionCookie.split(':');
+
+  try {
+    const id = env.USER.idFromString(doId);
+    const userStub = env.USER.get(id);
+    const data = await userStub.validateSession(sessionId);
+
+    if (!data.valid) {
+      return Response.redirect(url.origin + '/', 302);
+    }
+
+    // Get HTML from assets
+    const assetUrl = new URL(url.toString());
+    assetUrl.pathname = url.pathname.replace(usersPath, '/users/');
+    const assetRequest = new Request(assetUrl.toString(), request);
+    assetRequest.headers.set('x-skip-worker', 'true');
+    const assetResponse = await env.ASSETS.fetch(assetRequest);
+
+    if (!assetResponse.ok) {
+      return assetResponse;
+    }
+
+    let html = await assetResponse.text();
+
+    const profile = { ...data.profile };
+    const image = await userStub.getImage('avatar');
+    if (image) {
+      profile.picture = usersPath + 'me/avatar';
+    } else {
+      profile.picture = null;
+    }
+
+    data.profile = profile;
+    data.is_admin = isAdmin({ id: doId, ...data.profile }, env);
+
+    // Fetch memberships to find current account
+    const memberships = await userStub.getMemberships();
+    const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
+
+    let account = null;
+    if (currentMembership) {
+      const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);
+      const accountStub = env.ACCOUNT.get(accountId);
+      const accountInfo = await accountStub.getInfo();
+      const billing = await accountStub.getBillingInfo();
+      account = {
+        ...accountInfo,
+        billing,
+        id: currentMembership.account_id,
+        role: currentMembership.role,
+      };
+    }
+
+    // Prepare SSR values
+    const replacements: Record<string, string> = {
+      profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
+      profile_name: profile.name || 'Anonymous',
+      profile_id: doId,
+      profile_email: profile.email || '',
+      profile_picture: profile.picture || '',
+      profile_picture_display: profile.picture ? 'display: block;' : 'display: none;',
+      profile_placeholder_display: profile.picture ? 'display: none;' : 'display: flex;',
+      profile_remove_btn_display: profile.picture ? 'display: flex;' : 'display: none;',
+      profile_provider_label: profile.provider ? `(from ${profile.provider.charAt(0).toUpperCase() + profile.provider.slice(1)})` : '',
+      nav_account_display: account && (account.role === 1 || data.is_admin) ? 'display: block;' : 'display: none;',
+    };
+
+    if (account) {
+      replacements['account_json'] = JSON.stringify(account).replace(/"/g, '&quot;');
+      replacements['account_name'] = account.name || 'Account';
+      replacements['account_id'] = account.id;
+      replacements['account_plan_name'] = account.billing?.plan_details?.name || account.billing?.state?.plan_slug || 'free';
+
+      const accountAvatar = await env.ACCOUNT.get(env.ACCOUNT.idFromString(account.id)).getImage('avatar');
+      const accountPicture = accountAvatar ? `${usersPath}api/me/accounts/${account.id}/avatar` : null;
+
+      replacements['account_picture'] = accountPicture || '';
+      replacements['account_picture_display'] = accountPicture ? 'display: block;' : 'display: none;';
+      replacements['account_placeholder_display'] = accountPicture ? 'display: none;' : 'display: flex;';
+      replacements['account_remove_btn_display'] = accountPicture ? 'display: flex;' : 'display: none;';
+
+      const isAccountAdmin = account.role === 1 || data.is_admin;
+      replacements['account_info_section_display'] = isAccountAdmin ? 'display: block;' : 'display: none;';
+      replacements['account_members_section_display'] = isAccountAdmin ? 'display: block;' : 'display: none;';
+    } else {
+      replacements['account_json'] = 'null';
+      replacements['account_name'] = '';
+      replacements['account_id'] = '';
+      replacements['account_plan_name'] = '';
+      replacements['account_picture'] = '';
+      replacements['account_picture_display'] = 'display: none;';
+      replacements['account_placeholder_display'] = 'display: flex;';
+      replacements['account_remove_btn_display'] = 'display: none;';
+      replacements['account_info_section_display'] = 'display: none;';
+      replacements['account_members_section_display'] = 'display: none;';
+    }
+
+    html = renderSSR(html, replacements);
+
+    return new Response(html, {
+      headers: {
+        'Content-Type': 'text/html',
+      },
+    });
+  } catch (e: any) {
+    console.error('[handleSSR] Error:', e.message, e.stack);
+    return new Response('Error rendering page: ' + e.message, { status: 500 });
+  }
+}
+
+function renderSSR(html: string, replacements: Record<string, string>): string {
+  let rendered = html;
+  for (const [key, value] of Object.entries(replacements)) {
+    const placeholder = `{{ssr:${key}}}`;
+    rendered = rendered.split(placeholder).join(value);
+  }
+  return rendered;
 }

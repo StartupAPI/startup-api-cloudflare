@@ -6,7 +6,7 @@
     <title>User Profile</title>
     <link rel="stylesheet" href="/users/style.css" />
   </head>
-  <body>
+  <body data-ssr-profile="{{ssr:profile_json}}">
     <power-strip
       providers="google,twitch"
       style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
@@ -18,9 +18,9 @@
     <div class="header-area">
       <a href="/" class="back-link">← Back to Home</a>
       <h1 class="page-subtitle">User Profile</h1>
-      <div id="page-title" class="page-title">Loading...</div>
+      <div id="page-title" class="page-title">{{ssr:profile_name}}</div>
       <div id="user-id-subtitle" class="subtitle">
-        <span class="id-text" id="user-id-text"></span>
+        <span class="id-text" id="user-id-text">ID: {{ssr:profile_id}}</span>
         <button id="copy-id-btn" class="copy-btn" title="Copy User ID">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -36,7 +36,7 @@
           <li class="nav-item">
             <a href="/users/profile.html" class="nav-link active">Profile</a>
           </li>
-          <li class="nav-item" id="nav-account-item" style="display: none">
+          <li class="nav-item" id="nav-account-item" style="{{ssr:nav_account_display}}">
             <a href="/users/accounts.html" class="nav-link">Account Settings</a>
           </li>
         </ul>
@@ -46,11 +46,17 @@
         <section>
           <div class="avatar-section">
             <div style="position: relative">
-              <img id="profile-picture" class="avatar-large" src="" alt="Profile Picture" style="display: none" />
+              <img
+                id="profile-picture"
+                class="avatar-large"
+                src="{{ssr:profile_picture}}"
+                alt="Profile Picture"
+                style="{{ssr:profile_picture_display}}"
+              />
               <div
                 id="profile-avatar-placeholder"
                 class="avatar-large"
-                style="background: #f1f3f4; display: flex; align-items: center; justify-content: center; color: #5f6368"
+                style="background: #f1f3f4; {{ssr:profile_placeholder_display}} align-items: center; justify-content: center; color: #5f6368"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -97,7 +103,7 @@
                   color: white;
                   border: 2px solid white;
                   cursor: pointer;
-                  display: none;
+                  {{ssr:profile_remove_btn_display}}
                   align-items: center;
                   justify-content: center;
                   padding: 0;
@@ -111,18 +117,25 @@
               </button>
             </div>
             <div>
-              <p id="display-email" style="margin: 0.25rem 0 0 0; color: #666"></p>
+              <p id="display-email" style="margin: 0.25rem 0 0 0; color: #666">{{ssr:profile_email}}</p>
             </div>
           </div>
 
           <form id="profile-form">
             <div class="form-group">
               <label for="name">Name</label>
-              <input type="text" id="name" name="name" placeholder="Your Name" required />
+              <input type="text" id="name" name="name" placeholder="Your Name" value="{{ssr:profile_name}}" required />
             </div>
             <div class="form-group">
-              <label for="email">Email</label>
-              <input type="email" id="email" name="email" disabled title="Email is managed by your login provider" />
+              <label for="email">Email {{ssr:profile_provider_label}}</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value="{{ssr:profile_email}}"
+                disabled
+                title="Email is managed by your login provider"
+              />
             </div>
             <button type="submit" id="save-btn" disabled>Save Changes</button>
           </form>
@@ -183,15 +196,29 @@
 
       async function loadProfile() {
         try {
-          const res = await fetch(`${API_BASE}/me`);
-          if (!res.ok) {
-            if (res.status === 401) {
-              window.location.href = '/';
-              return;
+          // Try to get data from SSR first
+          let data = null;
+          const ssrProfileJson = document.body.getAttribute('data-ssr-profile');
+          if (ssrProfileJson && !ssrProfileJson.startsWith('{{ssr:')) {
+            try {
+              data = JSON.parse(ssrProfileJson);
+            } catch (e) {
+              console.error('Failed to parse SSR profile', e);
             }
-            throw new Error('Failed to load profile');
           }
-          const data = await res.json();
+
+          if (!data) {
+            const res = await fetch(`${API_BASE}/me`);
+            if (!res.ok) {
+              if (res.status === 401) {
+                window.location.href = '/';
+                return;
+              }
+              throw new Error('Failed to load profile');
+            }
+            data = await res.json();
+          }
+
           if (data.valid && data.profile) {
             const p = data.profile;
             initialProfile = { name: p.name || '' };

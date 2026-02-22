@@ -6,7 +6,7 @@
     <title>Account Settings</title>
     <link rel="stylesheet" href="/users/style.css" />
   </head>
-  <body>
+  <body data-ssr-account="{{ssr:account_json}}" data-ssr-profile="{{ssr:profile_json}}">
     <power-strip
       providers="google,twitch"
       style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
@@ -18,9 +18,9 @@
     <div class="header-area">
       <a href="/" class="back-link">← Back to Home</a>
       <h1 class="page-subtitle">Account Settings</h1>
-      <div id="account-name-heading" class="page-title">Account</div>
+      <div id="account-name-heading" class="page-title">{{ssr:account_name}}</div>
       <div id="account-id-subtitle" class="subtitle">
-        <span class="id-text" id="account-id-text"></span>
+        <span class="id-text" id="account-id-text">ID: {{ssr:account_id}}</span>
         <button id="copy-id-btn" class="copy-btn" title="Copy Account ID">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -43,14 +43,20 @@
       </nav>
 
       <div class="content-area">
-        <section id="account-info-section">
+        <section id="account-info-section" style="{{ssr:account_info_section_display}}">
           <div class="avatar-section">
             <div style="position: relative">
-              <img id="account-avatar" class="account-avatar-large" src="" alt="Account Avatar" style="display: none" />
+              <img
+                id="account-avatar"
+                class="account-avatar-large"
+                src="{{ssr:account_picture}}"
+                alt="Account Avatar"
+                style="{{ssr:account_picture_display}}"
+              />
               <div
                 id="account-avatar-placeholder"
                 class="account-avatar-large"
-                style="background: #f1f3f4; display: flex; align-items: center; justify-content: center; color: #5f6368"
+                style="background: #f1f3f4; {{ssr:account_placeholder_display}} align-items: center; justify-content: center; color: #5f6368"
               >
                 <svg viewBox="0 0 24 24" style="width: 48px; height: 48px; fill: currentColor">
                   <path
@@ -90,7 +96,7 @@
                   color: white;
                   border: 2px solid white;
                   cursor: pointer;
-                  display: none;
+                  {{ssr:account_remove_btn_display}}
                   align-items: center;
                   justify-content: center;
                   padding: 0;
@@ -104,8 +110,8 @@
               </button>
             </div>
             <div>
-              <h2 id="display-account-name" style="margin: 0; color: #333">Loading...</h2>
-              <p id="display-account-plan" style="margin: 0.25rem 0 0 0; color: #666"></p>
+              <h2 id="display-account-name" style="margin: 0; color: #333">{{ssr:account_name}}</h2>
+              <p id="display-account-plan" style="margin: 0.25rem 0 0 0; color: #666">{{ssr:account_plan_name}}</p>
             </div>
           </div>
 
@@ -113,17 +119,17 @@
           <form id="account-info-form">
             <div class="form-group">
               <label for="account-name">Account Name</label>
-              <input type="text" id="account-name" name="name" maxlength="50" required />
+              <input type="text" id="account-name" name="name" maxlength="50" value="{{ssr:account_name}}" required />
             </div>
             <div class="form-group">
               <label>Plan</label>
-              <input type="text" id="account-plan-display" disabled />
+              <input type="text" id="account-plan-display" value="{{ssr:account_plan_name}}" disabled />
             </div>
             <button type="submit" id="save-account-btn" disabled>Save Changes</button>
           </form>
         </section>
 
-        <section id="members-section">
+        <section id="members-section" style="{{ssr:account_members_section_display}}">
           <h2>Team Members</h2>
           <div id="members-list">
             <p>Loading members...</p>
@@ -143,15 +149,43 @@
 
       async function init() {
         try {
-          const res = await fetch(`${API_BASE}/me`);
-          if (!res.ok) {
-            if (res.status === 401) {
-              window.location.href = '/';
-              return;
+          // Try to get data from SSR first
+          let data = null;
+          const ssrProfileJson = document.body.getAttribute('data-ssr-profile');
+          const ssrAccountJson = document.body.getAttribute('data-ssr-account');
+
+          if (
+            ssrProfileJson &&
+            !ssrProfileJson.startsWith('{{ssr:') &&
+            ssrAccountJson &&
+            !ssrAccountJson.startsWith('{{ssr:')
+          ) {
+            try {
+              const profile = JSON.parse(ssrProfileJson);
+              const account = JSON.parse(ssrAccountJson);
+              if (profile.valid) {
+                data = {
+                  ...profile,
+                  account: account,
+                };
+              }
+            } catch (e) {
+              console.error('Failed to parse SSR data', e);
             }
-            throw new Error('Failed to load user info');
           }
-          const data = await res.json();
+
+          if (!data) {
+            const res = await fetch(`${API_BASE}/me`);
+            if (!res.ok) {
+              if (res.status === 401) {
+                window.location.href = '/';
+                return;
+              }
+              throw new Error('Failed to load user info');
+            }
+            data = await res.json();
+          }
+
           if (data.valid && data.account) {
             currentAccountId = data.account.id;
             currentUserRole = data.account.role;
@@ -189,7 +223,7 @@
               loadMembers();
             }
 
-            loadAccountDetails();
+            loadAccountDetails(data.account);
           }
         } catch (e) {
           showToast(e.message);
@@ -297,11 +331,17 @@
         }
       };
 
-      async function loadAccountDetails() {
+      async function loadAccountDetails(ssrData) {
         try {
-          const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`);
-          if (res.ok) {
-            const data = await res.json();
+          let data = ssrData;
+          if (!data) {
+            const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`);
+            if (res.ok) {
+              data = await res.json();
+            }
+          }
+
+          if (data) {
             if (data.name) {
               document.getElementById('account-name').value = data.name;
               document.getElementById('display-account-name').textContent = data.name;
