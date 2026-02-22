@@ -59,33 +59,49 @@
                 </svg>
               </div>
               <input type="file" id="avatar-input" accept="image/*" style="display: none" />
-              <div
+              <button
+                type="button"
+                id="change-avatar-btn"
+                class="secondary-btn"
                 style="
                   position: absolute;
                   bottom: -0.5rem;
                   left: 50%;
                   transform: translateX(-50%);
-                  display: flex;
-                  gap: 0.25rem;
+                  padding: 0.25rem 0.5rem;
+                  font-size: 0.75rem;
+                  white-space: nowrap;
                 "
               >
-                <button
-                  type="button"
-                  id="change-avatar-btn"
-                  class="secondary-btn"
-                  style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap"
-                >
-                  Change
-                </button>
-                <button
-                  type="button"
-                  id="remove-avatar-btn"
-                  class="secondary-btn"
-                  style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap; display: none"
-                >
-                  Remove
-                </button>
-              </div>
+                Change
+              </button>
+              <button
+                type="button"
+                id="remove-avatar-btn"
+                title="Remove image"
+                style="
+                  position: absolute;
+                  top: -5px;
+                  right: -5px;
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 50%;
+                  background: #ea4335;
+                  color: white;
+                  border: 2px solid white;
+                  cursor: pointer;
+                  display: none;
+                  align-items: center;
+                  justify-content: center;
+                  padding: 0;
+                  line-height: 1;
+                  font-weight: bold;
+                  font-size: 12px;
+                  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                "
+              >
+                ✕
+              </button>
             </div>
             <div>
               <h2 id="display-account-name" style="margin: 0; color: #333">Loading...</h2>
@@ -209,7 +225,7 @@
             img.src = `${API_BASE}/me/accounts/${currentAccountId}/avatar?t=${Date.now()}`;
             img.style.display = 'block';
             document.getElementById('account-avatar-placeholder').style.display = 'none';
-            document.getElementById('remove-avatar-btn').style.display = 'block';
+            document.getElementById('remove-avatar-btn').style.display = 'flex';
 
             // Refresh power-strip
             const powerStrip = document.querySelector('power-strip');
@@ -306,7 +322,7 @@
               img.src = `${API_BASE}/me/accounts/${currentAccountId}/avatar`;
               img.style.display = 'block';
               document.getElementById('account-avatar-placeholder').style.display = 'none';
-              document.getElementById('remove-avatar-btn').style.display = 'block';
+              document.getElementById('remove-avatar-btn').style.display = 'flex';
             } else {
               document.getElementById('account-avatar').style.display = 'none';
               document.getElementById('account-avatar-placeholder').style.display = 'flex';
