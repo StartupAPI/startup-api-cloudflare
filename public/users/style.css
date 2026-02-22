@@ -309,6 +309,10 @@ button:disabled {
   justify-content: center;
 }
 
+.twitch-icon {
+  color: #9146ff;
+}
+
 .link-account-btn {
   display: flex;
   align-items: center;
@@ -331,6 +335,10 @@ button:disabled {
   background: #9146ff;
   color: white;
   border-color: #9146ff;
+}
+
+.link-account-btn.twitch .twitch-icon {
+  color: white;
 }
 
 .link-account-btn.twitch:hover {
