@@ -55,14 +55,14 @@ describe('Image Storage in R2 (Transformation Disabled)', () => {
 
     // Verify it exists in R2
     const r2Key = `user/${idStr}/avatar`;
-    const object = await env.IMAGES.get(r2Key);
+    const object = await env.IMAGE_STORAGE.get(r2Key);
     expect(object).not.toBeNull();
 
     // Delete user
     await stub.delete();
 
     // Verify it is gone from R2
-    const deletedObject = await env.IMAGES.get(r2Key);
+    const deletedObject = await env.IMAGE_STORAGE.get(r2Key);
     expect(deletedObject).toBeNull();
   });
 
@@ -76,14 +76,14 @@ describe('Image Storage in R2 (Transformation Disabled)', () => {
 
     // Verify it exists in R2
     const r2Key = `account/${idStr}/avatar`;
-    const object = await env.IMAGES.get(r2Key);
+    const object = await env.IMAGE_STORAGE.get(r2Key);
     expect(object).not.toBeNull();
 
     // Delete account
     await stub.delete();
 
     // Verify it is gone from R2
-    const deletedObject = await env.IMAGES.get(r2Key);
+    const deletedObject = await env.IMAGE_STORAGE.get(r2Key);
     expect(deletedObject).toBeNull();
   });
 });
