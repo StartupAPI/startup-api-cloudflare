@@ -24,6 +24,21 @@ const plans: PlanConfig[] = [
       { charge_amount: 29000, charge_period: 365 }, // $290.00 / year
     ],
   },
+  {
+    slug: 'enterprise',
+    name: 'Enterprise',
+    capabilities: {
+      can_access_basic: true,
+      can_access_pro: true,
+      can_access_enterprise: true,
+    },
+    downgrade_to_slug: 'pro',
+    grace_period: 14,
+    schedules: [
+      { charge_amount: 49900, charge_period: 30, is_default: true }, // $499.00 / month
+      { charge_amount: 499000, charge_period: 365 }, // $4990.00 / year
+    ],
+  },
 ];
 
 export function initPlans() {

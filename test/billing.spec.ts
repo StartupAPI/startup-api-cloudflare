@@ -52,4 +52,15 @@ describe('Billing Logic in AccountDO', () => {
     expect(result.state.status).toBe('canceled');
     expect(result.state.next_plan_slug).toBe('free'); // Based on plansConfig.ts
   });
+
+  it('should support enterprise plan', async () => {
+    const id = env.ACCOUNT.newUniqueId();
+    const stub = env.ACCOUNT.get(id);
+
+    await stub.subscribe('enterprise');
+    const info: any = await stub.getBillingInfo();
+    expect(info.state.plan_slug).toBe('enterprise');
+    expect(info.plan_details.name).toBe('Enterprise');
+    expect(info.plan_details.capabilities.can_access_enterprise).toBe(true);
+  });
 });
