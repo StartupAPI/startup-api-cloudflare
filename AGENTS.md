@@ -17,7 +17,7 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 
 ## Script rules
 
-- Every time you update wrangler.jsonc file, run `npm run cf-typegem` command
+- Every time you update wrangler.jsonc file, run `npm run cf-typegen` command
 - After you update any code, run `npm run format` command
 
 ## Worker implementation

@@ -35,23 +35,30 @@ export class AccountDO extends DurableObject {
         role INTEGER,
         joined_at INTEGER
       );
-
-      CREATE TABLE IF NOT EXISTS images (
-        key TEXT PRIMARY KEY,
-        value BLOB,
-        mime_type TEXT
-      );
     `);
   }
 
   async getImage(key: string) {
-    const result = this.sql.exec('SELECT value, mime_type FROM images WHERE key = ?', key);
-    const row = result.next().value as any;
-    return row || null;
+    const r2Key = `account/${this.ctx.id.toString()}/${key}`;
+    const object = await this.env.IMAGE_STORAGE.get(r2Key);
+    if (!object) return null;
+    return {
+      value: await object.arrayBuffer(),
+      mime_type: object.httpMetadata?.contentType || 'image/jpeg',
+    };
   }
 
   async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
-    this.sql.exec('INSERT OR REPLACE INTO images (key, value, mime_type) VALUES (?, ?, ?)', key, value, mime_type);
+    const r2Key = `account/${this.ctx.id.toString()}/${key}`;
+    await this.env.IMAGE_STORAGE.put(r2Key, value, {
+      httpMetadata: { contentType: mime_type },
+    });
+    return { success: true };
+  }
+
+  async deleteImage(key: string) {
+    const r2Key = `account/${this.ctx.id.toString()}/${key}`;
+    await this.env.IMAGE_STORAGE.delete(r2Key);
     return { success: true };
   }
 
@@ -94,6 +101,8 @@ export class AccountDO extends DurableObject {
           let picture = profile.picture || null;
           if (image) {
             picture = `/users/api/users/${m.user_id}/avatar`;
+          } else {
+            picture = null;
           }
 
           return {
@@ -184,6 +193,15 @@ export class AccountDO extends DurableObject {
 
     this.sql.exec('DELETE FROM account_info');
     this.sql.exec('DELETE FROM members');
+
+    // Delete all account images from R2
+    const prefix = `account/${this.ctx.id.toString()}/`;
+    const listed = await this.env.IMAGE_STORAGE.list({ prefix });
+    const keys = listed.objects.map((o) => o.key);
+    if (keys.length > 0) {
+      await this.env.IMAGE_STORAGE.delete(keys);
+    }
+
     return { success: true };
   }
 

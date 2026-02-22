@@ -75,6 +75,33 @@
               >
                 Change
               </button>
+              <button
+                type="button"
+                id="remove-avatar-btn"
+                title="Remove image"
+                style="
+                  position: absolute;
+                  top: -5px;
+                  right: -5px;
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 50%;
+                  background: #ea4335;
+                  color: white;
+                  border: 2px solid white;
+                  cursor: pointer;
+                  display: none;
+                  align-items: center;
+                  justify-content: center;
+                  padding: 0;
+                  line-height: 1;
+                  font-weight: bold;
+                  font-size: 12px;
+                  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                "
+              >
+                ✕
+              </button>
             </div>
             <div>
               <h2 id="display-account-name" style="margin: 0; color: #333">Loading...</h2>
@@ -198,6 +225,7 @@
             img.src = `${API_BASE}/me/accounts/${currentAccountId}/avatar?t=${Date.now()}`;
             img.style.display = 'block';
             document.getElementById('account-avatar-placeholder').style.display = 'none';
+            document.getElementById('remove-avatar-btn').style.display = 'flex';
 
             // Refresh power-strip
             const powerStrip = document.querySelector('power-strip');
@@ -243,6 +271,32 @@
         }
       };
 
+      document.getElementById('remove-avatar-btn').onclick = async () => {
+        if (!confirm('Are you sure you want to remove the account profile picture?')) return;
+
+        try {
+          const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/avatar`, {
+            method: 'DELETE',
+          });
+
+          if (res.ok) {
+            showToast('Account avatar removed');
+            loadAccountDetails();
+
+            // Refresh power-strip
+            const powerStrip = document.querySelector('power-strip');
+            if (powerStrip && typeof powerStrip.refresh === 'function') {
+              powerStrip.refresh();
+            }
+          } else {
+            const err = await res.text();
+            throw new Error(err || 'Failed to remove account avatar');
+          }
+        } catch (e) {
+          showToast(e.message);
+        }
+      };
+
       async function loadAccountDetails() {
         try {
           const res = await fetch(`${API_BASE}/me/accounts/${currentAccountId}`);
@@ -268,6 +322,11 @@
               img.src = `${API_BASE}/me/accounts/${currentAccountId}/avatar`;
               img.style.display = 'block';
               document.getElementById('account-avatar-placeholder').style.display = 'none';
+              document.getElementById('remove-avatar-btn').style.display = 'flex';
+            } else {
+              document.getElementById('account-avatar').style.display = 'none';
+              document.getElementById('account-avatar-placeholder').style.display = 'flex';
+              document.getElementById('remove-avatar-btn').style.display = 'none';
             }
           }
         } catch (e) {

@@ -8,6 +8,12 @@
     "run_worker_first": true,
     "binding": "ASSETS",
   },
+  "r2_buckets": [
+    {
+      "binding": "IMAGE_STORAGE",
+      "bucket_name": "startup-api-images-test",
+    },
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "USER", "class_name": "UserDO" },

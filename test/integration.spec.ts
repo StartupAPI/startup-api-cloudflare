@@ -251,11 +251,13 @@ describe('Integration Tests', () => {
     const resolveData = await twitchCredStub.get('t123');
     expect(resolveData.user_id).toBe(userIdStr);
 
-    const isNewUser = !resolveData.user_id ? false : false; // This mimics the logic in handleAuth
-    expect(isNewUser).toBe(false);
+    const isNewUserResult = !resolveData.user_id;
+    expect(isNewUserResult).toBe(false);
 
     // 3. Verify that the avatar remains the same
     const storedImage = await userStub.getImage('avatar');
+    expect(storedImage).not.toBeNull();
+    expect(storedImage.mime_type).toBe('image/png');
     expect(new Uint8Array(storedImage.value)).toEqual(initialAvatar);
   });
 });

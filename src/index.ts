@@ -437,6 +437,8 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
     if (image) {
       const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
       profile.picture = usersPath + 'me/avatar';
+    } else {
+      profile.picture = null;
     }
 
     data.profile = profile;
@@ -588,6 +590,11 @@ async function handleMeImage(request: Request, env: StartupAPIEnv, type: string,
       return Response.json({ success: true });
     }
 
+    if (request.method === 'DELETE') {
+      await stub.deleteImage(type);
+      return Response.json({ success: true });
+    }
+
     return handleUserImage(request, env, doId, type, cookieManager);
   } catch (e: any) {
     console.error('[handleMeImage] Error:', e.message, e.stack);
@@ -657,6 +664,16 @@ async function handleAccountImage(
       }
 
       await accountStub.storeImage(type, blob, contentType);
+      return Response.json({ success: true });
+    }
+
+    if (request.method === 'DELETE') {
+      // Only admins can delete
+      if (membership?.role !== AccountDO.ROLE_ADMIN && !isAdmin(user, env)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      await accountStub.deleteImage(type);
       return Response.json({ success: true });
     }
 
