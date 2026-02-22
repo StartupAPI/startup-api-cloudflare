@@ -211,6 +211,10 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
         const userId = parts[1];
         if (request.method === 'GET') return Response.json(await systemStub.getUser(userId));
         if (request.method === 'DELETE') return Response.json(await systemStub.deleteUser(userId));
+        if (request.method === 'PATCH' || request.method === 'PUT') {
+          const data = (await request.json()) as any;
+          return Response.json(await systemStub.updateUser(userId, data));
+        }
       }
       if (parts.length === 3 && parts[2] === 'memberships' && request.method === 'GET') {
         const userId = parts[1];

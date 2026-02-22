@@ -416,6 +416,50 @@ describe('Admin Administration', () => {
     expect(Object.keys(profile).length).toBe(0);
   });
 
+  it('should update user profile via admin API', async () => {
+    // 1. Get an admin user
+    const adminId = env.USER.idFromName('admin');
+    const adminStub = env.USER.get(adminId);
+    const adminIdStr = adminId.toString();
+
+    const { sessionId } = await adminStub.createSession();
+    const cookieHeader = `session_id=${await cookieManager.encrypt(`${sessionId}:${adminIdStr}`)}`;
+
+    // 2. Create a user to update
+    const userId = env.USER.newUniqueId();
+    const userIdStr = userId.toString();
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({
+      id: userIdStr,
+      name: 'Original Name',
+      email: 'original@example.com',
+    });
+    const userStub = env.USER.get(userId);
+    await userStub.updateProfile({ name: 'Original Name', email: 'original@example.com' });
+
+    // 3. Update the user
+    const updatedName = 'Updated Name Admin';
+    const res = await SELF.fetch(`http://example.com/users/admin/api/users/${userIdStr}`, {
+      method: 'PATCH',
+      headers: {
+        Cookie: cookieHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: updatedName }),
+    });
+
+    expect(res.status).toBe(200);
+
+    // 4. Verify in SystemDO index
+    const users = await systemStub.listUsers();
+    const updatedUser = users.find((u: any) => u.id === userIdStr);
+    expect(updatedUser.name).toBe(updatedName);
+
+    // 5. Verify in UserDO profile
+    const profile = await userStub.getProfile();
+    expect(profile.name).toBe(updatedName);
+  });
+
   it('should remove memberships from users when account is deleted', async () => {
     // 1. Get an admin user
     const adminId = env.USER.idFromName('admin');
