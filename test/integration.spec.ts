@@ -14,6 +14,11 @@ describe('Integration Tests', () => {
     // 1. Manually set up a UserDO with a session
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
+    const userIdStr = id.toString();
+
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: userIdStr, name: 'Integration Tester' });
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -52,6 +57,10 @@ describe('Integration Tests', () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
     const doId = id.toString();
+
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: doId, name: 'Original Name' });
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -98,6 +107,10 @@ describe('Integration Tests', () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
     const doId = id.toString();
+
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: doId, name: 'Credentials Tester' });
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -157,6 +170,11 @@ describe('Integration Tests', () => {
   it('should serve avatar image from /me/avatar', async () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
+    const userIdStr = id.toString();
+
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: userIdStr, name: 'Integration Tester' });
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -215,6 +233,10 @@ describe('Integration Tests', () => {
     const userStub = env.USER.get(id);
     const userIdStr = id.toString();
 
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: userIdStr, name: 'Integration Tester' });
+
     // Store initial avatar
     const initialAvatar = new Uint8Array([1, 1, 1, 1]);
     await userStub.storeImage('avatar', initialAvatar.buffer, 'image/png');
@@ -266,6 +288,10 @@ describe('Integration Tests', () => {
     const stub = env.USER.get(id);
     const userIdStr = id.toString();
 
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: userIdStr, name: 'SSR Tester' });
+
     // Create session
     const { sessionId } = await stub.createSession();
     await stub.updateProfile({ name: 'SSR Tester' });
@@ -312,6 +338,10 @@ describe('Integration Tests', () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
     const userIdStr = id.toString();
+
+    // Register user in SystemDO index
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerUser({ id: userIdStr, name: 'SSR Tester' });
 
     const { sessionId } = await stub.createSession();
     const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);

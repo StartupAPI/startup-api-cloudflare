@@ -477,6 +477,10 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieMa
 
   const [sessionId, doId] = sessionCookie.split(':');
   try {
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    const exists = await systemStub.userExists(doId);
+    if (!exists) return null;
+
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
     const data = await userStub.validateSession(sessionId);

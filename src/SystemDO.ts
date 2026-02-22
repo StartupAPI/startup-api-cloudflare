@@ -55,6 +55,11 @@ export class SystemDO extends DurableObject {
     return users;
   }
 
+  async userExists(userId: string): Promise<boolean> {
+    const result = this.sql.exec('SELECT 1 FROM users WHERE id = ?', userId);
+    return !result.next().done;
+  }
+
   async getUserMemberships(userId: string) {
     const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
     return await userStub.getMemberships();
