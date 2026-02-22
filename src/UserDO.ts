@@ -275,7 +275,7 @@ export class UserDO extends DurableObject {
 
   async getImage(key: string) {
     const r2Key = `user/${this.ctx.id.toString()}/${key}`;
-    const object = await this.env.IMAGE_STORAGE.get(r2Key);
+    const object = await this.env.IMAGES.get(r2Key);
     if (!object) return null;
     return {
       value: await object.arrayBuffer(),
@@ -284,49 +284,16 @@ export class UserDO extends DurableObject {
   }
 
   async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
-    let finalValue = value;
-    let finalMimeType = mime_type;
-
-    if (this.env.IMAGES) {
-      try {
-        const input = new ReadableStream({
-          start(controller) {
-            controller.enqueue(new Uint8Array(value));
-            controller.close();
-          },
-        });
-
-        const transformer = this.env.IMAGES.input(input);
-        const result = await transformer
-          .transform({
-            width: 300,
-            height: 300,
-            fit: 'cover',
-          })
-          .output({
-            format: 'image/jpeg',
-          });
-
-        const transformedBuffer = await new Response(result.image()).arrayBuffer();
-        if (transformedBuffer.byteLength > 0) {
-          finalValue = transformedBuffer;
-          finalMimeType = 'image/jpeg';
-        }
-      } catch (e) {
-        console.error('Image transformation failed', e);
-      }
-    }
-
     const r2Key = `user/${this.ctx.id.toString()}/${key}`;
-    await this.env.IMAGE_STORAGE.put(r2Key, finalValue, {
-      httpMetadata: { contentType: finalMimeType },
+    await this.env.IMAGES.put(r2Key, value, {
+      httpMetadata: { contentType: mime_type },
     });
     return { success: true };
   }
 
   async deleteImage(key: string) {
     const r2Key = `user/${this.ctx.id.toString()}/${key}`;
-    await this.env.IMAGE_STORAGE.delete(r2Key);
+    await this.env.IMAGES.delete(r2Key);
 
     if (key === 'avatar') {
       this.sql.exec("DELETE FROM profile WHERE key = 'picture'");
@@ -343,10 +310,10 @@ export class UserDO extends DurableObject {
 
     // Delete all user images from R2
     const prefix = `user/${this.ctx.id.toString()}/`;
-    const listed = await this.env.IMAGE_STORAGE.list({ prefix });
+    const listed = await this.env.IMAGES.list({ prefix });
     const keys = listed.objects.map((o) => o.key);
     if (keys.length > 0) {
-      await this.env.IMAGE_STORAGE.delete(keys);
+      await this.env.IMAGES.delete(keys);
     }
 
     return { success: true };

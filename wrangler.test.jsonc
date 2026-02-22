@@ -10,13 +10,10 @@
   },
   "r2_buckets": [
     {
-      "binding": "IMAGE_STORAGE",
+      "binding": "IMAGES",
       "bucket_name": "startup-api-images-test",
     },
   ],
-  "images": {
-    "binding": "IMAGES",
-  },
   "durable_objects": {
     "bindings": [
       { "name": "USER", "class_name": "UserDO" },

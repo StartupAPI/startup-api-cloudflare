@@ -175,9 +175,9 @@ describe('Integration Tests', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(['image/jpeg', 'image/png']).toContain(res.headers.get('Content-Type'));
+    expect(res.headers.get('Content-Type')).toBe('image/png');
     const buffer = await res.arrayBuffer();
-    expect(buffer.byteLength).toBeGreaterThan(0);
+    expect(new Uint8Array(buffer)).toEqual(imageData);
   });
 
   it('should logout and invalidate session', async () => {
@@ -254,10 +254,10 @@ describe('Integration Tests', () => {
     const isNewUserResult = !resolveData.user_id;
     expect(isNewUserResult).toBe(false);
 
-    // 3. Verify that the avatar exists and its type is either JPEG or PNG (depending on environment)
+    // 3. Verify that the avatar remains the same
     const storedImage = await userStub.getImage('avatar');
     expect(storedImage).not.toBeNull();
-    expect(['image/jpeg', 'image/png']).toContain(storedImage.mime_type);
-    expect(storedImage.value.byteLength).toBeGreaterThan(0);
+    expect(storedImage.mime_type).toBe('image/png');
+    expect(new Uint8Array(storedImage.value)).toEqual(initialAvatar);
   });
 });

@@ -10,6 +10,5 @@ export type StartupAPIEnv = {
   SESSION_SECRET: string;
   ENVIRONMENT?: string;
   SYSTEM: DurableObjectNamespace;
-  IMAGES: ImagesBinding;
-  IMAGE_STORAGE: R2Bucket;
+  IMAGES: R2Bucket;
 } & Env;
