@@ -238,9 +238,10 @@ describe('Integration Tests', () => {
 
     // Should be redirected to clear the cookie
     expect(res.status).toBe(302);
-    const setCookie = res.headers.get('Set-Cookie');
-    expect(setCookie).toContain('session_id=;');
-    expect(setCookie).toContain('Max-Age=0');
+    const cookies = res.headers.getSetCookie();
+    const sessionCookieClear = cookies.find((c) => c.startsWith('session_id=;'));
+    expect(sessionCookieClear).toBeDefined();
+    expect(sessionCookieClear).toContain('Max-Age=0');
   });
 
   it('should not change profile picture when logging in with a secondary credential', async () => {

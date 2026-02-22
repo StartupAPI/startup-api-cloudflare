@@ -63,12 +63,14 @@ export class AccountDO extends DurableObject {
   }
 
   async getInfo() {
-    const result = this.sql.exec('SELECT key, value FROM account_info');
     const info: Record<string, any> = {};
-    for (const row of result) {
-      // @ts-ignore
-      info[row.key] = JSON.parse(row.value as string);
-    }
+    try {
+      const result = this.sql.exec('SELECT key, value FROM account_info');
+      for (const row of result) {
+        // @ts-ignore
+        info[row.key] = JSON.parse(row.value as string);
+      }
+    } catch (e) {}
     return info;
   }
 
@@ -191,9 +193,6 @@ export class AccountDO extends DurableObject {
       }
     }
 
-    this.sql.exec('DELETE FROM account_info');
-    this.sql.exec('DELETE FROM members');
-
     // Delete all account images from R2
     const prefix = `account/${this.ctx.id.toString()}/`;
     const listed = await this.env.IMAGE_STORAGE.list({ prefix });
@@ -202,17 +201,22 @@ export class AccountDO extends DurableObject {
       await this.env.IMAGE_STORAGE.delete(keys);
     }
 
+    // Wipe all Durable Object storage
+    await this.ctx.storage.deleteAll();
+
     return { success: true };
   }
 
   // Billing Implementation
 
   private getBillingState(): any {
-    const result = this.sql.exec("SELECT value FROM account_info WHERE key = 'billing'");
-    for (const row of result) {
-      // @ts-ignore
-      return JSON.parse(row.value as string);
-    }
+    try {
+      const result = this.sql.exec("SELECT value FROM account_info WHERE key = 'billing'");
+      for (const row of result) {
+        // @ts-ignore
+        return JSON.parse(row.value as string);
+      }
+    } catch (e) {}
     return {
       plan_slug: 'free',
       status: 'active',

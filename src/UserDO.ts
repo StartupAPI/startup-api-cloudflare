@@ -55,55 +55,59 @@ export class UserDO extends DurableObject {
    * @returns A Promise resolving to the session status and user profile.
    */
   async validateSession(sessionId: string) {
-    // Check session
-    const sessionResult = this.sql.exec('SELECT * FROM sessions WHERE id = ?', sessionId);
-    const session = sessionResult.next().value as any;
+    try {
+      // Check session
+      const sessionResult = this.sql.exec('SELECT * FROM sessions WHERE id = ?', sessionId);
+      const session = sessionResult.next().value as any;
 
-    if (!session) {
+      if (!session) {
+        return { valid: false };
+      }
+
+      if (session.expires_at < Date.now()) {
+        return { valid: false, error: 'Expired' };
+      }
+
+      let profile: Record<string, any> = {};
+
+      // Get profile data from local 'profile' table
+      const customProfileResult = this.sql.exec('SELECT key, value FROM profile');
+      for (const row of customProfileResult) {
+        try {
+          // @ts-ignore
+          profile[row.key] = JSON.parse(row.value as string);
+        } catch (e) {}
+      }
+
+      // Determine login context (provider and subject_id)
+      const sessionMeta = session.meta ? JSON.parse(session.meta) : {};
+      const loginProvider = sessionMeta.provider;
+      let credential: Record<string, any> = {};
+
+      if (loginProvider) {
+        credential.provider = loginProvider;
+        const credResult = this.sql.exec('SELECT subject_id FROM user_credentials WHERE provider = ?', loginProvider);
+        const credRow = credResult.next().value as any;
+        if (credRow) {
+          credential.subject_id = credRow.subject_id;
+        }
+      } else {
+        // Fallback: get first available credential if no provider in session
+        const credResult = this.sql.exec('SELECT provider, subject_id FROM user_credentials LIMIT 1');
+        const credRow = credResult.next().value as any;
+        if (credRow) {
+          credential.provider = credRow.provider;
+          credential.subject_id = credRow.subject_id;
+        }
+      }
+
+      // Ensure the ID is set
+      profile.id = this.ctx.id.toString();
+
+      return { valid: true, profile, credential };
+    } catch (e) {
       return { valid: false };
     }
-
-    if (session.expires_at < Date.now()) {
-      return { valid: false, error: 'Expired' };
-    }
-
-    let profile: Record<string, any> = {};
-
-    // Get profile data from local 'profile' table
-    const customProfileResult = this.sql.exec('SELECT key, value FROM profile');
-    for (const row of customProfileResult) {
-      try {
-        // @ts-ignore
-        profile[row.key] = JSON.parse(row.value as string);
-      } catch (e) {}
-    }
-
-    // Determine login context (provider and subject_id)
-    const sessionMeta = session.meta ? JSON.parse(session.meta) : {};
-    const loginProvider = sessionMeta.provider;
-    let credential: Record<string, any> = {};
-
-    if (loginProvider) {
-      credential.provider = loginProvider;
-      const credResult = this.sql.exec('SELECT subject_id FROM user_credentials WHERE provider = ?', loginProvider);
-      const credRow = credResult.next().value as any;
-      if (credRow) {
-        credential.subject_id = credRow.subject_id;
-      }
-    } else {
-      // Fallback: get first available credential if no provider in session
-      const credResult = this.sql.exec('SELECT provider, subject_id FROM user_credentials LIMIT 1');
-      const credRow = credResult.next().value as any;
-      if (credRow) {
-        credential.provider = credRow.provider;
-        credential.subject_id = credRow.subject_id;
-      }
-    }
-
-    // Ensure the ID is set
-    profile.id = this.ctx.id.toString();
-
-    return { valid: true, profile, credential };
   }
 
   /**
@@ -112,12 +116,14 @@ export class UserDO extends DurableObject {
    * @returns A Promise resolving to a JSON response containing the profile key-value pairs.
    */
   async getProfile() {
-    const result = this.sql.exec('SELECT key, value FROM profile');
     const profile: Record<string, any> = {};
-    for (const row of result) {
-      // @ts-ignore
-      profile[row.key] = JSON.parse(row.value as string);
-    }
+    try {
+      const result = this.sql.exec('SELECT key, value FROM profile');
+      for (const row of result) {
+        // @ts-ignore
+        profile[row.key] = JSON.parse(row.value as string);
+      }
+    } catch (e) {}
     return profile;
   }
 
@@ -206,13 +212,19 @@ export class UserDO extends DurableObject {
    * @returns A Promise resolving to a JSON response indicating success.
    */
   async deleteSession(sessionId: string) {
-    this.sql.exec('DELETE FROM sessions WHERE id = ?', sessionId);
+    try {
+      this.sql.exec('DELETE FROM sessions WHERE id = ?', sessionId);
+    } catch (e) {}
     return { success: true };
   }
 
   async getMemberships() {
-    const result = this.sql.exec('SELECT account_id, role, is_current FROM memberships');
-    return Array.from(result);
+    try {
+      const result = this.sql.exec('SELECT account_id, role, is_current FROM memberships');
+      return Array.from(result);
+    } catch (e) {
+      return [];
+    }
   }
 
   async addMembership(account_id: string, role: number, is_current?: boolean) {
@@ -303,10 +315,16 @@ export class UserDO extends DurableObject {
   }
 
   async delete() {
-    this.sql.exec('DELETE FROM profile');
-    this.sql.exec('DELETE FROM sessions');
-    this.sql.exec('DELETE FROM memberships');
-    this.sql.exec('DELETE FROM user_credentials');
+    // Delete all credentials from provider-specific CredentialDOs
+    const credentialsMapping = this.sql.exec('SELECT provider, subject_id FROM user_credentials');
+    for (const row of credentialsMapping) {
+      try {
+        const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
+        await stub.delete(row.subject_id as string);
+      } catch (e) {
+        console.error(`Failed to delete credential mapping for provider ${row.provider}`, e);
+      }
+    }
 
     // Delete all user images from R2
     const prefix = `user/${this.ctx.id.toString()}/`;
@@ -315,6 +333,9 @@ export class UserDO extends DurableObject {
     if (keys.length > 0) {
       await this.env.IMAGE_STORAGE.delete(keys);
     }
+
+    // Wipe all Durable Object storage
+    await this.ctx.storage.deleteAll();
 
     return { success: true };
   }
