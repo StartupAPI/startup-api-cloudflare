@@ -372,4 +372,52 @@ describe('Integration Tests', () => {
     // Check that power-strip element was injected with correct providers
     expect(html).toContain('<power-strip providers="google,twitch"');
   });
+
+  it('should handle numeric subject_id and empty email without ZodError', async () => {
+    const userId = env.USER.newUniqueId().toString();
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
+
+    // Should not throw ZodError because of z.coerce.string()
+    await expect(
+      credentialStub.put({
+        user_id: userId,
+        subject_id: 12345 as any, // Numeric subject_id
+        access_token: 'token',
+        profile_data: { id: 12345, email: '' }, // Empty email in profile_data
+      }),
+    ).resolves.toEqual({ success: true });
+
+    const userStub = env.USER.get(env.USER.idFromString(userId));
+    // Should not throw ZodError because email validation is relaxed
+    await expect(
+      userStub.updateProfile({
+        name: 'Test User',
+        email: '', // Empty email string
+      }),
+    ).resolves.toEqual({ success: true });
+
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    // Should not throw ZodError
+    await expect(
+      systemStub.registerUser({
+        id: userId,
+        name: 'Test User',
+        email: '', // Empty email string
+        provider: 'google',
+      }),
+    ).resolves.toEqual({ success: true });
+  });
+
+  it('should handle invalid email formats without ZodError', async () => {
+    const userId = env.USER.newUniqueId().toString();
+    const userStub = env.USER.get(env.USER.idFromString(userId));
+
+    // Should not throw ZodError even if email is not a valid format
+    await expect(
+      userStub.updateProfile({
+        name: 'Test User',
+        email: 'not-an-email',
+      }),
+    ).resolves.toEqual({ success: true });
+  });
 });
