@@ -17,11 +17,11 @@ export type PublicCredential = z.infer<typeof PublicCredentialSchema>;
 export const OAuthCredentialSchema = z.object({
   subject_id: z.coerce.string(),
   user_id: z.coerce.string(),
-  access_token: z.string().optional(),
-  refresh_token: z.string().optional(),
-  expires_at: z.number().optional(),
-  scope: z.string().optional(),
-  profile_data: z.record(z.any()).optional(),
+  access_token: z.string().nullable().optional(),
+  refresh_token: z.string().nullable().optional(),
+  expires_at: z.coerce.number().nullable().optional(),
+  scope: z.string().nullable().optional(),
+  profile_data: z.record(z.any()).nullable().optional(),
   created_at: z.number().optional(),
   updated_at: z.number().optional(),
 });

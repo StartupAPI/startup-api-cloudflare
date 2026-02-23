@@ -455,4 +455,21 @@ describe('Integration Tests', () => {
       }),
     ).resolves.toEqual(expect.objectContaining({ success: true }));
   });
+
+  it('should robustly parse OAuthCredential in CredentialDO.put', async () => {
+    const userId = env.USER.newUniqueId().toString();
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
+
+    // Test robustness of OAuthCredentialSchema.parse
+    await expect(
+      credentialStub.put({
+        user_id: userId,
+        subject_id: 67890 as any,
+        access_token: null,
+        expires_at: '1740263304533' as any, // Stringified timestamp
+        scope: null,
+        profile_data: null,
+      }),
+    ).resolves.toEqual({ success: true });
+  });
 });

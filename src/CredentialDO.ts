@@ -50,7 +50,12 @@ export class CredentialDO extends DurableObject {
   }
 
   async put(data: OAuthCredential) {
+    console.log('[auth] Parsing Cred', data);
+
     const validatedData = OAuthCredentialSchema.parse(data);
+
+    console.log('[auth] Validated Cred', validatedData);
+
     const now = Date.now();
 
     this.sql.exec(
