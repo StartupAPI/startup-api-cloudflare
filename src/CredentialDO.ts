@@ -30,7 +30,7 @@ export class CredentialDO extends DurableObject {
     `);
   }
 
-  async get(subjectId: string) {
+  async get(subjectId: string): Promise<any | null> {
     const result = this.sql.exec('SELECT * FROM credentials WHERE subject_id = ?', subjectId);
     const row = result.next().value as any;
     if (!row) return null;
@@ -39,7 +39,7 @@ export class CredentialDO extends DurableObject {
     return row;
   }
 
-  async list(userId: string) {
+  async list(userId: string): Promise<any[]> {
     const result = this.sql.exec('SELECT * FROM credentials WHERE user_id = ?', userId);
     const credentials = [];
     for (const row of result) {
@@ -49,7 +49,7 @@ export class CredentialDO extends DurableObject {
     return credentials;
   }
 
-  async put(data: OAuthCredential) {
+  async put(data: OAuthCredential): Promise<{ success: boolean }> {
     console.log('[auth] Parsing Cred', data);
 
     const validatedData: OAuthCredentialOutput = OAuthCredentialSchema.parse(data);
@@ -75,7 +75,7 @@ export class CredentialDO extends DurableObject {
     return { success: true };
   }
 
-  async delete(subjectId: string) {
+  async delete(subjectId: string): Promise<{ success: boolean }> {
     this.sql.exec('DELETE FROM credentials WHERE subject_id = ?', subjectId);
     return { success: true };
   }

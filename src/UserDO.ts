@@ -63,7 +63,9 @@ export class UserDO extends DurableObject {
    * @param sessionId - The sessionId to validate.
    * @returns A Promise resolving to the session status and user profile.
    */
-  async validateSession(sessionId: string) {
+  async validateSession(
+    sessionId: string,
+  ): Promise<{ valid: boolean; profile?: UserProfile; credential?: Record<string, any>; error?: string }> {
     try {
       // Check session
       const sessionResult = this.sql.exec('SELECT * FROM sessions WHERE id = ?', sessionId);
@@ -141,7 +143,7 @@ export class UserDO extends DurableObject {
    * @param data - The JSON profile data to update.
    * @returns A Promise resolving to a success or error response.
    */
-  async updateProfile(data: Record<string, any>) {
+  async updateProfile(data: Record<string, any>): Promise<{ success: boolean; error?: string }> {
     try {
       const validatedData = UserProfileSchema.partial().parse(data);
       const updates: string[] = [];
@@ -179,12 +181,12 @@ export class UserDO extends DurableObject {
     }
   }
 
-  async addCredential(provider: string, subject_id: string) {
+  async addCredential(provider: string, subject_id: string): Promise<{ success: boolean }> {
     this.sql.exec('INSERT OR REPLACE INTO user_credentials (provider, subject_id) VALUES (?, ?)', provider, subject_id);
     return { success: true };
   }
 
-  async listCredentials() {
+  async listCredentials(): Promise<any[]> {
     const credentialsMapping = this.sql.exec('SELECT DISTINCT provider FROM user_credentials');
     const credentials = [];
     for (const row of credentialsMapping) {
@@ -202,7 +204,7 @@ export class UserDO extends DurableObject {
     return credentials;
   }
 
-  async deleteCredential(provider: string) {
+  async deleteCredential(provider: string): Promise<{ success: boolean }> {
     const result = this.sql.exec('SELECT provider, subject_id FROM user_credentials');
     const all = Array.from(result) as any[];
 
@@ -227,7 +229,7 @@ export class UserDO extends DurableObject {
    * @param meta - Optional metadata to store with the session.
    * @returns A Promise resolving to a JSON response with the session ID and expiration time.
    */
-  async createSession(meta?: Record<string, any>) {
+  async createSession(meta?: Record<string, any>): Promise<{ sessionId: string; expiresAt: number }> {
     // Basic session creation
     const sessionId = crypto.randomUUID();
     const now = Date.now();
@@ -250,7 +252,7 @@ export class UserDO extends DurableObject {
    * @param sessionId - The sessionId to delete.
    * @returns A Promise resolving to a JSON response indicating success.
    */
-  async deleteSession(sessionId: string) {
+  async deleteSession(sessionId: string): Promise<{ success: boolean }> {
     try {
       this.sql.exec('DELETE FROM sessions WHERE id = ?', sessionId);
     } catch (_e) {
@@ -259,7 +261,7 @@ export class UserDO extends DurableObject {
     return { success: true };
   }
 
-  async getMemberships() {
+  async getMemberships(): Promise<any[]> {
     try {
       const result = this.sql.exec('SELECT account_id, role, is_current FROM memberships');
       return Array.from(result);
@@ -268,7 +270,7 @@ export class UserDO extends DurableObject {
     }
   }
 
-  async addMembership(account_id: string, role: number, is_current?: boolean) {
+  async addMembership(account_id: string, role: number, is_current?: boolean): Promise<{ success: boolean }> {
     if (is_current) {
       this.sql.exec('UPDATE memberships SET is_current = 0');
     }
@@ -282,12 +284,12 @@ export class UserDO extends DurableObject {
     return { success: true };
   }
 
-  async deleteMembership(account_id: string) {
+  async deleteMembership(account_id: string): Promise<{ success: boolean }> {
     this.sql.exec('DELETE FROM memberships WHERE account_id = ?', account_id);
     return { success: true };
   }
 
-  async switchAccount(account_id: string) {
+  async switchAccount(account_id: string): Promise<{ success: boolean }> {
     // Verify membership exists
     const result = this.sql.exec('SELECT account_id FROM memberships WHERE account_id = ?', account_id);
     const membership = result.next().value;
@@ -309,14 +311,14 @@ export class UserDO extends DurableObject {
     }
   }
 
-  async getCurrentAccount() {
+  async getCurrentAccount(): Promise<{ account_id: string; role: number } | null> {
     const result = this.sql.exec('SELECT account_id, role FROM memberships WHERE is_current = 1');
-    const membership = result.next().value;
+    const membership = result.next().value as any;
 
     if (!membership) {
       // Fallback: Return the first membership if no current is set
       const fallback = this.sql.exec('SELECT account_id, role FROM memberships LIMIT 1');
-      const fallbackMembership = fallback.next().value;
+      const fallbackMembership = fallback.next().value as any;
       if (fallbackMembership) {
         return fallbackMembership;
       }
@@ -326,7 +328,7 @@ export class UserDO extends DurableObject {
     return membership;
   }
 
-  async getImage(key: string) {
+  async getImage(key: string): Promise<{ value: ArrayBuffer; mime_type: string } | null> {
     const r2Key = `user/${this.ctx.id.toString()}/${key}`;
     const object = await this.env.IMAGE_STORAGE.get(r2Key);
     if (!object) return null;
@@ -336,7 +338,7 @@ export class UserDO extends DurableObject {
     };
   }
 
-  async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
+  async storeImage(key: string, value: ArrayBuffer, mime_type: string): Promise<{ success: boolean }> {
     const r2Key = `user/${this.ctx.id.toString()}/${key}`;
     await this.env.IMAGE_STORAGE.put(r2Key, value, {
       httpMetadata: { contentType: mime_type },
@@ -344,7 +346,7 @@ export class UserDO extends DurableObject {
     return { success: true };
   }
 
-  async deleteImage(key: string) {
+  async deleteImage(key: string): Promise<{ success: boolean }> {
     const r2Key = `user/${this.ctx.id.toString()}/${key}`;
     await this.env.IMAGE_STORAGE.delete(r2Key);
 
@@ -355,7 +357,7 @@ export class UserDO extends DurableObject {
     return { success: true };
   }
 
-  async delete() {
+  async delete(): Promise<{ success: boolean }> {
     // Delete all credentials from provider-specific CredentialDOs
     const credentialsMapping = this.sql.exec('SELECT provider, subject_id FROM user_credentials');
     for (const row of credentialsMapping) {

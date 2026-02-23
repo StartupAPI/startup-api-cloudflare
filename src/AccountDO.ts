@@ -48,7 +48,7 @@ export class AccountDO extends DurableObject {
     this.sql.exec('INSERT OR IGNORE INTO account_info (id, plan) VALUES (1, "free")');
   }
 
-  async getImage(key: string) {
+  async getImage(key: string): Promise<{ value: ArrayBuffer; mime_type: string } | null> {
     const r2Key = `account/${this.ctx.id.toString()}/${key}`;
     const object = await this.env.IMAGE_STORAGE.get(r2Key);
     if (!object) return null;
@@ -58,7 +58,7 @@ export class AccountDO extends DurableObject {
     };
   }
 
-  async storeImage(key: string, value: ArrayBuffer, mime_type: string) {
+  async storeImage(key: string, value: ArrayBuffer, mime_type: string): Promise<{ success: boolean }> {
     const r2Key = `account/${this.ctx.id.toString()}/${key}`;
     await this.env.IMAGE_STORAGE.put(r2Key, value, {
       httpMetadata: { contentType: mime_type },
@@ -66,7 +66,7 @@ export class AccountDO extends DurableObject {
     return { success: true };
   }
 
-  async deleteImage(key: string) {
+  async deleteImage(key: string): Promise<{ success: boolean }> {
     const r2Key = `account/${this.ctx.id.toString()}/${key}`;
     await this.env.IMAGE_STORAGE.delete(r2Key);
     return { success: true };
@@ -89,7 +89,7 @@ export class AccountDO extends DurableObject {
     }
   }
 
-  async updateInfo(data: Record<string, any>) {
+  async updateInfo(data: Record<string, any>): Promise<{ success: boolean }> {
     try {
       const validatedData = AccountInfoSchema.partial().parse(data);
       const updates: string[] = [];
@@ -160,7 +160,7 @@ export class AccountDO extends DurableObject {
     return membersWithNames;
   }
 
-  async addMember(user_id: string, role: number) {
+  async addMember(user_id: string, role: number): Promise<{ success: boolean }> {
     const now = Date.now();
 
     // Update Account DO
@@ -180,7 +180,7 @@ export class AccountDO extends DurableObject {
     return { success: true };
   }
 
-  async updateMemberRole(userId: string, role: number) {
+  async updateMemberRole(userId: string, role: number): Promise<{ success: boolean }> {
     this.sql.exec('UPDATE members SET role = ? WHERE user_id = ?', role, userId);
 
     // Sync with User DO
@@ -194,7 +194,7 @@ export class AccountDO extends DurableObject {
     return { success: true };
   }
 
-  async removeMember(userId: string) {
+  async removeMember(userId: string): Promise<{ success: boolean }> {
     this.sql.exec('DELETE FROM members WHERE user_id = ?', userId);
 
     // Update SystemDO index
@@ -211,7 +211,7 @@ export class AccountDO extends DurableObject {
     return { success: true };
   }
 
-  private async syncMemberCount() {
+  private async syncMemberCount(): Promise<void> {
     try {
       const result = this.sql.exec('SELECT COUNT(*) as count FROM members');
       const row = result.next().value as any;
@@ -224,7 +224,7 @@ export class AccountDO extends DurableObject {
     }
   }
 
-  async delete() {
+  async delete(): Promise<{ success: boolean }> {
     // Get all members to notify their UserDOs
     const members = Array.from(this.sql.exec('SELECT user_id FROM members'));
     for (const member of members as any[]) {
@@ -268,13 +268,13 @@ export class AccountDO extends DurableObject {
     };
   }
 
-  private setBillingState(state: BillingState) {
+  private setBillingState(state: BillingState): void {
     this.ctx.storage.transactionSync(() => {
       this.sql.exec('UPDATE account_info SET billing = ?, plan = ? WHERE id = 1', JSON.stringify(state), state.plan_slug);
     });
   }
 
-  async getBillingInfo() {
+  async getBillingInfo(): Promise<{ state: BillingState; plan_details: any }> {
     const state = this.getBillingState();
     const plan = Plan.get(state.plan_slug);
 
@@ -300,7 +300,7 @@ export class AccountDO extends DurableObject {
     };
   }
 
-  async subscribe(plan_slug: string, schedule_idx: number = 0) {
+  async subscribe(plan_slug: string, schedule_idx: number = 0): Promise<{ success: boolean; state: BillingState }> {
     const plan = Plan.get(plan_slug);
 
     if (!plan) {
@@ -342,7 +342,7 @@ export class AccountDO extends DurableObject {
     return { success: true, state: newState };
   }
 
-  async cancelSubscription() {
+  async cancelSubscription(): Promise<{ success: boolean; state: BillingState }> {
     const currentState = this.getBillingState();
     const currentPlan = Plan.get(currentState.plan_slug);
 
