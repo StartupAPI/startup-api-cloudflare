@@ -26,6 +26,14 @@ describe('Plan Visibility', () => {
       profile_data: { email: 'admin@example.com' },
     });
 
+    // Create an account and make admin a member
+    const accountId = env.ACCOUNT.newUniqueId();
+    const accountIdStr = accountId.toString();
+    const accountStub = env.ACCOUNT.get(accountId);
+    await accountStub.updateInfo({ name: 'Admin Account' });
+    await accountStub.addMember(userIdStr, 1);
+    await userStub.addMembership(accountIdStr, 1, true);
+
     adminCookie = `session_id=${await cookieManager.encrypt(`${sessionId}:${userIdStr}`)}`;
   });
 
@@ -55,6 +63,22 @@ describe('Plan Visibility', () => {
     expect(plans.length).toBeGreaterThan(1);
   });
 
+  it('should show plan selection on accounts page when multiple plans are configured', async () => {
+    // Default config has 3 plans: free, pro, enterprise
+    expect(Plan.getAll().length).toBeGreaterThan(1);
+
+    const res = await SELF.fetch('http://example.com/users/accounts.html', {
+      headers: { Cookie: adminCookie },
+    });
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    
+    // Check SSR replacement (should NOT be empty)
+    expect(html).toContain('id="display-account-plan"');
+    expect(html).not.toContain('id="display-account-plan" style="margin: 0.25rem 0 0 0; color: #666"></p>');
+  });
+
   it('should hide plan selection when only one plan is configured', async () => {
     // Re-initialize with only one plan
     Plan.init([
@@ -78,5 +102,30 @@ describe('Plan Visibility', () => {
     expect(plansMatch).not.toBeNull();
     const plans = JSON.parse(plansMatch![1].replace(/&quot;/g, '"'));
     expect(plans.length).toBe(1);
+  });
+
+  it('should hide plan selection on accounts page when only one plan is configured', async () => {
+    // Re-initialize with only one plan
+    Plan.init([
+      {
+        slug: 'free',
+        name: 'Free',
+        schedules: [{ charge_amount: 0, charge_period: 30, is_default: true }],
+      },
+    ]);
+    expect(Plan.getAll().length).toBe(1);
+
+    const res = await SELF.fetch('http://example.com/users/accounts.html', {
+      headers: { Cookie: adminCookie },
+    });
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // Check that SSR replacement for plan name is empty
+    expect(html).toContain('id="display-account-plan" style="margin: 0.25rem 0 0 0; color: #666">');
+    // It should literally be an empty string where {{ssr:account_plan_name}} was
+    const pTagContent = html.match(/id="display-account-plan"[^>]*>([^<]*)/);
+    expect(pTagContent?.[1]).toBe('');
   });
 });

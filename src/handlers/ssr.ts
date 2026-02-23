@@ -112,7 +112,13 @@ export async function handleSSR(
       replacements['account_json'] = JSON.stringify(account).replace(/"/g, '&quot;');
       replacements['account_name'] = account.name || 'Account';
       replacements['account_id'] = account.id;
-      replacements['account_plan_name'] = account.billing?.plan_details?.name || account.billing?.state?.plan_slug || 'free';
+
+      const allPlans = Plan.getAll();
+      if (allPlans.length <= 1) {
+        replacements['account_plan_name'] = '';
+      } else {
+        replacements['account_plan_name'] = account.billing?.plan_details?.name || account.billing?.state?.plan_slug || 'free';
+      }
 
       const accountAvatar = await env.ACCOUNT.get(env.ACCOUNT.idFromString(account.id)).getImage('avatar');
       const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';

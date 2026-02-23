@@ -351,6 +351,21 @@
             document.getElementById('account-plan-display').value = planName;
             document.getElementById('display-account-plan').textContent = planName;
 
+            // Hide plan if only one plan is available
+            if (availablePlans.length <= 1) {
+              document.getElementById('display-account-plan').style.display = 'none';
+              const planFormGroup = document.getElementById('account-plan-display').closest('.form-group');
+              if (planFormGroup) {
+                planFormGroup.style.display = 'none';
+              }
+            } else {
+              document.getElementById('display-account-plan').style.display = 'block';
+              const planFormGroup = document.getElementById('account-plan-display').closest('.form-group');
+              if (planFormGroup) {
+                planFormGroup.style.display = 'block';
+              }
+            }
+
             // Load avatar
             const avatarRes = await fetch(`${API_BASE}/me/accounts/${currentAccountId}/avatar`);
             if (avatarRes.ok) {
