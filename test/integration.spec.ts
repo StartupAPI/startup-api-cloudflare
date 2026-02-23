@@ -420,4 +420,24 @@ describe('Integration Tests', () => {
       }),
     ).resolves.toEqual({ success: true });
   });
+
+  it('should robustly encode and decode state with special characters', async () => {
+    const stateObj = {
+      nonce: 'abc',
+      return_url: 'https://example.com/path?q=1&u=sergey🚀',
+    };
+
+    // Simulate encoding in handleAuth
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(stateObj))))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    // Simulate decoding in handleAuth callback
+    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const decodedJson = decodeURIComponent(escape(atob(base64)));
+    const decodedObj = JSON.parse(decodedJson);
+
+    expect(decodedObj).toEqual(stateObj);
+  });
 });
