@@ -7,6 +7,10 @@ import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
 import { initPlans } from './billing/plansConfig';
 import { Plan } from './billing/Plan';
+import { UserProfileSchema, SystemUserSchema } from './schemas/user';
+import { AccountInfoSchema, MemberSchema, SwitchAccountSchema, SystemAccountSchema } from './schemas/account';
+import { DeleteCredentialSchema } from './schemas/credential';
+import { ImpersonateSchema } from './schemas/admin';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -205,82 +209,97 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
   const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
 
   if (path.startsWith('/api/')) {
-    const apiPath = path.replace('/api/', '');
-    const parts = apiPath.split('/');
+    try {
+      const apiPath = path.replace('/api/', '');
+      const parts = apiPath.split('/');
 
-    if (parts[0] === 'users') {
-      if (parts.length === 1 && request.method === 'GET') {
-        return Response.json(await systemStub.listUsers(url.searchParams.get('q') || undefined));
-      }
-      if (parts.length === 2) {
-        const userId = parts[1];
-        if (request.method === 'GET') return Response.json(await systemStub.getUser(userId));
-        if (request.method === 'DELETE') return Response.json(await systemStub.deleteUser(userId));
-        if (request.method === 'PATCH' || request.method === 'PUT') {
-          const data = (await request.json()) as any;
-          return Response.json(await systemStub.updateUser(userId, data));
+      if (parts[0] === 'users') {
+        if (parts.length === 1 && request.method === 'GET') {
+          return Response.json(await systemStub.listUsers(url.searchParams.get('q') || undefined));
         }
-      }
-      if (parts.length === 3 && parts[2] === 'memberships' && request.method === 'GET') {
-        const userId = parts[1];
-        return Response.json(await systemStub.getUserMemberships(userId));
-      }
-    } else if (parts[0] === 'accounts') {
-      if (parts.length === 1) {
-        if (request.method === 'GET') return Response.json(await systemStub.listAccounts(url.searchParams.get('q') || undefined));
-        if (request.method === 'POST') return Response.json(await systemStub.registerAccount(await request.json()));
-      }
-      if (parts.length === 2) {
-        const accountId = parts[1];
-        if (request.method === 'GET') return Response.json(await systemStub.getAccount(accountId));
-        if (request.method === 'PUT') return Response.json(await systemStub.updateAccount(accountId, await request.json()));
-        if (request.method === 'DELETE') return Response.json(await systemStub.deleteAccount(accountId));
-      }
-      if (parts.length >= 3 && parts[2] === 'members') {
-        const accountId = parts[1];
-        const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
-        if (parts.length === 3) {
-          if (request.method === 'GET') return Response.json(await accountStub.getMembers());
-          if (request.method === 'POST') {
-            const data = (await request.json()) as any;
-            return Response.json(await accountStub.addMember(data.user_id, data.role));
+        if (parts.length === 2) {
+          const userId = parts[1];
+          if (request.method === 'GET') return Response.json(await systemStub.getUser(userId));
+          if (request.method === 'DELETE') return Response.json(await systemStub.deleteUser(userId));
+          if (request.method === 'PATCH' || request.method === 'PUT') {
+            const data = await request.json();
+            const validatedData = UserProfileSchema.partial().parse(data);
+            return Response.json(await systemStub.updateUser(userId, validatedData));
           }
-        } else if (parts.length === 4 && request.method === 'DELETE') {
-          return Response.json(await accountStub.removeMember(parts[3]));
         }
-      }
-    } else if (parts[0] === 'impersonate' && request.method === 'POST') {
-      const data = (await request.json()) as any;
-      const user_id = data.user_id || data.userId;
-      if (!user_id) return new Response('Missing user_id', { status: 400 });
-
-      if (user_id === user.id) {
-        return new Response('Cannot impersonate yourself', { status: 400 });
-      }
-
-      const userDOId = env.USER.idFromString(user_id);
-      const userStub = env.USER.get(userDOId);
-      const session = await userStub.createSession({ provider: 'admin-impersonation', impersonator: user.id });
-
-      const cookieHeader = request.headers.get('Cookie');
-      const cookies = parseCookies(cookieHeader || '');
-      const currentSessionEncrypted = cookies['session_id'];
-
-      const headers = new Headers();
-      const newSessionIdEncrypted = await cookieManager.encrypt(`${session.sessionId}:${user_id}`);
-      headers.set('Set-Cookie', `session_id=${newSessionIdEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-      if (currentSessionEncrypted) {
-        const backupSession = await cookieManager.decrypt(currentSessionEncrypted);
-        if (backupSession) {
-          const backupSessionEncrypted = await cookieManager.encrypt(backupSession);
-          headers.append('Set-Cookie', `backup_session_id=${backupSessionEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        if (parts.length === 3 && parts[2] === 'memberships' && request.method === 'GET') {
+          const userId = parts[1];
+          return Response.json(await systemStub.getUserMemberships(userId));
         }
+      } else if (parts[0] === 'accounts') {
+        if (parts.length === 1) {
+          if (request.method === 'GET') return Response.json(await systemStub.listAccounts(url.searchParams.get('q') || undefined));
+          if (request.method === 'POST') {
+            const data = await request.json();
+            const validatedData = SystemAccountSchema.parse(data);
+            return Response.json(await systemStub.registerAccount(validatedData));
+          }
+        }
+        if (parts.length === 2) {
+          const accountId = parts[1];
+          if (request.method === 'GET') return Response.json(await systemStub.getAccount(accountId));
+          if (request.method === 'PUT') {
+            const data = await request.json();
+            const validatedData = SystemAccountSchema.partial().parse(data);
+            return Response.json(await systemStub.updateAccount(accountId, validatedData));
+          }
+          if (request.method === 'DELETE') return Response.json(await systemStub.deleteAccount(accountId));
+        }
+        if (parts.length >= 3 && parts[2] === 'members') {
+          const accountId = parts[1];
+          const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+          if (parts.length === 3) {
+            if (request.method === 'GET') return Response.json(await accountStub.getMembers());
+            if (request.method === 'POST') {
+              const data = await request.json();
+              const { user_id, role } = MemberSchema.parse(data);
+              return Response.json(await accountStub.addMember(user_id, role));
+            }
+          } else if (parts.length === 4 && request.method === 'DELETE') {
+            return Response.json(await accountStub.removeMember(parts[3]));
+          }
+        }
+      } else if (parts[0] === 'impersonate' && request.method === 'POST') {
+        const body = await request.json();
+        const data = ImpersonateSchema.parse(body);
+        const user_id = data.user_id || data.userId;
+        if (!user_id) return new Response('Missing user_id', { status: 400 });
+
+        if (user_id === user.id) {
+          return new Response('Cannot impersonate yourself', { status: 400 });
+        }
+
+        const userDOId = env.USER.idFromString(user_id);
+        const userStub = env.USER.get(userDOId);
+        const session = await userStub.createSession({ provider: 'admin-impersonation', impersonator: user.id });
+
+        const cookieHeader = request.headers.get('Cookie');
+        const cookies = parseCookies(cookieHeader || '');
+        const currentSessionEncrypted = cookies['session_id'];
+
+        const headers = new Headers();
+        const newSessionIdEncrypted = await cookieManager.encrypt(`${session.sessionId}:${user_id}`);
+        headers.set('Set-Cookie', `session_id=${newSessionIdEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        if (currentSessionEncrypted) {
+          const backupSession = await cookieManager.decrypt(currentSessionEncrypted);
+          if (backupSession) {
+            const backupSessionEncrypted = await cookieManager.encrypt(backupSession);
+            headers.append('Set-Cookie', `backup_session_id=${backupSessionEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+          }
+        }
+
+        return Response.json({ success: true }, { headers });
       }
 
-      return Response.json({ success: true }, { headers });
+      return new Response('Not Found', { status: 404 });
+    } catch (e: any) {
+      return new Response(e.message, { status: 400 });
     }
-
-    return new Response('Not Found', { status: 404 });
   }
 
   url.pathname = '/users/admin' + path;
@@ -354,11 +373,16 @@ async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieM
     return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
   }
 
-  const profileData = await request.json();
-  const userStub = env.USER.get(env.USER.idFromString(user.id));
-  await userStub.updateProfile(profileData);
+  try {
+    const profileData = await request.json();
+    const validatedData = UserProfileSchema.partial().parse(profileData);
+    const userStub = env.USER.get(env.USER.idFromString(user.id));
+    await userStub.updateProfile(validatedData);
 
-  return Response.json({ success: true });
+    return Response.json({ success: true });
+  } catch (e: any) {
+    return new Response(e.message, { status: 400 });
+  }
 }
 
 function isAdmin(user: any, env: StartupAPIEnv): boolean {
@@ -412,8 +436,16 @@ async function handleAccountMembers(
       return Response.json(await accountStub.getMembers());
     }
     if (request.method === 'POST') {
-      const { user_id, role } = (await request.json()) as { user_id: string; role: number };
-      return Response.json(await accountStub.addMember(user_id, role));
+      try {
+        const data = await request.json();
+        const { user_id, role } = MemberSchema.partial().parse(data);
+        if (!user_id || role === undefined) {
+          return new Response('Missing user_id or role', { status: 400 });
+        }
+        return Response.json(await accountStub.addMember(user_id, role));
+      } catch (e: any) {
+        return new Response(e.message, { status: 400 });
+      }
     }
   } else if (pathParts.length === 1) {
     const targetUserId = pathParts[0];
@@ -424,11 +456,19 @@ async function handleAccountMembers(
       return Response.json(await accountStub.removeMember(targetUserId));
     }
     if (request.method === 'PATCH') {
-      const { role } = (await request.json()) as { role: number };
-      if (targetUserId === user.id && role !== AccountDO.ROLE_ADMIN) {
-        return new Response('Cannot demote yourself', { status: 400 });
+      try {
+        const data = await request.json();
+        const { role } = MemberSchema.partial().parse(data);
+        if (role === undefined) {
+          return new Response('Missing role', { status: 400 });
+        }
+        if (targetUserId === user.id && role !== AccountDO.ROLE_ADMIN) {
+          return new Response('Cannot demote yourself', { status: 400 });
+        }
+        return Response.json(await accountStub.updateMemberRole(targetUserId, role));
+      } catch (e: any) {
+        return new Response(e.message, { status: 400 });
       }
-      return Response.json(await accountStub.updateMemberRole(targetUserId, role));
     }
   }
 
@@ -466,22 +506,27 @@ async function handleAccountDetails(
   }
 
   if (request.method === 'POST') {
-    const data = await request.json();
-    const result = await accountStub.updateInfo(data);
+    try {
+      const data = await request.json();
+      const validatedData = AccountInfoSchema.partial().parse(data);
+      const result = await accountStub.updateInfo(validatedData);
 
-    // Sync with SystemDO index if name or plan changed
-    if (data.name || data.plan) {
-      try {
-        const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
-        const updates: any = {};
-        if (data.name) updates.name = data.name;
-        if (data.plan) updates.plan = data.plan;
-        await systemStub.updateAccount(accountId, updates);
-      } catch (e) {
-        console.error('Failed to sync account updates to SystemDO', e);
+      // Sync with SystemDO index if name or plan changed
+      if (validatedData.name || validatedData.plan) {
+        try {
+          const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+          const updates: any = {};
+          if (validatedData.name) updates.name = validatedData.name;
+          if (validatedData.plan) updates.plan = validatedData.plan;
+          await systemStub.updateAccount(accountId, updates);
+        } catch (e) {
+          console.error('Failed to sync account updates to SystemDO', e);
+        }
       }
+      return Response.json(result);
+    } catch (e: any) {
+      return new Response(e.message, { status: 400 });
     }
-    return Response.json(result);
   }
 
   return new Response('Method Not Allowed', { status: 405 });
@@ -574,10 +619,11 @@ async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cook
     return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
   }
 
-  const { provider } = (await request.json()) as { provider: string };
-  const userStub = env.USER.get(env.USER.idFromString(user.id));
-
   try {
+    const data = await request.json();
+    const { provider } = DeleteCredentialSchema.parse(data);
+    const userStub = env.USER.get(env.USER.idFromString(user.id));
+
     return Response.json(await userStub.deleteCredential(provider));
   } catch (e: any) {
     return new Response(e.message, { status: 400 });
@@ -809,13 +855,10 @@ async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieM
     return checkAndClearStaleSession(request, env, cookieManager, new Response('Unauthorized', { status: 401 }));
   }
 
-  const { account_id } = (await request.json()) as { account_id: string };
-
-  if (!account_id) {
-    return new Response('Missing account_id', { status: 400 });
-  }
-
   try {
+    const data = await request.json();
+    const { account_id } = SwitchAccountSchema.parse(data);
+
     const id = env.USER.idFromString(user.id);
     const userStub = env.USER.get(id);
     return Response.json(await userStub.switchAccount(account_id));

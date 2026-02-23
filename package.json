@@ -25,6 +25,7 @@
     "wrangler": "^4.60.0"
   },
   "dependencies": {
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "zod": "^3.25.76"
   }
 }

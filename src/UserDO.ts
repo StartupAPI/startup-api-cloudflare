@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { StartupAPIEnv } from './StartupAPIEnv';
+import { UserProfileSchema } from './schemas/user';
+import type { UserProfile } from './schemas/user';
 
 /**
  * A Durable Object representing a User.
@@ -112,21 +114,21 @@ export class UserDO extends DurableObject {
   /**
    * Retrieves the user's profile data.
    *
-   * @returns A Promise resolving to a JSON response containing the profile key-value pairs.
+   * @returns A Promise resolving to the user profile.
    */
-  async getProfile() {
+  async getProfile(): Promise<UserProfile> {
     try {
       const result = this.sql.exec('SELECT * FROM profile WHERE id = 1');
       const row = result.next().value as any;
       if (!row) return {};
 
-      return {
+      return UserProfileSchema.parse({
         name: row.name,
         email: row.email,
         picture: row.picture,
         provider: row.provider,
         verified_email: row.verified_email === 1,
-      };
+      });
     } catch (e) {
       return {};
     }
@@ -141,28 +143,29 @@ export class UserDO extends DurableObject {
    */
   async updateProfile(data: Record<string, any>) {
     try {
+      const validatedData = UserProfileSchema.partial().parse(data);
       const updates: string[] = [];
       const values: any[] = [];
 
-      if ('name' in data) {
+      if ('name' in validatedData) {
         updates.push('name = ?');
-        values.push(data.name);
+        values.push(validatedData.name);
       }
-      if ('email' in data) {
+      if ('email' in validatedData) {
         updates.push('email = ?');
-        values.push(data.email);
+        values.push(validatedData.email);
       }
-      if ('picture' in data) {
+      if ('picture' in validatedData) {
         updates.push('picture = ?');
-        values.push(data.picture);
+        values.push(validatedData.picture);
       }
-      if ('provider' in data) {
+      if ('provider' in validatedData) {
         updates.push('provider = ?');
-        values.push(data.provider);
+        values.push(validatedData.provider);
       }
-      if ('verified_email' in data) {
+      if ('verified_email' in validatedData) {
         updates.push('verified_email = ?');
-        values.push(data.verified_email ? 1 : 0);
+        values.push(validatedData.verified_email ? 1 : 0);
       }
 
       if (updates.length > 0) {

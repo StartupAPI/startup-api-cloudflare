@@ -3,6 +3,10 @@ import { initPlans } from './billing/plansConfig';
 import { Plan } from './billing/Plan';
 import { MockPaymentEngine } from './billing/PaymentEngine';
 import { StartupAPIEnv } from './StartupAPIEnv';
+import { AccountInfoSchema, MemberSchema } from './schemas/account';
+import { BillingStateSchema } from './schemas/billing';
+import type { AccountInfo, Member } from './schemas/account';
+import type { BillingState } from './schemas/billing';
 
 /**
  * A Durable Object representing an Account (Tenant).
@@ -68,18 +72,18 @@ export class AccountDO extends DurableObject {
     return { success: true };
   }
 
-  async getInfo() {
+  async getInfo(): Promise<AccountInfo> {
     try {
       const result = this.sql.exec('SELECT * FROM account_info WHERE id = 1');
       const row = result.next().value as any;
       if (!row) return {};
 
-      return {
+      return AccountInfoSchema.parse({
         name: row.name,
         plan: row.plan,
         personal: row.personal === 1,
         billing: row.billing ? JSON.parse(row.billing) : undefined,
-      };
+      });
     } catch (e) {
       return {};
     }
@@ -87,20 +91,21 @@ export class AccountDO extends DurableObject {
 
   async updateInfo(data: Record<string, any>) {
     try {
+      const validatedData = AccountInfoSchema.partial().parse(data);
       const updates: string[] = [];
       const values: any[] = [];
 
-      if ('name' in data) {
+      if ('name' in validatedData) {
         updates.push('name = ?');
-        values.push(typeof data.name === 'string' ? data.name.substring(0, 50) : data.name);
+        values.push(typeof validatedData.name === 'string' ? validatedData.name.substring(0, 50) : validatedData.name);
       }
-      if ('plan' in data) {
+      if ('plan' in validatedData) {
         updates.push('plan = ?');
-        values.push(data.plan);
+        values.push(validatedData.plan);
       }
-      if ('personal' in data) {
+      if ('personal' in validatedData) {
         updates.push('personal = ?');
-        values.push(data.personal ? 1 : 0);
+        values.push(validatedData.personal ? 1 : 0);
       }
 
       if (updates.length > 0) {
@@ -111,7 +116,7 @@ export class AccountDO extends DurableObject {
           if ('plan' in data) {
             const currentState = this.getBillingState();
             if (currentState.plan_slug !== data.plan) {
-              const newState = {
+              const newState: BillingState = {
                 ...currentState,
                 plan_slug: data.plan,
               };
@@ -126,7 +131,7 @@ export class AccountDO extends DurableObject {
     }
   }
 
-  async getMembers() {
+  async getMembers(): Promise<Member[]> {
     const result = Array.from(this.sql.exec('SELECT user_id, role, joined_at FROM members'));
     const membersWithNames = await Promise.all(
       result.map(async (m: any) => {
@@ -142,13 +147,13 @@ export class AccountDO extends DurableObject {
             picture = null;
           }
 
-          return {
+          return MemberSchema.parse({
             ...m,
             name: profile.name || 'Unknown User',
             picture: picture,
-          };
+          });
         } catch (e) {
-          return { ...m, name: 'Unknown User', picture: null };
+          return MemberSchema.parse({ ...m, name: 'Unknown User', picture: null });
         }
       }),
     );
@@ -247,12 +252,12 @@ export class AccountDO extends DurableObject {
 
   // Billing Implementation
 
-  private getBillingState(): any {
+  private getBillingState(): BillingState {
     try {
       const result = this.sql.exec('SELECT billing FROM account_info WHERE id = 1');
       const row = result.next().value as any;
       if (row && row.billing) {
-        return JSON.parse(row.billing);
+        return BillingStateSchema.parse(JSON.parse(row.billing));
       }
     } catch (e) {}
     return {
@@ -261,7 +266,7 @@ export class AccountDO extends DurableObject {
     };
   }
 
-  private setBillingState(state: any) {
+  private setBillingState(state: BillingState) {
     this.ctx.storage.transactionSync(() => {
       this.sql.exec('UPDATE account_info SET billing = ?, plan = ? WHERE id = 1', JSON.stringify(state), state.plan_slug);
     });
@@ -322,7 +327,7 @@ export class AccountDO extends DurableObject {
       throw new Error(`Payment setup failed: ${e.message}`);
     }
 
-    const newState = {
+    const newState: BillingState = {
       ...currentState,
       plan_slug,
       status: 'active',
@@ -348,7 +353,7 @@ export class AccountDO extends DurableObject {
     // Downgrade logic (immediate or scheduled - simplification: scheduled if downgrade_to_slug exists)
     // For this prototype, we'll mark it as canceled and set the next plan if applicable.
 
-    const newState = {
+    const newState: BillingState = {
       ...currentState,
       status: 'canceled',
       next_plan_slug: currentPlan.downgrade_to_slug,
