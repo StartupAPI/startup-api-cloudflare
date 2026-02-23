@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const UserProfileSchema = z.object({
   id: z.string().optional(),
-  name: z.string().nullable().optional(),
+  name: z.string().optional(),
   email: z.string().email().nullable().optional(),
   picture: z.string().nullable().optional(),
   provider: z.string().nullable().optional(),

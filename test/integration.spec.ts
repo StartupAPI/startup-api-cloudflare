@@ -14,7 +14,6 @@ describe('Integration Tests', () => {
     // 1. Manually set up a UserDO with a session
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
-    const userIdStr = id.toString();
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -23,7 +22,6 @@ describe('Integration Tests', () => {
     const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test-provider'));
     await credentialStub.put({
       user_id: id.toString(),
-      provider: 'test-provider',
       subject_id: '123',
       profile_data: { name: 'Integration Tester' },
     });
@@ -65,7 +63,6 @@ describe('Integration Tests', () => {
     const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test-provider'));
     await credentialStub.put({
       user_id: id.toString(),
-      provider: 'test-provider',
       subject_id: '123',
       profile_data: { name: 'Original Name' },
     });
@@ -111,7 +108,6 @@ describe('Integration Tests', () => {
     const googleCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
     await googleCredStub.put({
       user_id: id.toString(),
-      provider: 'google',
       subject_id: 'g123',
       profile_data: { email: 'google@example.com' },
     });
@@ -120,7 +116,6 @@ describe('Integration Tests', () => {
     const twitchCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('twitch'));
     await twitchCredStub.put({
       user_id: id.toString(),
-      provider: 'twitch',
       subject_id: 't123',
       profile_data: { email: 'twitch@example.com' },
     });
@@ -162,7 +157,6 @@ describe('Integration Tests', () => {
   it('should serve avatar image from /me/avatar', async () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
-    const userIdStr = id.toString();
 
     // Create session
     const { sessionId } = await stub.createSession();
@@ -262,7 +256,6 @@ describe('Integration Tests', () => {
     const googleCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
     await googleCredStub.put({
       user_id: userIdStr,
-      provider: 'google',
       subject_id: 'g123',
       profile_data: { name: 'Google User', picture: 'http://google.com/pic.jpg' },
     });
@@ -272,7 +265,6 @@ describe('Integration Tests', () => {
     const twitchCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('twitch'));
     await twitchCredStub.put({
       user_id: userIdStr,
-      provider: 'twitch',
       subject_id: 't123',
       profile_data: { name: 'Twitch User', picture: 'http://twitch.tv/pic.jpg' },
     });
@@ -296,8 +288,8 @@ describe('Integration Tests', () => {
     // 3. Verify that the avatar remains the same
     const storedImage = await userStub.getImage('avatar');
     expect(storedImage).not.toBeNull();
-    expect(storedImage.mime_type).toBe('image/png');
-    expect(new Uint8Array(storedImage.value)).toEqual(initialAvatar);
+    expect(storedImage!.mime_type).toBe('image/png');
+    expect(new Uint8Array(storedImage!.value)).toEqual(initialAvatar);
   });
 
   it('should server-side render profile.html', async () => {
@@ -313,7 +305,6 @@ describe('Integration Tests', () => {
     const googleCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
     await googleCredStub.put({
       user_id: userIdStr,
-      provider: 'google',
       subject_id: 'google-123',
       profile_data: { email: 'google@example.com' },
     });
@@ -322,7 +313,6 @@ describe('Integration Tests', () => {
     const twitchCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('twitch'));
     await twitchCredStub.put({
       user_id: userIdStr,
-      provider: 'twitch',
       subject_id: 'twitch-456',
       profile_data: { email: 'twitch@example.com' },
     });

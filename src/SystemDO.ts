@@ -52,7 +52,7 @@ export class SystemDO extends DurableObject {
           adminIds.some((id) => {
             try {
               return u.id === this.env.USER.idFromName(id).toString();
-            } catch (e) {
+            } catch (_e) {
               return false;
             }
           }));
@@ -75,8 +75,8 @@ export class SystemDO extends DurableObject {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
       const profile = await userStub.getProfile();
       return profile;
-    } catch (e: any) {
-      throw new Error(e.message);
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -165,8 +165,8 @@ export class SystemDO extends DurableObject {
       const billing = await stub.getBillingInfo();
 
       return { ...info, billing };
-    } catch (e: any) {
-      throw new Error(e.message);
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : String(e));
     }
   }
 

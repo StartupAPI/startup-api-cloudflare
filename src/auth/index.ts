@@ -103,7 +103,9 @@ export async function handleAuth(
             if (staleSessionId) {
               try {
                 await userStub.deleteSession(staleSessionId);
-              } catch (e) {}
+              } catch (_e) {
+                // ignore
+              }
             }
             userIdStr = null;
           }
@@ -132,7 +134,6 @@ export async function handleAuth(
         // Register credential in provider-specific CredentialDO
         await credentialStub.put({
           user_id: userIdStr,
-          provider: provider.name,
           subject_id: profile.id,
           access_token: token.access_token,
           refresh_token: token.refresh_token,
@@ -200,7 +201,7 @@ export async function handleAuth(
             if (parsedReturn.origin === origin) {
               redirectUrl = parsedReturn.toString();
             }
-          } catch (e) {
+          } catch (_e) {
             if (returnUrl.startsWith('/')) {
               redirectUrl = returnUrl;
             }
@@ -209,8 +210,8 @@ export async function handleAuth(
 
         headers.set('Location', redirectUrl);
         return new Response(null, { status: 302, headers });
-      } catch (e: any) {
-        return new Response('Auth failed: ' + e.message, { status: 500 });
+      } catch (e) {
+        return new Response(`Auth failed: ${e instanceof Error ? e.message : String(e)}`, { status: 500 });
       }
     }
   }

@@ -84,7 +84,7 @@ export class AccountDO extends DurableObject {
         personal: row.personal === 1,
         billing: row.billing ? JSON.parse(row.billing) : undefined,
       });
-    } catch (e) {
+    } catch (_e) {
       return {};
     }
   }
@@ -126,8 +126,8 @@ export class AccountDO extends DurableObject {
         });
       }
       return { success: true };
-    } catch (e: any) {
-      throw new Error(e.message);
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -152,7 +152,7 @@ export class AccountDO extends DurableObject {
             name: profile.name || 'Unknown User',
             picture: picture,
           });
-        } catch (e) {
+        } catch (_e) {
           return MemberSchema.parse({ ...m, name: 'Unknown User', picture: null });
         }
       }),
@@ -173,8 +173,8 @@ export class AccountDO extends DurableObject {
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(user_id));
       await userStub.addMembership(this.ctx.id.toString(), role, false);
-    } catch (e) {
-      console.error('Failed to sync membership to UserDO', e);
+    } catch (_e) {
+      console.error('Failed to sync membership to UserDO', _e);
     }
 
     return { success: true };
@@ -187,8 +187,8 @@ export class AccountDO extends DurableObject {
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
       await userStub.addMembership(this.ctx.id.toString(), role, false);
-    } catch (e) {
-      console.error('Failed to sync membership role to UserDO', e);
+    } catch (_e) {
+      console.error('Failed to sync membership role to UserDO', _e);
     }
 
     return { success: true };
@@ -204,8 +204,8 @@ export class AccountDO extends DurableObject {
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
       await userStub.deleteMembership(this.ctx.id.toString());
-    } catch (e) {
-      console.error('Failed to sync membership removal to UserDO', e);
+    } catch (_e) {
+      console.error('Failed to sync membership removal to UserDO', _e);
     }
 
     return { success: true };
@@ -219,8 +219,8 @@ export class AccountDO extends DurableObject {
 
       const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
       await systemStub.updateMemberCount(this.ctx.id.toString(), count);
-    } catch (e) {
-      console.error('Failed to update member count in SystemDO', e);
+    } catch (_e) {
+      console.error('Failed to update member count in SystemDO', _e);
     }
   }
 
@@ -231,8 +231,8 @@ export class AccountDO extends DurableObject {
       try {
         const userStub = this.env.USER.get(this.env.USER.idFromString(member.user_id));
         await userStub.deleteMembership(this.ctx.id.toString());
-      } catch (e) {
-        console.error(`Failed to notify UserDO ${member.user_id} of account deletion`, e);
+      } catch (_e) {
+        console.error(`Failed to notify UserDO ${member.user_id} of account deletion`, _e);
       }
     }
 
@@ -259,7 +259,9 @@ export class AccountDO extends DurableObject {
       if (row && row.billing) {
         return BillingStateSchema.parse(JSON.parse(row.billing));
       }
-    } catch (e) {}
+    } catch (_e) {
+      // ignore
+    }
     return {
       plan_slug: 'free',
       status: 'active',
@@ -323,8 +325,8 @@ export class AccountDO extends DurableObject {
     // Setup recurring payment
     try {
       await this.paymentEngine.setupRecurring(this.ctx.id.toString(), plan_slug, schedule_idx);
-    } catch (e: any) {
-      throw new Error(`Payment setup failed: ${e.message}`);
+    } catch (e) {
+      throw new Error(`Payment setup failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     const newState: BillingState = {

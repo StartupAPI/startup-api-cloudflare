@@ -35,3 +35,4 @@ This application uses Cloudflare Developer Platform, including Workers and Durab
 ## Implementation
 
 - When coding new features, create tests that cover the new code
+- Run code linting with `npm run lint` before commiting the code and fix the issues it highlights

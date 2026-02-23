@@ -7,7 +7,7 @@ import { CredentialDO } from './CredentialDO';
 import { CookieManager } from './CookieManager';
 import { initPlans } from './billing/plansConfig';
 import { Plan } from './billing/Plan';
-import { UserProfileSchema, SystemUserSchema } from './schemas/user';
+import { UserProfileSchema } from './schemas/user';
 import { AccountInfoSchema, MemberSchema, SwitchAccountSchema, SystemAccountSchema } from './schemas/account';
 import { DeleteCredentialSchema } from './schemas/credential';
 import { ImpersonateSchema } from './schemas/admin';
@@ -22,7 +22,7 @@ export default {
   /**
    * Main Worker fetch handler.
    */
-  async fetch(request: Request, env: StartupAPIEnv, ctx): Promise<Response> {
+  async fetch(request: Request, env: StartupAPIEnv): Promise<Response> {
     initPlans();
 
     // Prevent infinite loops when serving assets
@@ -297,8 +297,8 @@ async function handleAdmin(request: Request, env: StartupAPIEnv, usersPath: stri
       }
 
       return new Response('Not Found', { status: 404 });
-    } catch (e: any) {
-      return new Response(e.message, { status: 400 });
+    } catch (e) {
+      return new Response(e instanceof Error ? e.message : String(e), { status: 400 });
     }
   }
 
@@ -362,7 +362,7 @@ async function handleMe(request: Request, env: StartupAPIEnv, cookieManager: Coo
     }
 
     return Response.json(data);
-  } catch (e) {
+  } catch (_e) {
     return new Response('Unauthorized', { status: 401 });
   }
 }
@@ -380,8 +380,8 @@ async function handleUpdateProfile(request: Request, env: StartupAPIEnv, cookieM
     await userStub.updateProfile(validatedData);
 
     return Response.json({ success: true });
-  } catch (e: any) {
-    return new Response(e.message, { status: 400 });
+  } catch (e) {
+    return new Response(e instanceof Error ? e.message : String(e), { status: 400 });
   }
 }
 
@@ -399,7 +399,7 @@ function isAdmin(user: any, env: StartupAPIEnv): boolean {
       adminIds.some((id) => {
         try {
           return userId === env.USER.idFromName(id).toString();
-        } catch (e) {
+        } catch (_e) {
           return false;
         }
       }))
@@ -443,8 +443,8 @@ async function handleAccountMembers(
           return new Response('Missing user_id or role', { status: 400 });
         }
         return Response.json(await accountStub.addMember(user_id, role));
-      } catch (e: any) {
-        return new Response(e.message, { status: 400 });
+      } catch (e) {
+        return new Response(e instanceof Error ? e.message : String(e), { status: 400 });
       }
     }
   } else if (pathParts.length === 1) {
@@ -466,8 +466,8 @@ async function handleAccountMembers(
           return new Response('Cannot demote yourself', { status: 400 });
         }
         return Response.json(await accountStub.updateMemberRole(targetUserId, role));
-      } catch (e: any) {
-        return new Response(e.message, { status: 400 });
+      } catch (e) {
+        return new Response(e instanceof Error ? e.message : String(e), { status: 400 });
       }
     }
   }
@@ -519,13 +519,13 @@ async function handleAccountDetails(
           if (validatedData.name) updates.name = validatedData.name;
           if (validatedData.plan) updates.plan = validatedData.plan;
           await systemStub.updateAccount(accountId, updates);
-        } catch (e) {
-          console.error('Failed to sync account updates to SystemDO', e);
+        } catch (_e) {
+          console.error('Failed to sync account updates to SystemDO', _e);
         }
       }
       return Response.json(result);
-    } catch (e: any) {
-      return new Response(e.message, { status: 400 });
+    } catch (e) {
+      return new Response(e instanceof Error ? e.message : String(e), { status: 400 });
     }
   }
 
@@ -549,7 +549,9 @@ async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieMa
     const userStub = env.USER.get(id);
     const result = await userStub.validateSession(sessionId);
     if (result.valid) return { id: doId, sessionId, profile: result.profile, credential: result.credential };
-  } catch (e) {}
+  } catch (_e) {
+    // ignore
+  }
   return null;
 }
 
@@ -598,7 +600,9 @@ async function checkAndClearStaleSession(
         headers,
       });
     }
-  } catch (e) {}
+  } catch (_e) {
+    // ignore
+  }
 
   return originalResponse;
 }
@@ -625,8 +629,8 @@ async function handleDeleteCredential(request: Request, env: StartupAPIEnv, cook
     const userStub = env.USER.get(env.USER.idFromString(user.id));
 
     return Response.json(await userStub.deleteCredential(provider));
-  } catch (e: any) {
-    return new Response(e.message, { status: 400 });
+  } catch (e) {
+    return new Response(e instanceof Error ? e.message : String(e), { status: 400 });
   }
 }
 
@@ -661,9 +665,9 @@ async function handleMeImage(request: Request, env: StartupAPIEnv, type: string,
     }
 
     return handleUserImage(request, env, user.id, type, cookieManager);
-  } catch (e: any) {
-    console.error('[handleMeImage] Error:', e.message, e.stack);
-    return new Response('Error fetching image: ' + e.message, { status: 500 });
+  } catch (e) {
+    console.error('[handleMeImage] Error:', e instanceof Error ? e.message : String(e), e instanceof Error ? e.stack : '');
+    return new Response(`Error fetching image: ${e instanceof Error ? e.message : String(e)}`, { status: 500 });
   }
 }
 
@@ -672,7 +676,7 @@ async function handleUserImage(
   env: StartupAPIEnv,
   userId: string,
   type: string,
-  cookieManager: CookieManager,
+  _cookieManager: CookieManager,
 ): Promise<Response> {
   // Public access to user avatars (if we want them to be public in member lists)
   // Or we could check if current user has permission to see it.
@@ -685,7 +689,7 @@ async function handleUserImage(
     const image = await stub.getImage(type);
     if (!image) return new Response('Not Found', { status: 404 });
     return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
-  } catch (e) {
+  } catch (_e) {
     return new Response('Error fetching image', { status: 500 });
   }
 }
@@ -745,9 +749,9 @@ async function handleAccountImage(
     const image = await accountStub.getImage(type);
     if (!image) return new Response('Not Found', { status: 404 });
     return new Response(image.value, { headers: { 'Content-Type': image.mime_type } });
-  } catch (e: any) {
-    console.error('[handleAccountImage] Error:', e.message, e.stack);
-    return new Response('Error handling account image: ' + e.message, { status: 500 });
+  } catch (e) {
+    console.error('[handleAccountImage] Error:', e instanceof Error ? e.message : String(e), e instanceof Error ? e.stack : '');
+    return new Response(`Error handling account image: ${e instanceof Error ? e.message : String(e)}`, { status: 500 });
   }
 }
 
@@ -771,8 +775,8 @@ async function handleLogout(
           const id = env.USER.idFromString(doId);
           const stub = env.USER.get(id);
           await stub.deleteSession(sessionId);
-        } catch (e) {
-          console.error('Error deleting session:', e);
+        } catch (_e) {
+          console.error('Error deleting session:', _e);
           // Continue to clear cookie even if DO call fails
         }
       }
@@ -791,7 +795,7 @@ async function handleLogout(
       if (parsedReturn.origin === origin) {
         redirectUrl = parsedReturn.toString();
       }
-    } catch (e) {
+    } catch (_e) {
       if (returnUrl.startsWith('/')) {
         redirectUrl = returnUrl;
       }
@@ -837,14 +841,14 @@ async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieMana
             role: m.role,
             is_current: m.is_current,
           };
-        } catch (e) {
+        } catch (_e) {
           return { account_id: m.account_id, name: 'Unknown Account', role: m.role, is_current: m.is_current };
         }
       }),
     );
 
     return Response.json(accounts);
-  } catch (e) {
+  } catch (_e) {
     return new Response('Unauthorized', { status: 401 });
   }
 }
@@ -862,8 +866,8 @@ async function handleSwitchAccount(request: Request, env: StartupAPIEnv, cookieM
     const id = env.USER.idFromString(user.id);
     const userStub = env.USER.get(id);
     return Response.json(await userStub.switchAccount(account_id));
-  } catch (e: any) {
-    return new Response(e.message, { status: 400 });
+  } catch (e) {
+    return new Response(e instanceof Error ? e.message : String(e), { status: 400 });
   }
 }
 
@@ -879,7 +883,7 @@ async function handleSSR(
     return checkAndClearStaleSession(request, env, cookieManager, Response.redirect(url.origin + '/', 302));
   }
 
-  const { id: doId, sessionId, profile: initialProfile, credential } = user;
+  const { id: doId, sessionId: _sessionId, profile: initialProfile, credential } = user;
 
   try {
     const id = env.USER.idFromString(doId);
@@ -1020,9 +1024,9 @@ async function handleSSR(
         'Content-Type': 'text/html',
       },
     });
-  } catch (e: any) {
-    console.error('[handleSSR] Error:', e.message, e.stack);
-    return new Response('Error rendering page: ' + e.message, { status: 500 });
+  } catch (e) {
+    console.error('[handleSSR] Error:', e instanceof Error ? e.message : String(e), e instanceof Error ? e.stack : '');
+    return new Response(`Error rendering page: ${e instanceof Error ? e.message : String(e)}`, { status: 500 });
   }
 }
 

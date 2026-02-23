@@ -83,7 +83,7 @@ export class UserDO extends DurableObject {
       // Determine login context (provider and subject_id)
       const sessionMeta = session.meta ? JSON.parse(session.meta) : {};
       const loginProvider = sessionMeta.provider;
-      let credential: Record<string, any> = {};
+      const credential: Record<string, any> = {};
 
       if (loginProvider) {
         credential.provider = loginProvider;
@@ -106,7 +106,7 @@ export class UserDO extends DurableObject {
       profile.id = this.ctx.id.toString();
 
       return { valid: true, profile, credential };
-    } catch (e) {
+    } catch (_e) {
       return { valid: false };
     }
   }
@@ -129,7 +129,7 @@ export class UserDO extends DurableObject {
         provider: row.provider,
         verified_email: row.verified_email === 1,
       });
-    } catch (e) {
+    } catch (_e) {
       return {};
     }
   }
@@ -174,8 +174,8 @@ export class UserDO extends DurableObject {
         });
       }
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
 
@@ -246,7 +246,9 @@ export class UserDO extends DurableObject {
   async deleteSession(sessionId: string) {
     try {
       this.sql.exec('DELETE FROM sessions WHERE id = ?', sessionId);
-    } catch (e) {}
+    } catch (_e) {
+      // Ignore
+    }
     return { success: true };
   }
 
@@ -254,7 +256,7 @@ export class UserDO extends DurableObject {
     try {
       const result = this.sql.exec('SELECT account_id, role, is_current FROM memberships');
       return Array.from(result);
-    } catch (e) {
+    } catch (_e) {
       return [];
     }
   }
@@ -295,8 +297,8 @@ export class UserDO extends DurableObject {
         this.sql.exec('UPDATE memberships SET is_current = 1 WHERE account_id = ?', account_id);
       });
       return { success: true };
-    } catch (e: any) {
-      throw new Error(e.message);
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -353,8 +355,8 @@ export class UserDO extends DurableObject {
       try {
         const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
         await stub.delete(row.subject_id as string);
-      } catch (e) {
-        console.error(`Failed to delete credential mapping for provider ${row.provider}`, e);
+      } catch (_e) {
+        console.error(`Failed to delete credential mapping for provider ${row.provider}`, _e);
       }
     }
 
