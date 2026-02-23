@@ -29,11 +29,11 @@ export class TwitchProvider extends OAuthProvider {
 
   async getToken(code: string): Promise<OAuthTokenResponse> {
     const params = new URLSearchParams({
+      code,
       client_id: this.clientId,
       client_secret: this.clientSecret,
-      code,
-      grant_type: 'authorization_code',
       redirect_uri: this.redirectUri,
+      grant_type: 'authorization_code',
     });
 
     return this.fetchJson<OAuthTokenResponse>('https://id.twitch.tv/oauth2/token', {

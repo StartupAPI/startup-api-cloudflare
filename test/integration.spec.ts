@@ -372,4 +372,117 @@ describe('Integration Tests', () => {
     // Check that power-strip element was injected with correct providers
     expect(html).toContain('<power-strip providers="google,twitch"');
   });
+
+  it('should handle numeric subject_id and empty email without ZodError', async () => {
+    const userId = env.USER.newUniqueId().toString();
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
+
+    // Should not throw ZodError because of z.coerce.string()
+    await expect(
+      credentialStub.put({
+        user_id: userId,
+        subject_id: 12345 as any, // Numeric subject_id
+        access_token: 'token',
+        profile_data: { id: 12345, email: '' }, // Empty email in profile_data
+      }),
+    ).resolves.toEqual({ success: true });
+
+    const userStub = env.USER.get(env.USER.idFromString(userId));
+    // Should not throw ZodError because email validation is relaxed
+    await expect(
+      userStub.updateProfile({
+        name: 'Test User',
+        email: '', // Empty email string
+      }),
+    ).resolves.toEqual({ success: true });
+
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    // Should not throw ZodError
+    await expect(
+      systemStub.registerUser({
+        id: userId,
+        name: 'Test User',
+        email: '', // Empty email string
+        provider: 'google',
+      }),
+    ).resolves.toEqual({ success: true });
+  });
+
+  it('should handle invalid email formats without ZodError', async () => {
+    const userId = env.USER.newUniqueId().toString();
+    const userStub = env.USER.get(env.USER.idFromString(userId));
+
+    // Should not throw ZodError even if email is not a valid format
+    await expect(
+      userStub.updateProfile({
+        name: 'Test User',
+        email: 'not-an-email',
+      }),
+    ).resolves.toEqual({ success: true });
+  });
+
+  it('should robustly encode and decode state with special characters', async () => {
+    const stateObj = {
+      nonce: 'abc',
+      return_url: 'https://example.com/path?q=1&u=sergey🚀',
+    };
+
+    // Simulate encoding in handleAuth
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(stateObj))))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    // Simulate decoding in handleAuth callback
+    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const decodedJson = decodeURIComponent(escape(atob(base64)));
+    const decodedObj = JSON.parse(decodedJson);
+
+    expect(decodedObj).toEqual(stateObj);
+  });
+
+  it('should handle very long names without ZodError in account creation', async () => {
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+
+    const longName = 'Very Long Name That Exceeds Previous Fifty Character Limit To Test Robustness';
+
+    // This indirectly tests handleAuth's behavior when creating a personal account
+    await expect(
+      systemStub.registerAccount({
+        name: `${longName}'s Account`,
+        status: 'active',
+        plan: 'free',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ success: true }));
+  });
+
+  it('should robustly parse OAuthCredential in CredentialDO.put', async () => {
+    const userId = env.USER.newUniqueId().toString();
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
+
+    // Test robustness of OAuthCredentialSchema.parse
+    await expect(
+      credentialStub.put({
+        user_id: userId,
+        subject_id: 67890 as any,
+        access_token: null,
+        expires_at: '1740263304533' as any, // Stringified timestamp
+        scope: null,
+        profile_data: null,
+      }),
+    ).resolves.toEqual({ success: true });
+  });
+
+  it('should handle array scope in OAuthCredential', async () => {
+    const userId = env.USER.newUniqueId().toString();
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('twitch'));
+
+    await expect(
+      credentialStub.put({
+        user_id: userId,
+        subject_id: 't555',
+        scope: ['user:read:email', 'chat:read'],
+      } as any),
+    ).resolves.toEqual({ success: true });
+  });
 });

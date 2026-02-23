@@ -22,7 +22,7 @@ export type Member = z.infer<typeof MemberSchema>;
 
 export const SystemAccountSchema = z.object({
   id: z.string().optional(),
-  name: z.string().max(50),
+  name: z.string().max(100),
   status: z.string().optional(),
   plan: z.string().optional(),
   member_count: z.number().optional(),

@@ -13,10 +13,14 @@ export async function handleAuth(
   cookieManager: CookieManager,
 ): Promise<Response> {
   const path = url.pathname;
-  const authPath = usersPath + 'auth';
-
   const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
-  const redirectBase = origin + authPath;
+
+  // Standardize redirectBase
+  const baseUsersPath = usersPath.startsWith('/') ? usersPath : '/' + usersPath;
+  const redirectBase = new URL((baseUsersPath.endsWith('/') ? baseUsersPath : baseUsersPath + '/') + 'auth', origin).toString();
+
+  // For internal matching, we still need authPath
+  const authPath = new URL(redirectBase).pathname;
 
   // Instantiate providers
   const providers: (OAuthProvider | null)[] = [GoogleProvider.create(env, redirectBase), TwitchProvider.create(env, redirectBase)];
@@ -31,7 +35,11 @@ export async function handleAuth(
         nonce: Math.random().toString(36).substring(2),
         return_url: returnUrl,
       };
-      const state = btoa(JSON.stringify(stateObj));
+      // Use robust base64 encoding for state
+      const state = btoa(unescape(encodeURIComponent(JSON.stringify(stateObj))))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
       const authUrl = provider.getAuthUrl(state);
       return Response.redirect(authUrl, 302);
     }
@@ -48,7 +56,10 @@ export async function handleAuth(
       let returnUrl: string | null = null;
       if (stateBase64) {
         try {
-          const stateObj = JSON.parse(atob(stateBase64));
+          // Robust base64 decoding
+          const base64 = stateBase64.replace(/-/g, '+').replace(/_/g, '/');
+          const stateJson = decodeURIComponent(escape(atob(base64)));
+          const stateObj = JSON.parse(stateJson);
           returnUrl = stateObj.return_url;
         } catch (e) {
           console.error('Failed to parse state', e);
