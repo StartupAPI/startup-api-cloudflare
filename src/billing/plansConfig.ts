@@ -10,6 +10,7 @@ const plans: PlanConfig[] = [
     },
     schedules: [{ charge_amount: 0, charge_period: 30, is_default: true }],
   },
+  /*
   {
     slug: 'pro',
     name: 'Pro',
@@ -39,6 +40,7 @@ const plans: PlanConfig[] = [
       { charge_amount: 499000, charge_period: 365 }, // $4990.00 / year
     ],
   },
+  */
 ];
 
 export function initPlans() {

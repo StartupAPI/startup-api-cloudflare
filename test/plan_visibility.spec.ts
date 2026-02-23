@@ -43,7 +43,19 @@ describe('Plan Visibility', () => {
   });
 
   it('should show plan selection when multiple plans are configured', async () => {
-    // Default config has 3 plans: free, pro, enterprise
+    // Manually initialize multiple plans for this test
+    Plan.init([
+      {
+        slug: 'free',
+        name: 'Free',
+        schedules: [{ charge_amount: 0, charge_period: 30, is_default: true }],
+      },
+      {
+        slug: 'pro',
+        name: 'Pro',
+        schedules: [{ charge_amount: 2900, charge_period: 30, is_default: true }],
+      },
+    ]);
     expect(Plan.getAll().length).toBeGreaterThan(1);
 
     const res = await SELF.fetch('http://example.com/users/admin/', {
@@ -64,7 +76,19 @@ describe('Plan Visibility', () => {
   });
 
   it('should show plan selection on accounts page when multiple plans are configured', async () => {
-    // Default config has 3 plans: free, pro, enterprise
+    // Manually initialize multiple plans for this test
+    Plan.init([
+      {
+        slug: 'free',
+        name: 'Free',
+        schedules: [{ charge_amount: 0, charge_period: 30, is_default: true }],
+      },
+      {
+        slug: 'pro',
+        name: 'Pro',
+        schedules: [{ charge_amount: 2900, charge_period: 30, is_default: true }],
+      },
+    ]);
     expect(Plan.getAll().length).toBeGreaterThan(1);
 
     const res = await SELF.fetch('http://example.com/users/accounts.html', {
@@ -73,7 +97,7 @@ describe('Plan Visibility', () => {
 
     expect(res.status).toBe(200);
     const html = await res.text();
-    
+
     // Check SSR replacement (should NOT be empty)
     expect(html).toContain('id="display-account-plan"');
     expect(html).not.toContain('id="display-account-plan" style="margin: 0.25rem 0 0 0; color: #666"></p>');
