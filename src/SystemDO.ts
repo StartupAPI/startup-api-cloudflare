@@ -32,7 +32,7 @@ export class SystemDO extends DurableObject {
     `);
   }
 
-  async listUsers(query?: string) {
+  async listUsers(query?: string): Promise<any[]> {
     let sql = 'SELECT * FROM users';
     const args: any[] = [];
 
@@ -65,12 +65,12 @@ export class SystemDO extends DurableObject {
     return users;
   }
 
-  async getUserMemberships(userId: string) {
+  async getUserMemberships(userId: string): Promise<any[]> {
     const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
     return await userStub.getMemberships();
   }
 
-  async getUser(userId: string) {
+  async getUser(userId: string): Promise<any> {
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
       const profile = await userStub.getProfile();
@@ -80,7 +80,7 @@ export class SystemDO extends DurableObject {
     }
   }
 
-  async registerUser(data: SystemUser) {
+  async registerUser(data: SystemUser): Promise<{ success: boolean }> {
     const validatedData = SystemUserSchema.parse(data);
     const now = Date.now();
 
@@ -96,7 +96,7 @@ export class SystemDO extends DurableObject {
     return { success: true };
   }
 
-  async deleteUser(userId: string) {
+  async deleteUser(userId: string): Promise<{ success: boolean }> {
     // Delete from index
     this.sql.exec('DELETE FROM users WHERE id = ?', userId);
 
@@ -111,7 +111,7 @@ export class SystemDO extends DurableObject {
     return { success: true };
   }
 
-  async updateUser(userId: string, data: Partial<SystemUser>) {
+  async updateUser(userId: string, data: Partial<SystemUser>): Promise<{ success: boolean }> {
     const validatedData = SystemUserSchema.partial().parse(data);
     // Update UserDO
     try {
@@ -143,7 +143,7 @@ export class SystemDO extends DurableObject {
     return { success: true };
   }
 
-  async listAccounts(query?: string) {
+  async listAccounts(query?: string): Promise<any[]> {
     let sql = 'SELECT * FROM accounts';
     const args: any[] = [];
 
@@ -158,7 +158,7 @@ export class SystemDO extends DurableObject {
     return Array.from(result);
   }
 
-  async getAccount(accountId: string) {
+  async getAccount(accountId: string): Promise<any> {
     try {
       const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
       const info = await stub.getInfo();
@@ -170,7 +170,7 @@ export class SystemDO extends DurableObject {
     }
   }
 
-  async registerAccount(data: SystemAccount) {
+  async registerAccount(data: SystemAccount): Promise<{ success: boolean; id: string }> {
     const validatedData = SystemAccountSchema.parse(data);
     let accountIdStr = validatedData.id;
     const accountName = validatedData.name;
@@ -206,7 +206,7 @@ export class SystemDO extends DurableObject {
     return { success: true, id: accountIdStr };
   }
 
-  async deleteAccount(accountId: string) {
+  async deleteAccount(accountId: string): Promise<{ success: boolean }> {
     // Delete from index
     this.sql.exec('DELETE FROM accounts WHERE id = ?', accountId);
 
@@ -221,11 +221,11 @@ export class SystemDO extends DurableObject {
     return { success: true };
   }
 
-  async updateMemberCount(accountId: string, count: number) {
+  async updateMemberCount(accountId: string, count: number): Promise<void> {
     this.sql.exec('UPDATE accounts SET member_count = ? WHERE id = ?', count, accountId);
   }
 
-  async updateAccount(accountId: string, data: Partial<SystemAccount>) {
+  async updateAccount(accountId: string, data: Partial<SystemAccount>): Promise<{ success: boolean }> {
     const validatedData = SystemAccountSchema.partial().parse(data);
 
     // Update AccountDO
