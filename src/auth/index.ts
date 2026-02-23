@@ -13,15 +13,14 @@ export async function handleAuth(
   cookieManager: CookieManager,
 ): Promise<Response> {
   const path = url.pathname;
-
   const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
-  const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
 
-  // Ensure usersPath starts with / and normalize it to avoid double slashes
+  // Use URL constructor for robust path joining
   const baseUsersPath = usersPath.startsWith('/') ? usersPath : '/' + usersPath;
-  const authPath = baseUsersPath.endsWith('/') ? baseUsersPath + 'auth' : baseUsersPath + '/auth';
+  const redirectBase = new URL(baseUsersPath.replace(/\/+$/, '') + '/auth', origin).toString();
 
-  const redirectBase = normalizedOrigin + authPath;
+  // For internal matching, we still need authPath
+  const authPath = new URL(redirectBase).pathname;
 
   // Instantiate providers
   const providers: (OAuthProvider | null)[] = [GoogleProvider.create(env, redirectBase), TwitchProvider.create(env, redirectBase)];

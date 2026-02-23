@@ -22,10 +22,10 @@ export abstract class OAuthProvider {
   public name: string;
 
   constructor(clientId: string, clientSecret: string, redirectUri: string, name: string) {
-    this.clientId = clientId;
-    this.clientSecret = clientSecret;
-    this.redirectUri = redirectUri;
-    this.name = name;
+    this.clientId = clientId.trim();
+    this.clientSecret = clientSecret.trim();
+    this.redirectUri = redirectUri.trim();
+    this.name = name.trim();
   }
 
   isMatch(path: string, authBasePath: string): boolean {
