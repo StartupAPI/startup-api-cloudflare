@@ -1,9 +1,9 @@
 import { handleAuth } from './auth/index';
 import { injectPowerStrip } from './PowerStrip';
-import { UserDO } from './UserDO';
-import { AccountDO } from './AccountDO';
-import { SystemDO } from './SystemDO';
-import { CredentialDO } from './CredentialDO';
+import { UserDO } from './storage/UserDO';
+import { AccountDO } from './storage/AccountDO';
+import { SystemDO } from './storage/SystemDO';
+import { CredentialDO } from './storage/CredentialDO';
 import { CookieManager } from './CookieManager';
 import { initPlans } from './billing/plansConfig';
 import { getActiveProviders, parseCookies } from './handlers/utils';

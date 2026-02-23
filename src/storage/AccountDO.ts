@@ -1,12 +1,12 @@
 import { DurableObject } from 'cloudflare:workers';
-import { initPlans } from './billing/plansConfig';
-import { Plan } from './billing/Plan';
-import { MockPaymentEngine } from './billing/PaymentEngine';
-import { StartupAPIEnv } from './StartupAPIEnv';
-import { AccountInfoSchema, MemberSchema } from './schemas/account';
-import { BillingStateSchema } from './schemas/billing';
-import type { AccountInfo, Member } from './schemas/account';
-import type { BillingState } from './schemas/billing';
+import { initPlans } from '../billing/plansConfig';
+import { Plan } from '../billing/Plan';
+import { MockPaymentEngine } from '../billing/PaymentEngine';
+import { StartupAPIEnv } from '../StartupAPIEnv';
+import { AccountInfoSchema, MemberSchema } from '../schemas/account';
+import { BillingStateSchema } from '../schemas/billing';
+import type { AccountInfo, Member } from '../schemas/account';
+import type { BillingState } from '../schemas/billing';
 
 /**
  * A Durable Object representing an Account (Tenant).

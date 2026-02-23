@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
-import { StartupAPIEnv } from './StartupAPIEnv';
-import { UserProfileSchema } from './schemas/user';
-import type { UserProfile } from './schemas/user';
+import { StartupAPIEnv } from '../StartupAPIEnv';
+import { UserProfileSchema } from '../schemas/user';
+import type { UserProfile } from '../schemas/user';
 
 /**
  * A Durable Object representing a User.

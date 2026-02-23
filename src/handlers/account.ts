@@ -1,7 +1,7 @@
 import { StartupAPIEnv } from '../StartupAPIEnv';
 import { CookieManager } from '../CookieManager';
 import { getUserFromSession, checkAndClearStaleSession, isAdmin } from './utils';
-import { AccountDO } from '../AccountDO';
+import { AccountDO } from '../storage/AccountDO';
 import { AccountInfoSchema, MemberSchema, SwitchAccountSchema } from '../schemas/account';
 
 export async function handleMyAccounts(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<Response> {
