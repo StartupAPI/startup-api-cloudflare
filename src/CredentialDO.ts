@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { StartupAPIEnv } from './StartupAPIEnv';
+import { OAuthCredentialSchema } from './schemas/credential';
+import type { OAuthCredential } from './schemas/credential';
 
 /**
  * A Durable Object representing all OAuth credentials for a specific provider.
@@ -47,21 +49,22 @@ export class CredentialDO extends DurableObject {
     return credentials;
   }
 
-  async put(data: any) {
+  async put(data: OAuthCredential) {
+    const validatedData = OAuthCredentialSchema.parse(data);
     const now = Date.now();
 
     this.sql.exec(
       `INSERT OR REPLACE INTO credentials 
       (subject_id, user_id, access_token, refresh_token, expires_at, scope, profile_data, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      data.subject_id,
-      data.user_id,
-      data.access_token,
-      data.refresh_token,
-      data.expires_at,
-      data.scope,
-      JSON.stringify(data.profile_data),
-      data.created_at || now,
+      validatedData.subject_id,
+      validatedData.user_id,
+      validatedData.access_token,
+      validatedData.refresh_token,
+      validatedData.expires_at,
+      validatedData.scope,
+      JSON.stringify(validatedData.profile_data),
+      validatedData.created_at || now,
       now,
     );
     return { success: true };

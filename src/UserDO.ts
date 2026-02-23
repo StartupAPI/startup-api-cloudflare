@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { StartupAPIEnv } from './StartupAPIEnv';
+import { UserProfileSchema } from './schemas/user';
+import type { UserProfile } from './schemas/user';
 
 /**
  * A Durable Object representing a User.
@@ -81,7 +83,7 @@ export class UserDO extends DurableObject {
       // Determine login context (provider and subject_id)
       const sessionMeta = session.meta ? JSON.parse(session.meta) : {};
       const loginProvider = sessionMeta.provider;
-      let credential: Record<string, any> = {};
+      const credential: Record<string, any> = {};
 
       if (loginProvider) {
         credential.provider = loginProvider;
@@ -104,7 +106,7 @@ export class UserDO extends DurableObject {
       profile.id = this.ctx.id.toString();
 
       return { valid: true, profile, credential };
-    } catch (e) {
+    } catch (_e) {
       return { valid: false };
     }
   }
@@ -112,22 +114,22 @@ export class UserDO extends DurableObject {
   /**
    * Retrieves the user's profile data.
    *
-   * @returns A Promise resolving to a JSON response containing the profile key-value pairs.
+   * @returns A Promise resolving to the user profile.
    */
-  async getProfile() {
+  async getProfile(): Promise<UserProfile> {
     try {
       const result = this.sql.exec('SELECT * FROM profile WHERE id = 1');
       const row = result.next().value as any;
       if (!row) return {};
 
-      return {
+      return UserProfileSchema.parse({
         name: row.name,
         email: row.email,
         picture: row.picture,
         provider: row.provider,
         verified_email: row.verified_email === 1,
-      };
-    } catch (e) {
+      });
+    } catch (_e) {
       return {};
     }
   }
@@ -141,28 +143,29 @@ export class UserDO extends DurableObject {
    */
   async updateProfile(data: Record<string, any>) {
     try {
+      const validatedData = UserProfileSchema.partial().parse(data);
       const updates: string[] = [];
       const values: any[] = [];
 
-      if ('name' in data) {
+      if ('name' in validatedData) {
         updates.push('name = ?');
-        values.push(data.name);
+        values.push(validatedData.name);
       }
-      if ('email' in data) {
+      if ('email' in validatedData) {
         updates.push('email = ?');
-        values.push(data.email);
+        values.push(validatedData.email);
       }
-      if ('picture' in data) {
+      if ('picture' in validatedData) {
         updates.push('picture = ?');
-        values.push(data.picture);
+        values.push(validatedData.picture);
       }
-      if ('provider' in data) {
+      if ('provider' in validatedData) {
         updates.push('provider = ?');
-        values.push(data.provider);
+        values.push(validatedData.provider);
       }
-      if ('verified_email' in data) {
+      if ('verified_email' in validatedData) {
         updates.push('verified_email = ?');
-        values.push(data.verified_email ? 1 : 0);
+        values.push(validatedData.verified_email ? 1 : 0);
       }
 
       if (updates.length > 0) {
@@ -171,8 +174,8 @@ export class UserDO extends DurableObject {
         });
       }
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
 
@@ -243,7 +246,9 @@ export class UserDO extends DurableObject {
   async deleteSession(sessionId: string) {
     try {
       this.sql.exec('DELETE FROM sessions WHERE id = ?', sessionId);
-    } catch (e) {}
+    } catch (_e) {
+      // Ignore
+    }
     return { success: true };
   }
 
@@ -251,7 +256,7 @@ export class UserDO extends DurableObject {
     try {
       const result = this.sql.exec('SELECT account_id, role, is_current FROM memberships');
       return Array.from(result);
-    } catch (e) {
+    } catch (_e) {
       return [];
     }
   }
@@ -292,8 +297,8 @@ export class UserDO extends DurableObject {
         this.sql.exec('UPDATE memberships SET is_current = 1 WHERE account_id = ?', account_id);
       });
       return { success: true };
-    } catch (e: any) {
-      throw new Error(e.message);
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -350,8 +355,8 @@ export class UserDO extends DurableObject {
       try {
         const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
         await stub.delete(row.subject_id as string);
-      } catch (e) {
-        console.error(`Failed to delete credential mapping for provider ${row.provider}`, e);
+      } catch (_e) {
+        console.error(`Failed to delete credential mapping for provider ${row.provider}`, _e);
       }
     }
 

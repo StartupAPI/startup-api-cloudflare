@@ -1,5 +1,9 @@
 import { DurableObject } from 'cloudflare:workers';
 import { StartupAPIEnv } from './StartupAPIEnv';
+import { SystemUserSchema } from './schemas/user';
+import { SystemAccountSchema } from './schemas/account';
+import type { SystemUser } from './schemas/user';
+import type { SystemAccount } from './schemas/account';
 
 export class SystemDO extends DurableObject {
   sql: SqlStorage;
@@ -48,7 +52,7 @@ export class SystemDO extends DurableObject {
           adminIds.some((id) => {
             try {
               return u.id === this.env.USER.idFromName(id).toString();
-            } catch (e) {
+            } catch (_e) {
               return false;
             }
           }));
@@ -71,20 +75,21 @@ export class SystemDO extends DurableObject {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
       const profile = await userStub.getProfile();
       return profile;
-    } catch (e: any) {
-      throw new Error(e.message);
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : String(e));
     }
   }
 
-  async registerUser(data: { id: string; name: string; email?: string; provider?: string }) {
+  async registerUser(data: SystemUser) {
+    const validatedData = SystemUserSchema.parse(data);
     const now = Date.now();
 
     this.sql.exec(
       'INSERT OR REPLACE INTO users (id, name, email, provider, created_at) VALUES (?, ?, ?, ?, ?)',
-      data.id,
-      data.name,
-      data.email || null,
-      data.provider || null,
+      validatedData.id,
+      validatedData.name,
+      validatedData.email || null,
+      validatedData.provider || null,
       now,
     );
 
@@ -106,26 +111,27 @@ export class SystemDO extends DurableObject {
     return { success: true };
   }
 
-  async updateUser(userId: string, data: any) {
+  async updateUser(userId: string, data: Partial<SystemUser>) {
+    const validatedData = SystemUserSchema.partial().parse(data);
     // Update UserDO
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
-      await userStub.updateProfile(data);
+      await userStub.updateProfile(validatedData);
     } catch (e) {
       console.error('Failed to update UserDO', e);
     }
 
     // Update Index
-    if (data.name || data.email) {
+    if (validatedData.name || validatedData.email) {
       const updates: string[] = [];
       const args: any[] = [];
-      if (data.name !== undefined) {
+      if (validatedData.name !== undefined) {
         updates.push('name = ?');
-        args.push(data.name);
+        args.push(validatedData.name);
       }
-      if (data.email !== undefined) {
+      if (validatedData.email !== undefined) {
         updates.push('email = ?');
-        args.push(data.email);
+        args.push(validatedData.email);
       }
 
       if (updates.length > 0) {
@@ -159,14 +165,15 @@ export class SystemDO extends DurableObject {
       const billing = await stub.getBillingInfo();
 
       return { ...info, billing };
-    } catch (e: any) {
-      throw new Error(e.message);
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : String(e));
     }
   }
 
-  async registerAccount(data: { id?: string; name: string; status?: string; plan?: string; ownerId?: string }) {
-    let accountIdStr = data.id;
-    const accountName = (data.name || '').substring(0, 50);
+  async registerAccount(data: SystemAccount) {
+    const validatedData = SystemAccountSchema.parse(data);
+    let accountIdStr = validatedData.id;
+    const accountName = validatedData.name;
 
     if (!accountIdStr) {
       const id = this.env.ACCOUNT.newUniqueId();
@@ -179,8 +186,8 @@ export class SystemDO extends DurableObject {
       });
 
       // If owner provided, add them as ADMIN
-      if (data.ownerId) {
-        await stub.addMember(data.ownerId, 1);
+      if (validatedData.ownerId) {
+        await stub.addMember(validatedData.ownerId, 1);
       }
     }
 
@@ -190,9 +197,9 @@ export class SystemDO extends DurableObject {
       'INSERT OR REPLACE INTO accounts (id, name, status, plan, member_count, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       accountIdStr,
       accountName,
-      data.status || 'active',
-      data.plan || 'free',
-      data.ownerId ? 1 : 0,
+      validatedData.status || 'active',
+      validatedData.plan || 'free',
+      validatedData.ownerId ? 1 : 0,
       now,
     );
 
@@ -218,16 +225,13 @@ export class SystemDO extends DurableObject {
     this.sql.exec('UPDATE accounts SET member_count = ? WHERE id = ?', count, accountId);
   }
 
-  async updateAccount(accountId: string, data: any) {
-    const sanitizedData = { ...data };
-    if (sanitizedData.name !== undefined) {
-      sanitizedData.name = sanitizedData.name.substring(0, 50);
-    }
+  async updateAccount(accountId: string, data: Partial<SystemAccount>) {
+    const validatedData = SystemAccountSchema.partial().parse(data);
 
     // Update AccountDO
     try {
       const stub = this.env.ACCOUNT.get(this.env.ACCOUNT.idFromString(accountId));
-      await stub.updateInfo(sanitizedData);
+      await stub.updateInfo(validatedData);
     } catch (e) {
       console.error('Failed to update AccountDO', e);
     }
@@ -236,18 +240,18 @@ export class SystemDO extends DurableObject {
     const updates: string[] = [];
     const args: any[] = [];
 
-    if (sanitizedData.name !== undefined) {
+    if (validatedData.name !== undefined) {
       updates.push('name = ?');
-      args.push(sanitizedData.name);
+      args.push(validatedData.name);
     }
-    if (data.status !== undefined) {
+    if (validatedData.status !== undefined) {
       updates.push('status = ?');
-      args.push(data.status);
+      args.push(validatedData.status);
     }
     // Plan update usually via billing, but if forced:
-    if (data.plan !== undefined) {
+    if (validatedData.plan !== undefined) {
       updates.push('plan = ?');
-      args.push(data.plan);
+      args.push(validatedData.plan);
     }
 
     if (updates.length > 0) {
