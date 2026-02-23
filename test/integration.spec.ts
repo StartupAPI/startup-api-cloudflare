@@ -472,4 +472,17 @@ describe('Integration Tests', () => {
       }),
     ).resolves.toEqual({ success: true });
   });
+
+  it('should handle array scope in OAuthCredential', async () => {
+    const userId = env.USER.newUniqueId().toString();
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('twitch'));
+
+    await expect(
+      credentialStub.put({
+        user_id: userId,
+        subject_id: 't555',
+        scope: ['user:read:email', 'chat:read'],
+      } as any),
+    ).resolves.toEqual({ success: true });
+  });
 });

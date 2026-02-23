@@ -20,7 +20,11 @@ export const OAuthCredentialSchema = z.object({
   access_token: z.string().nullable().optional(),
   refresh_token: z.string().nullable().optional(),
   expires_at: z.coerce.number().nullable().optional(),
-  scope: z.string().nullable().optional(),
+  scope: z
+    .union([z.string(), z.array(z.string())])
+    .transform((val) => (Array.isArray(val) ? val.join(' ') : val))
+    .nullable()
+    .optional(),
   profile_data: z.record(z.any()).nullable().optional(),
   created_at: z.number().optional(),
   updated_at: z.number().optional(),
