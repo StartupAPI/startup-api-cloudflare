@@ -58,6 +58,14 @@ export class Plan {
     }
   }
 
+  static isInitialized(): boolean {
+    return Plan.plans.size > 0;
+  }
+
+  static clear() {
+    Plan.plans.clear();
+  }
+
   static get(slug: string): Plan | undefined {
     return Plan.plans.get(slug);
   }

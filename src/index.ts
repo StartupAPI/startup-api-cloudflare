@@ -19,6 +19,7 @@ import {
 import { handleMyAccounts, handleSwitchAccount, handleAccountDetails, handleAccountImage, handleAccountMembers } from './handlers/account';
 import { handleLogout } from './handlers/auth';
 import { handleSSR } from './handlers/ssr';
+import { Plan } from './billing/Plan';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -31,7 +32,9 @@ export default {
    * Main Worker fetch handler.
    */
   async fetch(request: Request, env: StartupAPIEnv): Promise<Response> {
-    initPlans();
+    if (!Plan.isInitialized()) {
+      initPlans();
+    }
 
     // Prevent infinite loops when serving assets
     if (request.headers.has('x-skip-worker')) {

@@ -1,8 +1,24 @@
 import { env, SELF } from 'cloudflare:test';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { CookieManager } from '../src/CookieManager';
+import { Plan } from '../src/billing/Plan';
 
 describe('Admin Administration', () => {
+  beforeAll(() => {
+    Plan.init([
+      {
+        slug: 'free',
+        name: 'Free',
+        schedules: [{ charge_amount: 0, charge_period: 30, is_default: true }],
+      },
+      {
+        slug: 'pro',
+        name: 'Pro',
+        schedules: [{ charge_amount: 2900, charge_period: 30, is_default: true }],
+      },
+    ]);
+  });
+
   const cookieManager = new CookieManager(env.SESSION_SECRET);
 
   it('should deny access to non-admin users', async () => {

@@ -24,8 +24,10 @@ export class AccountDO extends DurableObject {
     this.sql = state.storage.sql;
     this.paymentEngine = new MockPaymentEngine();
 
-    // Initialize plans
-    initPlans();
+    // Initialize plans if not already done
+    if (!Plan.isInitialized()) {
+      initPlans();
+    }
 
     // Initialize database schema
     this.sql.exec(`
