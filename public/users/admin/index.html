@@ -351,6 +351,13 @@
       function populatePlanSelect(selectId, selectedValue) {
         const select = document.getElementById(selectId);
         const plans = getPlans();
+
+        // Hide the entire form-group if there's only one plan
+        const formGroup = select.closest('.form-group');
+        if (formGroup) {
+          formGroup.style.display = plans.length > 1 ? 'block' : 'none';
+        }
+
         select.innerHTML = plans
           .map((p) => `<option value="${p.slug}" ${p.slug === selectedValue ? 'selected' : ''}>${p.name}</option>`)
           .join('');
