@@ -440,4 +440,19 @@ describe('Integration Tests', () => {
 
     expect(decodedObj).toEqual(stateObj);
   });
+
+  it('should handle very long names without ZodError in account creation', async () => {
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+
+    const longName = 'Very Long Name That Exceeds Previous Fifty Character Limit To Test Robustness';
+
+    // This indirectly tests handleAuth's behavior when creating a personal account
+    await expect(
+      systemStub.registerAccount({
+        name: `${longName}'s Account`,
+        status: 'active',
+        plan: 'free',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ success: true }));
+  });
 });
