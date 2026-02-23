@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { StartupAPIEnv } from './StartupAPIEnv';
 import { OAuthCredentialSchema } from './schemas/credential';
-import type { OAuthCredential } from './schemas/credential';
+import type { OAuthCredential, OAuthCredentialOutput } from './schemas/credential';
 
 /**
  * A Durable Object representing all OAuth credentials for a specific provider.
@@ -52,7 +52,7 @@ export class CredentialDO extends DurableObject {
   async put(data: OAuthCredential) {
     console.log('[auth] Parsing Cred', data);
 
-    const validatedData = OAuthCredentialSchema.parse(data);
+    const validatedData: OAuthCredentialOutput = OAuthCredentialSchema.parse(data);
 
     console.log('[auth] Validated Cred', validatedData);
 

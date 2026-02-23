@@ -4,7 +4,6 @@ import { GoogleProvider } from './GoogleProvider';
 import { TwitchProvider } from './TwitchProvider';
 import { OAuthProvider } from './OAuthProvider';
 import { CookieManager } from '../CookieManager';
-import { OAuthCredential } from '../schemas/credential';
 
 export async function handleAuth(
   request: Request,
@@ -143,7 +142,8 @@ export async function handleAuth(
           }
         }
 
-        const cred: OAuthCredential = {
+        // Register credential in provider-specific CredentialDO
+        await credentialStub.put({
           user_id: userIdStr,
           subject_id: profile.id,
           access_token: token.access_token,
@@ -151,12 +151,7 @@ export async function handleAuth(
           expires_at: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
           scope: token.scope,
           profile_data: profile,
-        };
-
-        console.log('[auth] Registering credential', cred);
-
-        // Register credential in provider-specific CredentialDO
-        await credentialStub.put(cred);
+        });
 
         // Register credential mapping in UserDO
         await userStub.addCredential(provider.name, profile.id);

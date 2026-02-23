@@ -30,7 +30,8 @@ export const OAuthCredentialSchema = z.object({
   updated_at: z.number().optional(),
 });
 
-export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
+export type OAuthCredential = z.input<typeof OAuthCredentialSchema>;
+export type OAuthCredentialOutput = z.output<typeof OAuthCredentialSchema>;
 
 export const DeleteCredentialSchema = z.object({
   provider: z.string(),
