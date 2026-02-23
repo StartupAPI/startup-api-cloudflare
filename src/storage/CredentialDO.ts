@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
-import { StartupAPIEnv } from './StartupAPIEnv';
-import { OAuthCredentialSchema } from './schemas/credential';
-import type { OAuthCredential, OAuthCredentialOutput } from './schemas/credential';
+import { StartupAPIEnv } from '../StartupAPIEnv';
+import { OAuthCredentialSchema } from '../schemas/credential';
+import type { OAuthCredential, OAuthCredentialOutput } from '../schemas/credential';
 
 /**
  * A Durable Object representing all OAuth credentials for a specific provider.

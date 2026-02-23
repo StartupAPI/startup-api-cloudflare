@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
-import { AccountDO } from '../src/AccountDO';
+import { AccountDO } from '../src/storage/AccountDO';
 
 describe('User-Account Relationship', () => {
   it('should sync membership when adding user to account', async () => {

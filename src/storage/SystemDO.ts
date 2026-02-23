@@ -1,9 +1,9 @@
 import { DurableObject } from 'cloudflare:workers';
-import { StartupAPIEnv } from './StartupAPIEnv';
-import { SystemUserSchema } from './schemas/user';
-import { SystemAccountSchema } from './schemas/account';
-import type { SystemUser } from './schemas/user';
-import type { SystemAccount } from './schemas/account';
+import { StartupAPIEnv } from '../StartupAPIEnv';
+import { SystemUserSchema } from '../schemas/user';
+import { SystemAccountSchema } from '../schemas/account';
+import type { SystemUser } from '../schemas/user';
+import type { SystemAccount } from '../schemas/account';
 
 export class SystemDO extends DurableObject {
   sql: SqlStorage;
