@@ -66,4 +66,35 @@ describe('UserDO Durable Object', () => {
     expect(memberships[0].role).toBe(role);
     expect(memberships[0].is_current).toBe(1);
   });
+
+  it('should list credentials without exposing sensitive data', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+
+    // Mock CredentialDO behavior
+    const googleCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));
+    await googleCredStub.put({
+      user_id: id.toString(),
+      subject_id: 'g123',
+      access_token: 'secret-token',
+      refresh_token: 'secret-refresh',
+      profile_data: { email: 'user@example.com', extra: 'sensitive' },
+    });
+
+    await stub.addCredential('google', 'g123');
+
+    const credentials = await stub.listCredentials();
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0]).toEqual({
+      provider: 'google',
+      subject_id: 'g123',
+      email: 'user@example.com',
+      created_at: expect.any(Number),
+    });
+
+    // Ensure sensitive fields are NOT present
+    expect(credentials[0]).not.toHaveProperty('access_token');
+    expect(credentials[0]).not.toHaveProperty('refresh_token');
+    expect(credentials[0]).not.toHaveProperty('profile_data');
+  });
 });

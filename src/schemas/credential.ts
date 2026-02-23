@@ -5,7 +5,14 @@ export const CredentialSchema = z.object({
   subject_id: z.string(),
 });
 
-export type Credential = z.infer<typeof CredentialSchema>;
+export const PublicCredentialSchema = z.object({
+  provider: z.string(),
+  subject_id: z.string(),
+  email: z.string().optional(),
+  created_at: z.number().optional(),
+});
+
+export type PublicCredential = z.infer<typeof PublicCredentialSchema>;
 
 export const OAuthCredentialSchema = z.object({
   subject_id: z.string(),

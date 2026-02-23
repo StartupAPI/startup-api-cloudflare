@@ -190,7 +190,14 @@ export class UserDO extends DurableObject {
     for (const row of credentialsMapping) {
       const stub = this.env.CREDENTIAL.get(this.env.CREDENTIAL.idFromName(row.provider as string));
       const providerCreds = await stub.list(this.ctx.id.toString());
-      credentials.push(...providerCreds.map((c: any) => ({ provider: row.provider, ...c })));
+      credentials.push(
+        ...providerCreds.map((c: any) => ({
+          provider: row.provider,
+          subject_id: c.subject_id,
+          email: c.profile_data?.email,
+          created_at: c.created_at,
+        })),
+      );
     }
     return credentials;
   }

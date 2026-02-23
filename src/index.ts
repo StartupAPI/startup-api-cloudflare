@@ -1055,7 +1055,7 @@ function renderCredentialsList(credentials: any[], currentProvider?: string): st
               ${c.provider.charAt(0).toUpperCase() + c.provider.slice(1)}
               ${isCurrent ? '<span class="current-badge">logged in</span>' : ''}
             </div>
-            <div style="font-size: 0.8rem; color: #666;">${c.profile_data?.email || c.subject_id}</div>
+            <div style="font-size: 0.8rem; color: #666;">${c.email || c.subject_id}</div>
           </div>
         </div>
         <button class="remove-btn" onclick="removeCredential('${c.provider}')" ${isCurrent || credentials.length === 1 ? 'disabled title="' + (isCurrent ? 'Cannot remove the method you are currently logged in with' : 'Cannot remove your last login method') + '"' : ''}>
