@@ -6,7 +6,7 @@ import { SystemDO } from './storage/SystemDO';
 import { CredentialDO } from './storage/CredentialDO';
 import { CookieManager } from './CookieManager';
 import { initPlans } from './billing/plansConfig';
-import { getActiveProviders, parseCookies } from './handlers/utils';
+import { getActiveProviders, parseCookies, getUserFromSession } from './handlers/utils';
 import { handleAdmin } from './handlers/admin';
 import {
   handleMe,
@@ -164,6 +164,16 @@ export default {
 
       const newRequest = new Request(url.toString(), request);
       newRequest.headers.set('Host', url.host);
+
+      const user = await getUserFromSession(request, env, cookieManager);
+      if (user) {
+        newRequest.headers.set('X-StartupAPI-User-Id', user.id);
+        const userStub = env.USER.get(env.USER.idFromString(user.id));
+        const currentAccount = await userStub.getCurrentAccount();
+        if (currentAccount) {
+          newRequest.headers.set('X-StartupAPI-Account-Id', currentAccount.account_id);
+        }
+      }
 
       const response = await fetch(newRequest);
       const providers = getActiveProviders(env);
