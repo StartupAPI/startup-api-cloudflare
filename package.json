@@ -1,12 +1,28 @@
 {
-  "name": "startup-api-cloudflare",
+  "name": "@startup-api/cloudflare",
   "version": "0.0.1",
-  "private": true,
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/StartupAPI/startup-api-cloudflare.git"
   },
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./public/*": "./public/*",
+    "./wrangler.template.jsonc": "./wrangler.template.jsonc",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "public",
+    "worker-configuration.d.ts",
+    "wrangler.template.jsonc"
+  ],
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev -c wrangler.local.jsonc",

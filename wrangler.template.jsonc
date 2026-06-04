@@ -1,0 +1,55 @@
+/**
+ * Canonical Wrangler configuration for a project that consumes
+ * `@startup-api/cloudflare` as an npm dependency.
+ *
+ * `npm create startup` copies this file into the generated project and fills
+ * in the `__PROJECT_NAME__` and `__ORIGIN_URL__` placeholders. Keeping it here,
+ * next to the worker source, means the bindings and migrations below always
+ * match the version of the package that ships them.
+ *
+ * For configuration docs see:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "__PROJECT_NAME__",
+  // Thin local entrypoint that re-exports the worker + Durable Objects from the package.
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-27",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "assets": {
+    // Framework assets are synced here from the package on install (see scripts/sync-assets.mjs).
+    "directory": "./public",
+    "run_worker_first": true,
+    "binding": "ASSETS",
+  },
+  "observability": {
+    "enabled": true,
+  },
+  "r2_buckets": [
+    {
+      "binding": "IMAGE_STORAGE",
+      "bucket_name": "__PROJECT_NAME__-images",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "USER", "class_name": "UserDO" },
+      { "name": "ACCOUNT", "class_name": "AccountDO" },
+      { "name": "SYSTEM", "class_name": "SystemDO" },
+      { "name": "CREDENTIAL", "class_name": "CredentialDO" },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["UserDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["AccountDO"] },
+    { "tag": "v3", "new_sqlite_classes": ["SystemDO"] },
+    { "tag": "v4", "new_sqlite_classes": ["CredentialDO"] },
+  ],
+  "vars": {
+    // The origin (or other object) this worker proxies back to. Set during `npm create startup`.
+    "ORIGIN_URL": "__ORIGIN_URL__",
+    // SESSION_SECRET is intentionally left out of source control. Set it as a
+    // secret (`wrangler secret put SESSION_SECRET`) or in `.dev.vars` for local dev.
+  },
+}
