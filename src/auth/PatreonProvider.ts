@@ -1,17 +1,28 @@
 import type { StartupAPIEnv } from '../StartupAPIEnv';
+import type { ProviderOptions } from '../schemas/config';
 
 import { OAuthProvider, OAuthTokenResponse, UserProfile } from './OAuthProvider';
+import type { Entitlements } from '../entitlements/types';
+import { parsePatreonIdentity } from '../entitlements/patreon';
 
 export class PatreonProvider extends OAuthProvider {
-  static create(env: StartupAPIEnv, redirectBase: string): PatreonProvider | null {
+  private campaignId?: string;
+
+  static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): PatreonProvider | null {
     if (!env.PATREON_CLIENT_ID || !env.PATREON_CLIENT_SECRET) return null;
-    return new PatreonProvider(
+    const provider = new PatreonProvider(
       env.PATREON_CLIENT_ID,
       env.PATREON_CLIENT_SECRET,
       redirectBase + '/patreon/callback',
       'patreon',
-      OAuthProvider.parseScopes(env.PATREON_SCOPES),
+      options?.scopes,
     );
+    provider.campaignId = options?.campaignId?.trim() || undefined;
+    return provider;
+  }
+
+  supportsEntitlements(): boolean {
+    return true;
   }
 
   getAuthUrl(state: string): string {
@@ -75,5 +86,39 @@ export class PatreonProvider extends OAuthProvider {
       picture: user.attributes.image_url,
       verified_email: user.attributes.is_email_verified,
     };
+  }
+
+  async refreshToken(refreshToken: string): Promise<OAuthTokenResponse> {
+    const params = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+    });
+
+    return this.fetchJson<OAuthTokenResponse>('https://www.patreon.com/api/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+  }
+
+  async fetchEntitlements(accessToken: string): Promise<Partial<Entitlements>> {
+    const params = new URLSearchParams({
+      include: 'memberships,memberships.currently_entitled_tiers,memberships.currently_entitled_tiers.benefits',
+      'fields[member]': 'patron_status,currently_entitled_amount_cents',
+      'fields[tier]': 'title',
+      'fields[benefit]': 'title',
+    });
+
+    const data = await this.fetchJson<any>(`https://www.patreon.com/api/oauth2/v2/identity?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    return { patreon: parsePatreonIdentity(data, this.campaignId) };
   }
 }

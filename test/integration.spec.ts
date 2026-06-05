@@ -1,6 +1,7 @@
-import { env, SELF } from 'cloudflare:test';
+import { env, SELF, createExecutionContext } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
 import { CookieManager } from '../src/CookieManager';
+import { createStartupAPI } from '../src/createStartupAPI';
 
 describe('Integration Tests', () => {
   const cookieManager = new CookieManager(env.SESSION_SECRET);
@@ -374,26 +375,24 @@ describe('Integration Tests', () => {
     expect(html).toContain('<power-strip providers="google,twitch,patreon"');
   });
 
-  it('should append configured additional scopes to the OAuth auth URL', async () => {
-    // wrangler.test.jsonc sets PATREON_SCOPES="identity.memberships"
-    const res = await SELF.fetch('http://example.com/users/auth/patreon', { redirect: 'manual' });
+  it('should append additional scopes configured via the factory to the OAuth auth URL', async () => {
+    const api = createStartupAPI({ providers: { patreon: { scopes: 'identity.memberships' } } });
+    const ctx = createExecutionContext();
+    const res = await api.fetch(new Request('http://example.com/users/auth/patreon'), env, ctx);
 
     expect(res.status).toBe(302);
-    const location = res.headers.get('location') || '';
-    const authUrl = new URL(location);
-    const scope = authUrl.searchParams.get('scope') || '';
+    const scope = new URL(res.headers.get('location') || '').searchParams.get('scope') || '';
 
     // Base scopes are preserved and the configured extra scope is merged in
     expect(scope.split(' ')).toEqual(['identity', 'identity[email]', 'identity.memberships']);
   });
 
-  it('should not append extra scopes for providers without a configured *_SCOPES var', async () => {
-    // No TWITCH_SCOPES is configured, so only the base scope should be present
+  it('should not append extra scopes for a provider without configured scopes', async () => {
+    // The default instance has no scopes configured, so only the base scope should be present.
     const res = await SELF.fetch('http://example.com/users/auth/twitch', { redirect: 'manual' });
 
     expect(res.status).toBe(302);
-    const location = res.headers.get('location') || '';
-    const scope = new URL(location).searchParams.get('scope') || '';
+    const scope = new URL(res.headers.get('location') || '').searchParams.get('scope') || '';
 
     expect(scope).toBe('user:read:email');
   });

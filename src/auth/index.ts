@@ -1,10 +1,9 @@
 import type { StartupAPIEnv } from '../StartupAPIEnv';
 
-import { GoogleProvider } from './GoogleProvider';
-import { TwitchProvider } from './TwitchProvider';
-import { PatreonProvider } from './PatreonProvider';
-import { OAuthProvider } from './OAuthProvider';
 import { CookieManager } from '../CookieManager';
+import { refreshEntitlements } from '../entitlements/service';
+import { computeRedirectBase, createProviders } from './providers';
+import type { ProviderConfigs } from './providers';
 
 export async function handleAuth(
   request: Request,
@@ -12,25 +11,19 @@ export async function handleAuth(
   url: URL,
   usersPath: string,
   cookieManager: CookieManager,
+  providerConfigs: ProviderConfigs = {},
 ): Promise<Response> {
   const path = url.pathname;
   const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
 
   // Standardize redirectBase
-  const baseUsersPath = usersPath.startsWith('/') ? usersPath : '/' + usersPath;
-  const redirectBase = new URL((baseUsersPath.endsWith('/') ? baseUsersPath : baseUsersPath + '/') + 'auth', origin).toString();
+  const redirectBase = computeRedirectBase(env, origin, usersPath);
 
   // For internal matching, we still need authPath
   const authPath = new URL(redirectBase).pathname;
 
-  // Instantiate providers
-  const providers: (OAuthProvider | null)[] = [
-    GoogleProvider.create(env, redirectBase),
-    TwitchProvider.create(env, redirectBase),
-    PatreonProvider.create(env, redirectBase),
-  ];
-
-  const activeProviders = providers.filter((p): p is OAuthProvider => p !== null);
+  // Instantiate active providers
+  const activeProviders = createProviders(env, redirectBase, providerConfigs);
 
   // Handle Auth Start
   for (const provider of activeProviders) {
@@ -160,6 +153,30 @@ export async function handleAuth(
 
         // Register credential mapping in UserDO
         await userStub.addCredential(provider.name, profile.id);
+
+        // Login-time entitlement fetch: providers that support entitlements (e.g. Patreon) get an
+        // initial entitlement snapshot now, so gating works even when no freshness mechanism is
+        // configured. Best-effort — never block or fail login on an entitlement error.
+        if (provider.supportsEntitlements()) {
+          try {
+            await refreshEntitlements(
+              env,
+              provider,
+              {
+                subject_id: profile.id,
+                user_id: userIdStr,
+                access_token: token.access_token,
+                refresh_token: token.refresh_token,
+                expires_at: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined,
+                scope: typeof token.scope === 'string' ? token.scope : undefined,
+                profile_data: profile,
+              },
+              'oauth',
+            );
+          } catch (e) {
+            console.error('[auth] Login-time entitlement fetch failed', e);
+          }
+        }
 
         // Register User in SystemDO index (Only for new users)
         if (isNewUser) {

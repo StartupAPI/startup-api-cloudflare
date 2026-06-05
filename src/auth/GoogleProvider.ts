@@ -1,16 +1,17 @@
 import type { StartupAPIEnv } from '../StartupAPIEnv';
+import type { ProviderOptions } from '../schemas/config';
 
 import { OAuthProvider, OAuthTokenResponse, UserProfile } from './OAuthProvider';
 
 export class GoogleProvider extends OAuthProvider {
-  static create(env: StartupAPIEnv, redirectBase: string): GoogleProvider | null {
+  static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): GoogleProvider | null {
     if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
     return new GoogleProvider(
       env.GOOGLE_CLIENT_ID,
       env.GOOGLE_CLIENT_SECRET,
       redirectBase + '/google/callback',
       'google',
-      OAuthProvider.parseScopes(env.GOOGLE_SCOPES),
+      options?.scopes,
     );
   }
 

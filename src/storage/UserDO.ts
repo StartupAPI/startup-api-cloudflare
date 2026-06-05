@@ -51,6 +51,14 @@ export class UserDO extends DurableObject {
         subject_id TEXT NOT NULL,
         PRIMARY KEY (provider, subject_id)
       );
+
+      CREATE TABLE IF NOT EXISTS entitlements_cache (
+        provider TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        data TEXT,
+        checked_at INTEGER,
+        PRIMARY KEY (provider, subject_id)
+      );
     `);
 
     // Ensure the single row exists
@@ -183,6 +191,34 @@ export class UserDO extends DurableObject {
 
   async addCredential(provider: string, subject_id: string): Promise<{ success: boolean }> {
     this.sql.exec('INSERT OR REPLACE INTO user_credentials (provider, subject_id) VALUES (?, ?)', provider, subject_id);
+    return { success: true };
+  }
+
+  /**
+   * Read the denormalized entitlements cache for a (provider, subject_id). This is the per-request
+   * hot-path read: the proxy already opens this UserDO each request, so no extra DO hop is needed.
+   * Returns null when there is no cached entry.
+   */
+  async getEntitlements(provider: string, subject_id: string): Promise<{ data: any; checked_at: number } | null> {
+    const result = this.sql.exec(
+      'SELECT data, checked_at FROM entitlements_cache WHERE provider = ? AND subject_id = ?',
+      provider,
+      subject_id,
+    );
+    const row = result.next().value as any;
+    if (!row) return null;
+    return { data: row.data ? JSON.parse(row.data) : null, checked_at: row.checked_at };
+  }
+
+  /** Write-through update of the entitlements cache after a refresh (login / TTL / cron / webhook). */
+  async setEntitlements(provider: string, subject_id: string, data: Record<string, any>, checked_at: number): Promise<{ success: boolean }> {
+    this.sql.exec(
+      'INSERT OR REPLACE INTO entitlements_cache (provider, subject_id, data, checked_at) VALUES (?, ?, ?, ?)',
+      provider,
+      subject_id,
+      JSON.stringify(data),
+      checked_at,
+    );
     return { success: true };
   }
 

@@ -15,6 +15,8 @@ export interface UserProfile {
   verified_email?: boolean;
 }
 
+import type { Entitlements } from '../entitlements/types';
+
 export abstract class OAuthProvider {
   protected clientId: string;
   protected clientSecret: string;
@@ -22,24 +24,13 @@ export abstract class OAuthProvider {
   public name: string;
   protected additionalScopes: string[];
 
-  constructor(clientId: string, clientSecret: string, redirectUri: string, name: string, additionalScopes: string[] = []) {
+  constructor(clientId: string, clientSecret: string, redirectUri: string, name: string, additionalScopes: string | string[] = []) {
     this.clientId = clientId.trim();
     this.clientSecret = clientSecret.trim();
     this.redirectUri = redirectUri.trim();
     this.name = name.trim();
-    this.additionalScopes = additionalScopes;
-  }
-
-  /**
-   * Parse a configured scope string (whitespace- or comma-separated) into a list of scopes.
-   * Used by providers to read extra scopes from env vars like `PATREON_SCOPES`.
-   */
-  static parseScopes(raw?: string | null): string[] {
-    if (!raw) return [];
-    return raw
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // Accept a single scope string or a list; buildScope() trims and dedupes.
+    this.additionalScopes = Array.isArray(additionalScopes) ? additionalScopes : [additionalScopes];
   }
 
   /**
@@ -71,6 +62,31 @@ export abstract class OAuthProvider {
   abstract getIcon(): string;
   abstract getToken(code: string): Promise<OAuthTokenResponse>;
   abstract getUserProfile(token: string): Promise<UserProfile>;
+
+  /**
+   * Whether this provider produces entitlements (memberships / perks). Providers that gate access on
+   * provider-specific conditions (e.g. Patreon) override this to return true. Default: false.
+   */
+  supportsEntitlements(): boolean {
+    return false;
+  }
+
+  /**
+   * Fetch the user's current entitlements using a valid access token. Returns the provider-specific
+   * portion of the {@link Entitlements} shape (without `checked_at`/`source`, which the caller stamps).
+   * Default: null (provider has no entitlements).
+   */
+  async fetchEntitlements(_accessToken: string): Promise<Partial<Entitlements> | null> {
+    return null;
+  }
+
+  /**
+   * Exchange a refresh token for a fresh access token. Providers that issue refresh tokens override
+   * this. Default: null (no refresh support).
+   */
+  async refreshToken(_refreshToken: string): Promise<OAuthTokenResponse | null> {
+    return null;
+  }
 
   protected async fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     const response = await fetch(url, options);
