@@ -65,13 +65,13 @@ Use this option if you want to deploy from your local machine.
 | `AUTH_ORIGIN`          | No       | N/A       | Optional base URL for OAuth redirects (overrides request origin)              |
 | `GOOGLE_CLIENT_ID`     | No       | N/A       | Google OAuth2 Client ID                                                       |
 | `GOOGLE_CLIENT_SECRET` | No       | N/A       | Google OAuth2 Client Secret                                                   |
-| `GOOGLE_SCOPES`        | No       | N/A       | Extra Google OAuth scopes to request (space- or comma-separated)             |
 | `TWITCH_CLIENT_ID`     | No       | N/A       | Twitch OAuth2 Client ID                                                       |
 | `TWITCH_CLIENT_SECRET` | No       | N/A       | Twitch OAuth2 Client Secret                                                   |
-| `TWITCH_SCOPES`        | No       | N/A       | Extra Twitch OAuth scopes to request (space- or comma-separated)             |
 | `PATREON_CLIENT_ID`    | No       | N/A       | Patreon OAuth2 Client ID                                                      |
 | `PATREON_CLIENT_SECRET`| No       | N/A       | Patreon OAuth2 Client Secret                                                  |
-| `PATREON_SCOPES`       | No       | N/A       | Extra Patreon OAuth scopes to request (space- or comma-separated)            |
+| `PATREON_WEBHOOK_SECRET`| No      | N/A       | Secret for verifying Patreon webhook signatures                              |
+
+> Environment variables hold only credentials/secrets (OAuth client IDs and all secrets) plus the per‑deployment values `ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, and `ENVIRONMENT`. **All other configuration — OAuth scopes, Patreon campaign id, the access policy, entitlement freshness — is passed to the `createStartupAPI` factory** (see [Access policy & provider entitlements](#access-policy--provider-entitlements)).
 
 ### Setting up OAuth
 
@@ -102,15 +102,17 @@ Use this option if you want to deploy from your local machine.
 
 #### Requesting additional scopes
 
-Each provider requests the minimal scopes needed to sign a user in and read their basic profile. To request more (for example, to read a user's Patreon memberships), set the provider's `*_SCOPES` variable to a space- or comma-separated list. The extra scopes are merged with the required base scopes:
+Each provider requests the minimal scopes needed to sign a user in and read their basic profile. To request more (for example, to read a user's Patreon memberships), set the provider's `scopes` in the factory config (a string or array). The extra scopes are merged with the required base scopes:
 
-```jsonc
-{
-  "vars": {
+```ts
+import { createStartupAPI } from '@startup-api/cloudflare';
+
+const api = createStartupAPI({
+  providers: {
     // Adds `identity.memberships` on top of the base `identity identity[email]`
-    "PATREON_SCOPES": "identity.memberships",
-  }
-}
+    patreon: { scopes: 'identity.memberships' },
+  },
+});
 ```
 
 ### Example `wrangler.jsonc` snippet:
@@ -129,6 +131,82 @@ Each provider requests the minimal scopes needed to sign a user in and read thei
 2. **Path Mapping:** If the request path starts with `USERS_PATH`, the worker serves assets directly from the `public/users/` directory
 3. **Proxying:** All other requests are proxied to the configured `ORIGIN_URL`
 4. **Injection:** For `text/html` responses, the worker injects a `<script>` tag and a `<power-strip>` custom element before serving the content to the user
+
+## Access policy & provider entitlements
+
+StartupAPI can gate access to paths and forward the visitor's login/entitlement status to your origin so it can render gated UI. This is **provider-agnostic infrastructure**; only Patreon currently implements perk-level (benefit/tier) checks — Google and Twitch participate at the login levels only.
+
+### Path-based access policy
+
+Configure an ordered list of rules (first match wins) mapping a path pattern to a requirement, plus a `default` for unmatched paths. Requirement modes:
+
+- **`bypass`** — raw pass-through: no credential check, no identity resolution, no headers, no power-strip injection.
+- **`public`** — anyone; the session is resolved and identity/entitlement headers are forwarded when present.
+- **`authenticated`** — any logged-in user.
+- **`entitlement`** — a provider condition: Patreon `active_patron`, a specific `benefit` (perk) ID, or a `tier` ID.
+
+Patterns are exact (`/special`), prefix (`/app/*`), or `/` (homepage only). Each rule's `on_unauthorized` is `login` (redirect to sign in), `forbidden` (403), or `upgrade` (redirect to `upgrade_url`, e.g. a Patreon join page). When no policy is configured at all, every path is treated as `public` (backward compatible).
+
+The policy is passed to the factory as `accessPolicy` (see below). Example:
+
+```ts
+const accessPolicy = {
+  rules: [
+    { pattern: '/', requirement: { mode: 'public' } },
+    {
+      pattern: '/special',
+      requirement: { mode: 'entitlement', provider: 'patreon', condition: { type: 'benefit', benefit_id: '<BENEFIT_ID>' } },
+      on_unauthorized: 'upgrade',
+      upgrade_url: 'https://www.patreon.com/yourpage',
+    },
+  ],
+  default: { mode: 'entitlement', provider: 'patreon', condition: { type: 'active_patron' } },
+};
+```
+
+### Headers forwarded to the origin
+
+For non-`bypass` paths the worker forwards `X-StartupAPI-Authenticated`, `X-StartupAPI-Login-Provider`, a compact `X-StartupAPI-Entitlements` JSON, and (for Patreon) `X-StartupAPI-Patreon-Active` / `-Tiers` / `-Benefits` alongside the existing `X-StartupAPI-User-Id` / `-Account-Id`.
+
+### Keeping entitlements fresh
+
+Entitlements are fetched once at login. Each provider can additionally opt into freshness mechanisms in its factory config (all off by default — if none are enabled, entitlements are only checked at login):
+
+- **TTL** — lazily re-check on the request path when older than the TTL (`freshness.ttl: { ms }`, default 15 min), using the OAuth refresh token.
+- **Cron** — a scheduled re-sync of all of a provider's credentials (`freshness.cron: { schedule }`). The `scheduled()` handler is only present when at least one provider enables cron; you must also add a matching `triggers.crons` to your wrangler config.
+- **Webhook** (Patreon only) — set `freshness.webhook: true`, provide `PATREON_WEBHOOK_SECRET` (a secret, in env), and point a Patreon webhook at `<your-worker-url>/users/webhooks/patreon` (signature verified with HMAC-MD5).
+
+Set `providers.patreon.campaignId` to disambiguate when a user belongs to multiple campaigns.
+
+### Configuring via the factory
+
+Environment variables hold only credentials/secrets and the per-deployment values (`ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, `ENVIRONMENT`). Everything else — provider scopes, Patreon campaign id, the access policy, and entitlement freshness — is passed to `createStartupAPI(config)`. The plain re-export still works with defaults:
+
+```ts
+// Defaults — unchanged:
+export { default, UserDO, AccountDO, SystemDO, CredentialDO } from '@startup-api/cloudflare';
+```
+
+```ts
+// Custom configuration:
+import { createStartupAPI } from '@startup-api/cloudflare';
+
+const api = createStartupAPI({
+  providers: {
+    patreon: {
+      scopes: 'identity.memberships',
+      campaignId: '<CAMPAIGN_ID>',
+      freshness: { ttl: true, cron: { schedule: '0 */6 * * *' }, webhook: true },
+    },
+  },
+  accessPolicy: { rules: [/* ... */], default: { mode: 'public' } },
+});
+
+export default api.default; // includes scheduled() because cron is enabled
+export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
+```
+
+(Remember to add `triggers.crons` to your wrangler config when enabling cron.)
 
 ## Contributing
 
