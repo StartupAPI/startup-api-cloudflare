@@ -34,8 +34,7 @@ function fetchWith(path: string, cookie?: string) {
   });
 }
 
-async function createPatreonUser(benefits: string[], active = true) {
-  const userId = env.USER.newUniqueId();
+async function createPatreonUser(benefits: string[], active = true, userId = env.USER.newUniqueId()) {
   const userStub = env.USER.get(userId);
   const userIdStr = userId.toString();
   const subjectId = 'patreon-' + userIdStr.slice(0, 10);
@@ -116,6 +115,22 @@ describe('Entitlement headers + access policy', () => {
   it('forbids a gated path for an unauthenticated request', async () => {
     const res = await fetchWith('/special');
     expect(res.status).toBe(403);
+  });
+
+  it('lets an admin reach a gated path even without the required benefit', async () => {
+    // ADMIN_IDS is "admin" in the test env; in test mode isAdmin() resolves names via idFromName().
+    const cookie = await createPatreonUser(['some-other-benefit'], true, env.USER.idFromName('admin'));
+    const fetchSpy = spyOrigin();
+    try {
+      const res = await fetchWith('/special', cookie);
+      expect(res.status).toBe(200);
+
+      // Identity is still resolved and headers forwarded — only the gate is bypassed.
+      const out = fetchSpy.mock.calls.at(-1)![0] as Request;
+      expect(out.headers.get('X-StartupAPI-Authenticated')).toBe('true');
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('bypass path forwards with NO X-StartupAPI headers and no power-strip injection, even when logged in', async () => {
