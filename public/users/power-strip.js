@@ -252,7 +252,14 @@ class PowerStrip extends HTMLElement {
           display: block;
           font-family: system-ui, -apple-system, sans-serif;
         }
-        
+
+        /* Honor the native [hidden] attribute so authors can load the script
+           without rendering a visible strip (<power-strip hidden>). The :host
+           rule above would otherwise override the UA [hidden] { display: none }. */
+        :host([hidden]) {
+          display: none !important;
+        }
+
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }

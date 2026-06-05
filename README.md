@@ -132,6 +132,21 @@ const api = createStartupAPI({
 3. **Proxying:** All other requests are proxied to the configured `ORIGIN_URL`
 4. **Injection:** For `text/html` responses, the worker injects a `<script>` tag and a `<power-strip>` custom element before serving the content to the user
 
+### Customizing the power strip
+
+By default the worker injects its own `<power-strip>` pinned to the top-right corner of the page. If that overlaps your own menu or you simply want it somewhere else, **place a `<power-strip>` element in your own HTML**. When the worker sees one, it injects only `power-strip.js` (which defines the custom element) and leaves your element exactly where you put it — so you control placement and styling:
+
+```html
+<nav>
+  <!-- ...your links... -->
+  <power-strip></power-strip>
+</nav>
+```
+
+- **`providers` is optional.** If you omit it, the worker fills in the active providers for you (e.g. `providers="google,twitch,patreon"`). Set it yourself to override which login buttons appear.
+- **Prefer an explicit closing tag.** `<power-strip></power-strip>` and `<power-strip/>` are both detected, but per the HTML spec `<power-strip/>` is *not* truly self-closing — the browser treats it as an open tag and nests the following content inside it. Use a closing tag (or place the element last in its container) to avoid surprises.
+- **Script-only opt-out.** Use `<power-strip hidden>` to load `power-strip.js` (and its JS API) without rendering a visible strip.
+
 ## Access policy & provider entitlements
 
 StartupAPI can gate access to paths and forward the visitor's login/entitlement status to your origin so it can render gated UI. This is **provider-agnostic infrastructure**; only Patreon currently implements perk-level (benefit/tier) checks — Google and Twitch participate at the login levels only.

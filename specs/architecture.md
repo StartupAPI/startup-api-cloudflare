@@ -75,5 +75,5 @@ Users can be members of multiple accounts.
 
 ## Frontend & Integration
 
-- **Power Strip**: A custom element (`<power-strip>`) injected into proxied HTML pages. It provides a consistent UI for login, account switching, and profile management.
+- **Power Strip**: A custom element (`<power-strip>`) injected into proxied HTML pages. It provides a consistent UI for login, account switching, and profile management. Authors can place their own `<power-strip>` element to control its placement/styling; in that case the worker injects only `power-strip.js` and leaves the element alone (auto-filling `providers` if omitted, honoring `hidden` for a script-only opt-out).
 - **API Proxy**: The worker acts as a proxy, intercepting `/users/` paths for system features while forwarding other requests to the configured `ORIGIN_URL`.
