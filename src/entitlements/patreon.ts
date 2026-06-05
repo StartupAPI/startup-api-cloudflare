@@ -15,17 +15,31 @@ import type { PatreonEntitlement } from './types';
  *
  * When `campaignId` is provided, only the membership for that campaign is considered (a user may be a
  * patron of several campaigns through the same Patreon account); otherwise all memberships aggregate.
+ *
+ * `ownerIds` lists Patreon user ids that own the campaign being gated on. The campaign owner has no
+ * membership to their own campaign, so they are flagged `is_campaign_owner` (and later granted access
+ * regardless of the entitlement condition). Ownership is also auto-detected when the identity response
+ * exposes the user's owned-campaign relationship (requires the `campaigns` scope).
  */
-export function parsePatreonIdentity(json: any, campaignId?: string): PatreonEntitlement {
+export function parsePatreonIdentity(json: any, campaignId?: string, ownerIds: string[] = []): PatreonEntitlement {
   const empty: PatreonEntitlement = {
     patron_status: null,
     is_active_patron: false,
+    is_campaign_owner: false,
     entitled_tier_ids: [],
     entitled_benefit_ids: [],
     pledge_amount_cents: null,
   };
 
   if (!json || typeof json !== 'object' || !json.data) return empty;
+
+  // Campaign-owner detection: explicit owner id list, or the user's own campaign relationship
+  // (present only when the token has the `campaigns` scope) matching the gated campaign.
+  const userId = json.data.id != null ? String(json.data.id) : undefined;
+  const ownedCampaignId = json.data.relationships?.campaign?.data?.id;
+  const isCampaignOwner =
+    (userId != null && ownerIds.map(String).includes(userId)) ||
+    (ownedCampaignId != null && (!campaignId || String(ownedCampaignId) === String(campaignId)));
 
   // Index every included resource by `${type}:${id}` for O(1) ref resolution.
   const included = new Map<string, any>();
@@ -78,6 +92,7 @@ export function parsePatreonIdentity(json: any, campaignId?: string): PatreonEnt
   return {
     patron_status: patronStatus,
     is_active_patron: patronStatus === 'active_patron',
+    is_campaign_owner: isCampaignOwner,
     entitled_tier_ids: [...tierIds],
     entitled_benefit_ids: [...benefitIds],
     pledge_amount_cents: pledgeAmount,

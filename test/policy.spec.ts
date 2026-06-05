@@ -3,13 +3,14 @@ import { AccessPolicy, evaluateAccess, matchPattern } from '../src/policy/access
 import type { AccessRule } from '../src/schemas/policy';
 import type { Entitlements } from '../src/entitlements/types';
 
-const patreonEntitlements = (benefits: string[], active = true): Entitlements => ({
+const patreonEntitlements = (benefits: string[], active = true, isOwner = false): Entitlements => ({
   provider: 'patreon',
   checked_at: 0,
   source: 'oauth',
   patreon: {
     patron_status: active ? 'active_patron' : 'former_patron',
     is_active_patron: active,
+    is_campaign_owner: isOwner,
     entitled_tier_ids: ['t1'],
     entitled_benefit_ids: benefits,
     pledge_amount_cents: 500,
@@ -57,6 +58,15 @@ describe('evaluateAccess', () => {
     expect(evaluateAccess(r, { authenticated: true, entitlements: patreonEntitlements(['vip']) }).allow).toBe(true);
     const denied = evaluateAccess(r, { authenticated: true, entitlements: patreonEntitlements(['other']) });
     expect(denied).toMatchObject({ allow: false, reason: 'not_entitled', action: 'upgrade' });
+  });
+
+  it('grants the campaign owner regardless of the condition', () => {
+    const benefit = rule({ mode: 'entitlement', provider: 'patreon', condition: { type: 'benefit', benefit_id: 'vip' } }, 'forbidden');
+    const tier = rule({ mode: 'entitlement', provider: 'patreon', condition: { type: 'tier', tier_id: 'nope' } }, 'forbidden');
+    // Owner has no benefits/tiers/active status, but is the campaign owner.
+    const owner = patreonEntitlements([], false, true);
+    expect(evaluateAccess(benefit, { authenticated: true, entitlements: owner }).allow).toBe(true);
+    expect(evaluateAccess(tier, { authenticated: true, entitlements: owner }).allow).toBe(true);
   });
 
   it('denies an entitlement requirement when not authenticated', () => {

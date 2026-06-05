@@ -18,6 +18,8 @@ export const providerEntitlementCheckers: Record<string, EntitlementChecker> = {
   patreon(condition, entitlements) {
     const patreon = entitlements?.patreon;
     if (!patreon) return false;
+    // The campaign owner has no membership to their own campaign — grant access regardless of condition.
+    if (patreon.is_campaign_owner) return true;
     switch (condition.type) {
       case 'active_patron':
         return patreon.is_active_patron;

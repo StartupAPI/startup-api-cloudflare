@@ -48,10 +48,30 @@ describe('parsePatreonIdentity', () => {
     expect(result).toEqual({
       patron_status: null,
       is_active_patron: false,
+      is_campaign_owner: false,
       entitled_tier_ids: [],
       entitled_benefit_ids: [],
       pledge_amount_cents: null,
     });
+  });
+
+  it('flags the campaign owner when their user id is in the configured owner list', () => {
+    // identity() builds data.id = 'user-1'.
+    const result = parsePatreonIdentity(identity(null, []), undefined, ['user-1']);
+    expect(result.is_campaign_owner).toBe(true);
+  });
+
+  it('auto-detects the campaign owner from the owned-campaign relationship', () => {
+    const json = identity(null, []);
+    json.data.relationships = { ...json.data.relationships, campaign: { data: { type: 'campaign', id: 'camp-1' } } };
+    expect(parsePatreonIdentity(json, 'camp-1').is_campaign_owner).toBe(true);
+    // A different gated campaign id does not match.
+    expect(parsePatreonIdentity(json, 'other-camp').is_campaign_owner).toBe(false);
+  });
+
+  it('does not flag a non-owner', () => {
+    const result = parsePatreonIdentity(identity('active_patron', [{ id: 't1', benefits: ['b1'] }]), undefined, ['someone-else']);
+    expect(result.is_campaign_owner).toBe(false);
   });
 
   it('marks a declined patron as not active', () => {

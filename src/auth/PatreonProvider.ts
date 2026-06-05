@@ -7,6 +7,7 @@ import { parsePatreonIdentity } from '../entitlements/patreon';
 
 export class PatreonProvider extends OAuthProvider {
   private campaignId?: string;
+  private campaignOwnerIds: string[] = [];
 
   static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): PatreonProvider | null {
     if (!env.PATREON_CLIENT_ID || !env.PATREON_CLIENT_SECRET) return null;
@@ -18,6 +19,8 @@ export class PatreonProvider extends OAuthProvider {
       options?.scopes,
     );
     provider.campaignId = options?.campaignId?.trim() || undefined;
+    const owners = options?.campaignOwnerId;
+    provider.campaignOwnerIds = (Array.isArray(owners) ? owners : owners ? [owners] : []).map((id) => id.trim()).filter(Boolean);
     return provider;
   }
 
@@ -119,6 +122,6 @@ export class PatreonProvider extends OAuthProvider {
       },
     });
 
-    return { patreon: parsePatreonIdentity(data, this.campaignId) };
+    return { patreon: parsePatreonIdentity(data, this.campaignId, this.campaignOwnerIds) };
   }
 }

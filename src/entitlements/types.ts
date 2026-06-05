@@ -23,6 +23,12 @@ export interface PatreonEntitlement {
   patron_status: 'active_patron' | 'declined_patron' | 'former_patron' | null;
   /** Convenience flag derived from patron_status === 'active_patron'. */
   is_active_patron: boolean;
+  /**
+   * Whether this user is the owner (creator) of the campaign being gated on. Campaign owners have no
+   * membership to their own campaign, so they would fail patron/benefit/tier checks; the entitlement
+   * checker grants them access regardless of the configured condition.
+   */
+  is_campaign_owner: boolean;
   /** IDs of tiers the user is currently entitled to. */
   entitled_tier_ids: string[];
   /** IDs of benefits (perks) granted by the currently-entitled tiers (deduped). */

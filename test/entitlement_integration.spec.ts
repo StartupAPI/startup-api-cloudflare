@@ -34,7 +34,7 @@ function fetchWith(path: string, cookie?: string) {
   });
 }
 
-async function createPatreonUser(benefits: string[], active = true) {
+async function createPatreonUser(benefits: string[], active = true, isOwner = false) {
   const userId = env.USER.newUniqueId();
   const userStub = env.USER.get(userId);
   const userIdStr = userId.toString();
@@ -51,6 +51,7 @@ async function createPatreonUser(benefits: string[], active = true) {
     patreon: {
       patron_status: active ? 'active_patron' : 'former_patron',
       is_active_patron: active,
+      is_campaign_owner: isOwner,
       entitled_tier_ids: ['t1'],
       entitled_benefit_ids: benefits,
       pledge_amount_cents: 500,
@@ -116,6 +117,17 @@ describe('Entitlement headers + access policy', () => {
   it('forbids a gated path for an unauthenticated request', async () => {
     const res = await fetchWith('/special');
     expect(res.status).toBe(403);
+  });
+
+  it('allows the campaign owner on a gated path even without the benefit', async () => {
+    const cookie = await createPatreonUser([], false, /* isOwner */ true);
+    const fetchSpy = spyOrigin();
+    try {
+      const res = await fetchWith('/special', cookie);
+      expect(res.status).toBe(200);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('bypass path forwards with NO X-StartupAPI headers and no power-strip injection, even when logged in', async () => {

@@ -28,6 +28,8 @@ export const ProviderOptionsSchema = z.object({
   scopes: z.union([z.string(), z.array(z.string())]).optional(),
   /** Patreon only: restrict entitlements to a single campaign id. */
   campaignId: z.string().optional(),
+  /** Patreon only: user id(s) of the campaign owner(s), granted access without an entitlement check. */
+  campaignOwnerId: z.union([z.string(), z.array(z.string())]).optional(),
   freshness: ProviderFreshnessSchema.optional(),
 });
 

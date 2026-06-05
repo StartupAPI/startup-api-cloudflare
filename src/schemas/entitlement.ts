@@ -8,6 +8,7 @@ import { z } from 'zod';
 export const PatreonEntitlementSchema = z.object({
   patron_status: z.enum(['active_patron', 'declined_patron', 'former_patron']).nullable(),
   is_active_patron: z.boolean(),
+  is_campaign_owner: z.boolean(),
   entitled_tier_ids: z.array(z.string()),
   entitled_benefit_ids: z.array(z.string()),
   pledge_amount_cents: z.number().nullable(),

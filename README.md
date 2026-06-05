@@ -143,7 +143,7 @@ Configure an ordered list of rules (first match wins) mapping a path pattern to 
 - **`bypass`** — raw pass-through: no credential check, no identity resolution, no headers, no power-strip injection.
 - **`public`** — anyone; the session is resolved and identity/entitlement headers are forwarded when present.
 - **`authenticated`** — any logged-in user.
-- **`entitlement`** — a provider condition: Patreon `active_patron`, a specific `benefit` (perk) ID, or a `tier` ID.
+- **`entitlement`** — a provider condition: Patreon `active_patron`, a specific `benefit` (perk) ID, or a `tier` ID. The campaign owner is always granted (see below), since they have no membership to their own campaign.
 
 Patterns are exact (`/special`), prefix (`/app/*`), or `/` (homepage only). Each rule's `on_unauthorized` is `login` (redirect to sign in), `forbidden` (403), or `upgrade` (redirect to `upgrade_url`, e.g. a Patreon join page). When no policy is configured at all, every path is treated as `public` (backward compatible).
 
@@ -178,6 +178,14 @@ Entitlements are fetched once at login. Each provider can additionally opt into 
 
 Set `providers.patreon.campaignId` to disambiguate when a user belongs to multiple campaigns.
 
+#### Campaign owner
+
+A campaign's owner (creator) is not a patron of their own campaign, so they would fail every entitlement condition. Grant them access by listing their Patreon user id(s) in `providers.patreon.campaignOwnerId` (a string or array) — they then pass any Patreon `entitlement` rule without an entitlement check. Owners are also auto-detected when the identity response exposes their owned-campaign relationship (requires the `campaigns` scope and a matching `campaignId`); the explicit `campaignOwnerId` works without any extra scope.
+
+```ts
+patreon: { campaignOwnerId: '<OWNER_PATREON_USER_ID>' }
+```
+
 ### Configuring via the factory
 
 Environment variables hold only credentials/secrets and the per-deployment values (`ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, `ENVIRONMENT`). Everything else — provider scopes, Patreon campaign id, the access policy, and entitlement freshness — is passed to `createStartupAPI(config)`. The plain re-export still works with defaults:
@@ -196,6 +204,7 @@ const api = createStartupAPI({
     patreon: {
       scopes: 'identity.memberships',
       campaignId: '<CAMPAIGN_ID>',
+      campaignOwnerId: '<OWNER_PATREON_USER_ID>', // granted access without an entitlement check
       freshness: { ttl: true, cron: { schedule: '0 */6 * * *' }, webhook: true },
     },
   },
