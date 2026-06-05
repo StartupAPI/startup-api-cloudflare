@@ -202,6 +202,7 @@
         "TWITCH_CLIENT_SECRET": "twitch-secret",
         "PATREON_CLIENT_ID": "patreon-id",
         "PATREON_CLIENT_SECRET": "patreon-secret",
+        "PATREON_SCOPES": "identity.memberships",
       },
     },
   },

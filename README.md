@@ -65,10 +65,13 @@ Use this option if you want to deploy from your local machine.
 | `AUTH_ORIGIN`          | No       | N/A       | Optional base URL for OAuth redirects (overrides request origin)              |
 | `GOOGLE_CLIENT_ID`     | No       | N/A       | Google OAuth2 Client ID                                                       |
 | `GOOGLE_CLIENT_SECRET` | No       | N/A       | Google OAuth2 Client Secret                                                   |
+| `GOOGLE_SCOPES`        | No       | N/A       | Extra Google OAuth scopes to request (space- or comma-separated)             |
 | `TWITCH_CLIENT_ID`     | No       | N/A       | Twitch OAuth2 Client ID                                                       |
 | `TWITCH_CLIENT_SECRET` | No       | N/A       | Twitch OAuth2 Client Secret                                                   |
+| `TWITCH_SCOPES`        | No       | N/A       | Extra Twitch OAuth scopes to request (space- or comma-separated)             |
 | `PATREON_CLIENT_ID`    | No       | N/A       | Patreon OAuth2 Client ID                                                      |
 | `PATREON_CLIENT_SECRET`| No       | N/A       | Patreon OAuth2 Client Secret                                                  |
+| `PATREON_SCOPES`       | No       | N/A       | Extra Patreon OAuth scopes to request (space- or comma-separated)            |
 
 ### Setting up OAuth
 
@@ -96,6 +99,19 @@ Use this option if you want to deploy from your local machine.
 2. Click **Create Client** and fill in your app details
 3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/patreon/callback`
 4. Copy the **Client ID** and **Client Secret** and add them to your Worker's environment variables
+
+#### Requesting additional scopes
+
+Each provider requests the minimal scopes needed to sign a user in and read their basic profile. To request more (for example, to read a user's Patreon memberships), set the provider's `*_SCOPES` variable to a space- or comma-separated list. The extra scopes are merged with the required base scopes:
+
+```jsonc
+{
+  "vars": {
+    // Adds `identity.memberships` on top of the base `identity identity[email]`
+    "PATREON_SCOPES": "identity.memberships",
+  }
+}
+```
 
 ### Example `wrangler.jsonc` snippet:
 

@@ -5,7 +5,13 @@ import { OAuthProvider, OAuthTokenResponse, UserProfile } from './OAuthProvider'
 export class TwitchProvider extends OAuthProvider {
   static create(env: StartupAPIEnv, redirectBase: string): TwitchProvider | null {
     if (!env.TWITCH_CLIENT_ID || !env.TWITCH_CLIENT_SECRET) return null;
-    return new TwitchProvider(env.TWITCH_CLIENT_ID, env.TWITCH_CLIENT_SECRET, redirectBase + '/twitch/callback', 'twitch');
+    return new TwitchProvider(
+      env.TWITCH_CLIENT_ID,
+      env.TWITCH_CLIENT_SECRET,
+      redirectBase + '/twitch/callback',
+      'twitch',
+      OAuthProvider.parseScopes(env.TWITCH_SCOPES),
+    );
   }
 
   getAuthUrl(state: string): string {
@@ -13,7 +19,7 @@ export class TwitchProvider extends OAuthProvider {
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       response_type: 'code',
-      scope: 'user:read:email',
+      scope: this.buildScope(['user:read:email']),
       state: state,
     });
     return `https://id.twitch.tv/oauth2/authorize?${params.toString()}`;

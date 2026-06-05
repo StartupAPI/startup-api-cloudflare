@@ -5,7 +5,13 @@ import { OAuthProvider, OAuthTokenResponse, UserProfile } from './OAuthProvider'
 export class GoogleProvider extends OAuthProvider {
   static create(env: StartupAPIEnv, redirectBase: string): GoogleProvider | null {
     if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
-    return new GoogleProvider(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, redirectBase + '/google/callback', 'google');
+    return new GoogleProvider(
+      env.GOOGLE_CLIENT_ID,
+      env.GOOGLE_CLIENT_SECRET,
+      redirectBase + '/google/callback',
+      'google',
+      OAuthProvider.parseScopes(env.GOOGLE_SCOPES),
+    );
   }
 
   getAuthUrl(state: string): string {
@@ -13,7 +19,7 @@ export class GoogleProvider extends OAuthProvider {
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       response_type: 'code',
-      scope: 'openid email profile',
+      scope: this.buildScope(['openid', 'email', 'profile']),
       state: state,
       access_type: 'offline',
       prompt: 'consent',

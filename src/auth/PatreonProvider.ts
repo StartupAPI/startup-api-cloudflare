@@ -5,7 +5,13 @@ import { OAuthProvider, OAuthTokenResponse, UserProfile } from './OAuthProvider'
 export class PatreonProvider extends OAuthProvider {
   static create(env: StartupAPIEnv, redirectBase: string): PatreonProvider | null {
     if (!env.PATREON_CLIENT_ID || !env.PATREON_CLIENT_SECRET) return null;
-    return new PatreonProvider(env.PATREON_CLIENT_ID, env.PATREON_CLIENT_SECRET, redirectBase + '/patreon/callback', 'patreon');
+    return new PatreonProvider(
+      env.PATREON_CLIENT_ID,
+      env.PATREON_CLIENT_SECRET,
+      redirectBase + '/patreon/callback',
+      'patreon',
+      OAuthProvider.parseScopes(env.PATREON_SCOPES),
+    );
   }
 
   getAuthUrl(state: string): string {
@@ -13,7 +19,7 @@ export class PatreonProvider extends OAuthProvider {
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       response_type: 'code',
-      scope: 'identity identity[email]',
+      scope: this.buildScope(['identity', 'identity[email]']),
       state: state,
     });
     return `https://www.patreon.com/oauth2/authorize?${params.toString()}`;

@@ -374,6 +374,30 @@ describe('Integration Tests', () => {
     expect(html).toContain('<power-strip providers="google,twitch,patreon"');
   });
 
+  it('should append configured additional scopes to the OAuth auth URL', async () => {
+    // wrangler.test.jsonc sets PATREON_SCOPES="identity.memberships"
+    const res = await SELF.fetch('http://example.com/users/auth/patreon', { redirect: 'manual' });
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location') || '';
+    const authUrl = new URL(location);
+    const scope = authUrl.searchParams.get('scope') || '';
+
+    // Base scopes are preserved and the configured extra scope is merged in
+    expect(scope.split(' ')).toEqual(['identity', 'identity[email]', 'identity.memberships']);
+  });
+
+  it('should not append extra scopes for providers without a configured *_SCOPES var', async () => {
+    // No TWITCH_SCOPES is configured, so only the base scope should be present
+    const res = await SELF.fetch('http://example.com/users/auth/twitch', { redirect: 'manual' });
+
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location') || '';
+    const scope = new URL(location).searchParams.get('scope') || '';
+
+    expect(scope).toBe('user:read:email');
+  });
+
   it('should handle numeric subject_id and empty email without ZodError', async () => {
     const userId = env.USER.newUniqueId().toString();
     const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('google'));

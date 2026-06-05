@@ -20,12 +20,43 @@ export abstract class OAuthProvider {
   protected clientSecret: string;
   protected redirectUri: string;
   public name: string;
+  protected additionalScopes: string[];
 
-  constructor(clientId: string, clientSecret: string, redirectUri: string, name: string) {
+  constructor(clientId: string, clientSecret: string, redirectUri: string, name: string, additionalScopes: string[] = []) {
     this.clientId = clientId.trim();
     this.clientSecret = clientSecret.trim();
     this.redirectUri = redirectUri.trim();
     this.name = name.trim();
+    this.additionalScopes = additionalScopes;
+  }
+
+  /**
+   * Parse a configured scope string (whitespace- or comma-separated) into a list of scopes.
+   * Used by providers to read extra scopes from env vars like `PATREON_SCOPES`.
+   */
+  static parseScopes(raw?: string | null): string[] {
+    if (!raw) return [];
+    return raw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * Merge a provider's required base scopes with the configured additional scopes,
+   * preserving order and removing duplicates.
+   */
+  protected buildScope(defaultScopes: string[], separator = ' '): string {
+    const seen = new Set<string>();
+    const merged: string[] = [];
+    for (const scope of [...defaultScopes, ...this.additionalScopes]) {
+      const trimmed = scope.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        merged.push(trimmed);
+      }
+    }
+    return merged.join(separator);
   }
 
   isMatch(path: string, authBasePath: string): boolean {
