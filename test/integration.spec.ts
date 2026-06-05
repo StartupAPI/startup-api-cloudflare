@@ -333,7 +333,7 @@ describe('Integration Tests', () => {
     expect(html).toContain('twitch');
     expect(html).toContain('google@example.com');
     expect(html).toContain('twitch@example.com');
-    expect(html).toContain('providers="google,twitch"');
+    expect(html).toContain('providers="google,twitch,patreon"');
     expect(html).not.toContain('{{ssr:profile_name}}');
   });
 
@@ -357,6 +357,7 @@ describe('Integration Tests', () => {
     // Check that configured providers are present
     expect(html).toContain('link-account-btn google');
     expect(html).toContain('link-account-btn twitch');
+    expect(html).toContain('link-account-btn patreon');
 
     // Check that some non-existent provider is NOT present
     expect(html).not.toContain('link-account-btn github');
@@ -370,7 +371,7 @@ describe('Integration Tests', () => {
     const html = await res.text();
 
     // Check that power-strip element was injected with correct providers
-    expect(html).toContain('<power-strip providers="google,twitch"');
+    expect(html).toContain('<power-strip providers="google,twitch,patreon"');
   });
 
   it('should handle numeric subject_id and empty email without ZodError', async () => {

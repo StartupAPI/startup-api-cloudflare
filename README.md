@@ -67,6 +67,8 @@ Use this option if you want to deploy from your local machine.
 | `GOOGLE_CLIENT_SECRET` | No       | N/A       | Google OAuth2 Client Secret                                                   |
 | `TWITCH_CLIENT_ID`     | No       | N/A       | Twitch OAuth2 Client ID                                                       |
 | `TWITCH_CLIENT_SECRET` | No       | N/A       | Twitch OAuth2 Client Secret                                                   |
+| `PATREON_CLIENT_ID`    | No       | N/A       | Patreon OAuth2 Client ID                                                      |
+| `PATREON_CLIENT_SECRET`| No       | N/A       | Patreon OAuth2 Client Secret                                                  |
 
 ### Setting up OAuth
 
@@ -87,6 +89,13 @@ Use this option if you want to deploy from your local machine.
 3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/twitch/callback`
 4. Select **Website** as the category
 5. Copy the **Client ID** and generate a **Client Secret** to add them to your Worker's environment variables
+
+#### Patreon
+
+1. Go to the [Patreon Developer Portal](https://www.patreon.com/portal/registration/register-clients)
+2. Click **Create Client** and fill in your app details
+3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/patreon/callback`
+4. Copy the **Client ID** and **Client Secret** and add them to your Worker's environment variables
 
 ### Example `wrangler.jsonc` snippet:
 

@@ -9,6 +9,9 @@ export function getActiveProviders(env: StartupAPIEnv): string[] {
   if (env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET) {
     providers.push('twitch');
   }
+  if (env.PATREON_CLIENT_ID && env.PATREON_CLIENT_SECRET) {
+    providers.push('patreon');
+  }
   return providers;
 }
 

@@ -49,5 +49,7 @@
     "GOOGLE_CLIENT_SECRET": "google-secret",
     "TWITCH_CLIENT_ID": "twitch-id",
     "TWITCH_CLIENT_SECRET": "twitch-secret",
+    "PATREON_CLIENT_ID": "patreon-id",
+    "PATREON_CLIENT_SECRET": "patreon-secret",
   },
 }

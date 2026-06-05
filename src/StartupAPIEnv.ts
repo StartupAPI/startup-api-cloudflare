@@ -6,6 +6,8 @@ export type StartupAPIEnv = {
   GOOGLE_CLIENT_SECRET: string;
   TWITCH_CLIENT_ID: string;
   TWITCH_CLIENT_SECRET: string;
+  PATREON_CLIENT_ID: string;
+  PATREON_CLIENT_SECRET: string;
   ADMIN_IDS: string;
   SESSION_SECRET: string;
   ENVIRONMENT?: string;

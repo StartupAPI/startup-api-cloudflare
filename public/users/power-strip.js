@@ -93,6 +93,8 @@ class PowerStrip extends HTMLElement {
               </svg>`;
     } else if (provider === 'twitch') {
       return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#9146FF" stroke="white" stroke-width="1"/><path d="M7 6H6v10h2v3l3-3h3l4-4V6H7zm9 6l-2 2h-3l-2 2v-2H8V7h8v5z" fill="white"/><path d="M14 8.5h1.5v2H14V8.5zm-3 0h1.5v2H11v-2z" fill="white"/></svg>`;
+    } else if (provider === 'patreon') {
+      return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#FF424D" stroke="white" stroke-width="1"/><circle cx="14" cy="11" r="3.5" fill="white"/><rect x="6.5" y="6.5" width="2" height="11" fill="white"/></svg>`;
     }
     return '';
   }
@@ -101,6 +103,7 @@ class PowerStrip extends HTMLElement {
     const returnUrl = encodeURIComponent(window.location.href);
     const googleLink = `${this.basePath}/auth/google?return_url=${returnUrl}`;
     const twitchLink = `${this.basePath}/auth/twitch?return_url=${returnUrl}`;
+    const patreonLink = `${this.basePath}/auth/patreon?return_url=${returnUrl}`;
     const logoutLink = `${this.basePath}/logout?return_url=${returnUrl}`;
 
     const providersStr = this.getAttribute('providers') || '';
@@ -126,6 +129,15 @@ class PowerStrip extends HTMLElement {
                       <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z" fill="currentColor"/>
                     </svg>
                     Continue with Twitch
+                </a>`;
+    }
+    if (providers.includes('patreon')) {
+      authButtons += `
+                <a href="${patreonLink}" class="auth-btn patreon">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M14.82 2.41c3.96 0 7.18 3.24 7.18 7.21 0 3.96-3.22 7.18-7.18 7.18-3.97 0-7.21-3.22-7.21-7.18 0-3.97 3.24-7.21 7.21-7.21M2 21.6h3.5V2.41H2V21.6z" fill="currentColor"/>
+                    </svg>
+                    Continue with Patreon
                 </a>`;
     }
 
@@ -329,6 +341,7 @@ class PowerStrip extends HTMLElement {
 
         .provider-badge.google { color: #3c4043; }
         .provider-badge.twitch { color: #9146FF; }
+        .provider-badge.patreon { color: #FF424D; }
 
         .user-info {
             display: flex;
@@ -506,7 +519,17 @@ class PowerStrip extends HTMLElement {
             background-color: #7d2ee6;
             border-color: #7d2ee6;
         }
-        
+
+        .auth-btn.patreon {
+            background-color: #FF424D;
+            color: white;
+            border-color: #FF424D;
+        }
+        .auth-btn.patreon:hover {
+            background-color: #e63a44;
+            border-color: #e63a44;
+        }
+
         /* Account Switcher Styling */
         .account-list {
             display: flex;

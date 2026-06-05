@@ -2,6 +2,7 @@ import type { StartupAPIEnv } from '../StartupAPIEnv';
 
 import { GoogleProvider } from './GoogleProvider';
 import { TwitchProvider } from './TwitchProvider';
+import { PatreonProvider } from './PatreonProvider';
 import { OAuthProvider } from './OAuthProvider';
 import { CookieManager } from '../CookieManager';
 
@@ -23,7 +24,11 @@ export async function handleAuth(
   const authPath = new URL(redirectBase).pathname;
 
   // Instantiate providers
-  const providers: (OAuthProvider | null)[] = [GoogleProvider.create(env, redirectBase), TwitchProvider.create(env, redirectBase)];
+  const providers: (OAuthProvider | null)[] = [
+    GoogleProvider.create(env, redirectBase),
+    TwitchProvider.create(env, redirectBase),
+    PatreonProvider.create(env, redirectBase),
+  ];
 
   const activeProviders = providers.filter((p): p is OAuthProvider => p !== null);
 
