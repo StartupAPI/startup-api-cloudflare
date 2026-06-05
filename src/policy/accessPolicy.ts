@@ -30,8 +30,15 @@ function deny(reason: 'unauthenticated' | 'not_entitled', rule: AccessRule): Pol
  * Decide whether a request satisfies a resolved rule, given the auth state and resolved entitlements.
  * `bypass`/`public` always allow; `authenticated` needs a logged-in user; `entitlement` dispatches the
  * condition through the provider checker registry.
+ *
+ * Admin users (`ctx.isAdmin`) bypass every requirement: identity has already been resolved and headers
+ * forwarded by the time we get here, but the gate itself is skipped so admins can reach any gated path.
  */
-export function evaluateAccess(rule: AccessRule, ctx: { authenticated: boolean; entitlements: Entitlements | null }): PolicyDecision {
+export function evaluateAccess(
+  rule: AccessRule,
+  ctx: { authenticated: boolean; entitlements: Entitlements | null; isAdmin?: boolean },
+): PolicyDecision {
+  if (ctx.isAdmin) return { allow: true };
   const req = rule.requirement;
   switch (req.mode) {
     case 'bypass':

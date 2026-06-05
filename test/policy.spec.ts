@@ -63,6 +63,14 @@ describe('evaluateAccess', () => {
     const r = rule({ mode: 'entitlement', provider: 'patreon', condition: { type: 'active_patron' } });
     expect(evaluateAccess(r, { authenticated: false, entitlements: null })).toMatchObject({ reason: 'unauthenticated' });
   });
+
+  it('lets admins bypass any requirement', () => {
+    const authRule = rule({ mode: 'authenticated' }, 'login');
+    expect(evaluateAccess(authRule, { authenticated: false, entitlements: null, isAdmin: true }).allow).toBe(true);
+
+    const entRule = rule({ mode: 'entitlement', provider: 'patreon', condition: { type: 'benefit', benefit_id: 'vip' } }, 'upgrade');
+    expect(evaluateAccess(entRule, { authenticated: true, entitlements: patreonEntitlements(['other']), isAdmin: true }).allow).toBe(true);
+  });
 });
 
 describe('AccessPolicy', () => {

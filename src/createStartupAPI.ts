@@ -7,7 +7,7 @@ import { CredentialDO } from './storage/CredentialDO';
 import { CookieManager } from './CookieManager';
 import { initPlans } from './billing/plansConfig';
 import { Plan } from './billing/Plan';
-import { getActiveProviders, parseCookies, getUserFromSession } from './handlers/utils';
+import { getActiveProviders, parseCookies, getUserFromSession, isAdmin } from './handlers/utils';
 import { handleAdmin } from './handlers/admin';
 import {
   handleMe,
@@ -259,6 +259,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
 
       const user = await getUserFromSession(request, env, cookieManager);
       const authenticated = !!user;
+      const userIsAdmin = user ? isAdmin(user, env) : false;
       let entitlements: Entitlements | null = null;
       let loginProvider: string | undefined;
 
@@ -294,8 +295,8 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
         newRequest.headers.set(key, value);
       }
 
-      // Enforce the requirement.
-      const decision = evaluateAccess(rule, { authenticated, entitlements });
+      // Enforce the requirement. Admins bypass the gate (identity/headers above still apply).
+      const decision = evaluateAccess(rule, { authenticated, entitlements, isAdmin: userIsAdmin });
       if (!decision.allow) {
         return denyResponse(decision, { usersPath, returnUrl, activeProviders: getActiveProviders(env) });
       }

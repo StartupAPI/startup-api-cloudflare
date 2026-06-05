@@ -147,6 +147,8 @@ Configure an ordered list of rules (first match wins) mapping a path pattern to 
 
 Patterns are exact (`/special`), prefix (`/app/*`), or `/` (homepage only). Each rule's `on_unauthorized` is `login` (redirect to sign in), `forbidden` (403), or `upgrade` (redirect to `upgrade_url`, e.g. a Patreon join page). When no policy is configured at all, every path is treated as `public` (backward compatible).
 
+Admin users (those listed in `ADMIN_IDS`) bypass every `authenticated`/`entitlement` requirement and can reach any gated path. Their identity is still resolved and the usual identity/entitlement headers are forwarded to the origin — only the gate itself is skipped. (`bypass` paths remain a raw pass-through for everyone, with no identity resolution.)
+
 The policy is passed to the factory as `accessPolicy` (see below). Example:
 
 ```ts
