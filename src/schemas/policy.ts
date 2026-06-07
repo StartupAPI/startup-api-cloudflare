@@ -34,7 +34,27 @@ export const RequirementSchema = z.discriminatedUnion('mode', [
   }),
 ]);
 
-export const UnauthorizedActionSchema = z.enum(['login', 'forbidden', 'upgrade']);
+/** Where a gate page body comes from. Exactly one of asset/origin. */
+export const PageSourceSchema = z.union([
+  // Served from the ASSETS binding; path is resolved like other assets (`/foo` -> foo.html).
+  z.object({ asset: z.string() }),
+  // Proxied from this path on ORIGIN_URL.
+  z.object({ origin: z.string() }),
+]);
+export type PageSource = z.infer<typeof PageSourceSchema>;
+
+/** Page(s) served in place when a requirement is not met (on_unauthorized: 'gate'). */
+export const GateSchema = z.object({
+  /** Shown to visitors who are NOT logged in. Required. */
+  anonymous: PageSourceSchema,
+  /** Shown to logged-in visitors who fail the requirement. Falls back to `anonymous` if omitted. */
+  unentitled: PageSourceSchema.optional(),
+  /** HTTP status for the served page. Default 200 (preserves typical explainer-page UX). */
+  status: z.number().int().optional(),
+});
+export type Gate = z.infer<typeof GateSchema>;
+
+export const UnauthorizedActionSchema = z.enum(['login', 'forbidden', 'upgrade', 'gate']);
 
 export const RuleSchema = z.object({
   /** Path pattern: exact (`/special`), prefix (`/special/*`), or `/` for the homepage only. */
@@ -44,6 +64,8 @@ export const RuleSchema = z.object({
   on_unauthorized: UnauthorizedActionSchema.default('login'),
   /** Redirect target for the 'upgrade' action (e.g. a Patreon join page). */
   upgrade_url: z.string().optional(),
+  /** Page(s) served in place for the 'gate' action. */
+  gate: GateSchema.optional(),
 });
 
 export const AccessPolicySchema = z.object({
@@ -52,6 +74,8 @@ export const AccessPolicySchema = z.object({
   default: RequirementSchema.optional(),
   default_on_unauthorized: UnauthorizedActionSchema.default('login'),
   default_upgrade_url: z.string().optional(),
+  /** Page(s) served in place for the 'gate' action on paths that match no rule. */
+  default_gate: GateSchema.optional(),
 });
 
 export type EntitlementCondition = z.infer<typeof EntitlementConditionSchema>;
