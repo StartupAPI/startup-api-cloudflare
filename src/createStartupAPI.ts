@@ -24,7 +24,7 @@ import { handleSSR } from './handlers/ssr';
 import type { StartupAPIEnv } from './StartupAPIEnv';
 import { StartupAPIConfigSchema } from './schemas/config';
 import type { StartupAPIConfig, ProviderOptions, ResolvedFreshness } from './schemas/config';
-import type { AccessPolicyConfig } from './schemas/policy';
+import type { AccessPolicyConfig, PageSource } from './schemas/policy';
 import { AccessPolicy, evaluateAccess } from './policy/accessPolicy';
 import type { PolicyDecision } from './policy/accessPolicy';
 import { loadEntitlements, entitlementHeaders } from './entitlements/service';
@@ -67,11 +67,46 @@ function resolveAccessPolicy(configPolicy: AccessPolicyConfig | undefined): Acce
   return configPolicy ?? { default: { mode: 'public' } };
 }
 
-/** Build a deny response (login redirect / 403 / upgrade redirect) for an unmet access requirement. */
+/**
+ * Serve a gate page body in place (no redirect), sourced from either the ASSETS binding (a local file)
+ * or a path proxied from ORIGIN_URL. The configured status is re-stamped onto the response so e.g. a
+ * 200 asset can be served as a 403 gate.
+ */
+async function serveGatePage(
+  source: PageSource,
+  status: number,
+  request: Request,
+  env: StartupAPIEnv,
+  reqUrl: URL,
+): Promise<Response> {
+  let res: Response;
+  if ('asset' in source) {
+    // Serve a local file from ASSETS, mirroring the existing user-asset path.
+    const assetReq = new Request(new URL(source.asset, reqUrl).toString(), { method: 'GET' });
+    assetReq.headers.set('x-skip-worker', 'true');
+    res = await env.ASSETS.fetch(assetReq);
+  } else {
+    // Proxy a path from ORIGIN_URL (swap host, set Host), like the main origin proxy.
+    const target = new URL(source.origin, new URL(env.ORIGIN_URL));
+    const proxied = new Request(target.toString(), request);
+    proxied.headers.set('Host', target.host);
+    res = await originFetch(proxied);
+  }
+  // Re-stamp the status (e.g. a 200 asset can be served as the configured gate status).
+  return new Response(res.body, { status, headers: res.headers });
+}
+
+/** Build a deny response (login redirect / 403 / upgrade redirect / in-place gate page) for an unmet access requirement. */
 function denyResponse(
   decision: Extract<PolicyDecision, { allow: false }>,
-  ctx: { usersPath: string; returnUrl: string; activeProviders: string[] },
-): Response {
+  ctx: { usersPath: string; returnUrl: string; activeProviders: string[]; authenticated: boolean; request: Request; env: StartupAPIEnv; url: URL },
+): Response | Promise<Response> {
+  if (decision.action === 'gate' && decision.gate) {
+    // Serve an explainer page in place: anonymous variant for logged-out visitors, unentitled variant
+    // (falling back to anonymous) for logged-in visitors who fail the requirement. No redirect.
+    const source = ctx.authenticated ? (decision.gate.unentitled ?? decision.gate.anonymous) : decision.gate.anonymous;
+    return serveGatePage(source, decision.gate.status ?? 200, ctx.request, ctx.env, ctx.url);
+  }
   if (decision.action === 'forbidden') {
     return new Response('Forbidden', { status: 403 });
   }
@@ -298,7 +333,15 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       // Enforce the requirement. Admins bypass the gate (identity/headers above still apply).
       const decision = evaluateAccess(rule, { authenticated, entitlements, isAdmin: userIsAdmin });
       if (!decision.allow) {
-        return denyResponse(decision, { usersPath, returnUrl, activeProviders: getActiveProviders(env) });
+        return denyResponse(decision, {
+          usersPath,
+          returnUrl,
+          activeProviders: getActiveProviders(env),
+          authenticated,
+          request,
+          env,
+          url,
+        });
       }
 
       const response = await originFetch(newRequest);

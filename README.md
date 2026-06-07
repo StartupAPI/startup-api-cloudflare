@@ -160,7 +160,34 @@ Configure an ordered list of rules (first match wins) mapping a path pattern to 
 - **`authenticated`** — any logged-in user.
 - **`entitlement`** — a provider condition: Patreon `active_patron`, a specific `benefit` (perk) ID, or a `tier` ID.
 
-Patterns are exact (`/special`), prefix (`/app/*`), or `/` (homepage only). Each rule's `on_unauthorized` is `login` (redirect to sign in), `forbidden` (403), or `upgrade` (redirect to `upgrade_url`, e.g. a Patreon join page). When no policy is configured at all, every path is treated as `public` (backward compatible).
+Patterns are exact (`/special`), prefix (`/app/*`), or `/` (homepage only). Each rule's `on_unauthorized` is `login` (redirect to sign in), `forbidden` (403), `upgrade` (redirect to `upgrade_url`, e.g. a Patreon join page), or `gate` (serve an explainer page **in place**, with no redirect — see below). When no policy is configured at all, every path is treated as `public` (backward compatible).
+
+#### Serving a gate page in place (`on_unauthorized: 'gate'`)
+
+Instead of redirecting, a denied request can serve an explainer page **at the requested URL** (no redirect, status `200` by default). The page shown depends on login state, so anonymous and logged-in-but-unentitled visitors can see different copy:
+
+- **`anonymous`** (required) — shown to visitors who are **not** logged in (e.g. a "become a patron + log in" page).
+- **`unentitled`** (optional) — shown to logged-in visitors who fail the requirement (e.g. a "pledge/upgrade" page). Falls back to `anonymous` when omitted.
+- **`status`** (optional) — HTTP status for the served page; defaults to `200` to preserve typical explainer-page UX (set `403` if you prefer).
+
+Each variant is a `PageSource` whose body comes from **either** the `ASSETS` binding **or** a path proxied from `ORIGIN_URL` — exactly one of:
+
+- **`{ asset: '/early-access' }`** — a local file from `ASSETS` (resolved like other assets, `/early-access` → `early-access.html`).
+- **`{ origin: '/early-access' }`** — a path proxied from `ORIGIN_URL`. The path must be reachable directly on the origin (the raw site, not behind this worker).
+
+The gate config is set per rule via `gate`, or on the policy default via `default_gate`. The served gate page is produced inside the deny path, so it is not re-subjected to the access policy and no power-strip is injected — the page is expected to carry its own login CTA. Because nothing redirects, there is no loop risk.
+
+```ts
+const accessPolicy = {
+  default: { mode: 'entitlement', provider: 'patreon', condition: { type: 'benefit', benefit_id: '<BENEFIT_ID>' } },
+  default_on_unauthorized: 'gate',
+  default_gate: {
+    anonymous: { origin: '/early-access' }, // or { asset: '/early-access' }
+    unentitled: { origin: '/pledge-needed' }, // or { asset: '/pledge-needed' }
+    // status: 403, // optional; defaults to 200
+  },
+};
+```
 
 Admin users (those listed in `ADMIN_IDS`) bypass every `authenticated`/`entitlement` requirement and can reach any gated path. Their identity is still resolved and the usual identity/entitlement headers are forwarded to the origin — only the gate itself is skipped. (`bypass` paths remain a raw pass-through for everyone, with no identity resolution.)
 

@@ -1,5 +1,5 @@
 import { AccessPolicySchema } from '../schemas/policy';
-import type { AccessPolicyConfig, AccessPolicyResolved, AccessRule, Requirement, UnauthorizedAction } from '../schemas/policy';
+import type { AccessPolicyConfig, AccessPolicyResolved, AccessRule, Gate, Requirement, UnauthorizedAction } from '../schemas/policy';
 import type { Entitlements } from '../entitlements/types';
 import { providerEntitlementCheckers, providerSupportsEntitlements } from './entitlementCheckers';
 
@@ -20,10 +20,10 @@ export function matchPattern(pattern: string, path: string): boolean {
 
 export type PolicyDecision =
   | { allow: true }
-  | { allow: false; reason: 'unauthenticated' | 'not_entitled'; action: UnauthorizedAction; upgrade_url?: string };
+  | { allow: false; reason: 'unauthenticated' | 'not_entitled'; action: UnauthorizedAction; upgrade_url?: string; gate?: Gate };
 
 function deny(reason: 'unauthenticated' | 'not_entitled', rule: AccessRule): PolicyDecision {
-  return { allow: false, reason, action: rule.on_unauthorized, upgrade_url: rule.upgrade_url };
+  return { allow: false, reason, action: rule.on_unauthorized, upgrade_url: rule.upgrade_url, gate: rule.gate };
 }
 
 /**
@@ -101,6 +101,7 @@ export class AccessPolicy {
       requirement: cfg.default ?? { mode: 'authenticated' },
       on_unauthorized: cfg.default_on_unauthorized,
       upgrade_url: cfg.default_upgrade_url,
+      gate: cfg.default_gate,
     };
   }
 }
