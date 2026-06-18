@@ -4,6 +4,7 @@ import { OAuthProvider } from './OAuthProvider';
 import { GoogleProvider } from './GoogleProvider';
 import { TwitchProvider } from './TwitchProvider';
 import { PatreonProvider } from './PatreonProvider';
+import { AtprotoProvider } from './AtprotoProvider';
 
 export type ProviderConfigs = Record<string, ProviderOptions>;
 
@@ -25,6 +26,7 @@ export function createProviders(env: StartupAPIEnv, redirectBase: string, provid
     GoogleProvider.create(env, redirectBase, providerConfigs.google),
     TwitchProvider.create(env, redirectBase, providerConfigs.twitch),
     PatreonProvider.create(env, redirectBase, providerConfigs.patreon),
+    AtprotoProvider.create(env, redirectBase, providerConfigs.atproto),
   ].filter((p): p is OAuthProvider => p !== null);
 }
 

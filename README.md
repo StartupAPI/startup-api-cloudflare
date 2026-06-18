@@ -57,18 +57,22 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 - **Using `wrangler.jsonc`:**
   Add the variables to the `"vars"` object in your configuration file. See [Cloudflare documentation](https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables) for more details.
 
-| Variable                 | Required | Default   | Description                                                                   |
-| :----------------------- | :------- | :-------- | :---------------------------------------------------------------------------- |
-| `ORIGIN_URL`             | **Yes**  | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
-| `USERS_PATH`             | No       | `/users/` | The path used to serve internal assets like `power-strip.js`                  |
-| `AUTH_ORIGIN`            | No       | N/A       | Optional base URL for OAuth redirects (overrides request origin)              |
-| `GOOGLE_CLIENT_ID`       | No       | N/A       | Google OAuth2 Client ID                                                       |
-| `GOOGLE_CLIENT_SECRET`   | No       | N/A       | Google OAuth2 Client Secret                                                   |
-| `TWITCH_CLIENT_ID`       | No       | N/A       | Twitch OAuth2 Client ID                                                       |
-| `TWITCH_CLIENT_SECRET`   | No       | N/A       | Twitch OAuth2 Client Secret                                                   |
-| `PATREON_CLIENT_ID`      | No       | N/A       | Patreon OAuth2 Client ID                                                      |
-| `PATREON_CLIENT_SECRET`  | No       | N/A       | Patreon OAuth2 Client Secret                                                  |
-| `PATREON_WEBHOOK_SECRET` | No       | N/A       | Secret for verifying Patreon webhook signatures                               |
+| Variable                 | Required | Default                                | Description                                                                   |
+| :----------------------- | :------- | :------------------------------------- | :---------------------------------------------------------------------------- |
+| `ORIGIN_URL`             | **Yes**  | N/A                                    | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
+| `USERS_PATH`             | No       | `/users/`                              | The path used to serve internal assets like `power-strip.js`                  |
+| `AUTH_ORIGIN`            | No       | N/A                                    | Optional base URL for OAuth redirects (overrides request origin)              |
+| `GOOGLE_CLIENT_ID`       | No       | N/A                                    | Google OAuth2 Client ID                                                       |
+| `GOOGLE_CLIENT_SECRET`   | No       | N/A                                    | Google OAuth2 Client Secret                                                   |
+| `TWITCH_CLIENT_ID`       | No       | N/A                                    | Twitch OAuth2 Client ID                                                       |
+| `TWITCH_CLIENT_SECRET`   | No       | N/A                                    | Twitch OAuth2 Client Secret                                                   |
+| `PATREON_CLIENT_ID`      | No       | N/A                                    | Patreon OAuth2 Client ID                                                      |
+| `PATREON_CLIENT_SECRET`  | No       | N/A                                    | Patreon OAuth2 Client Secret                                                  |
+| `PATREON_WEBHOOK_SECRET` | No       | N/A                                    | Secret for verifying Patreon webhook signatures                               |
+| `ATPROTO_ENABLED`        | No       | N/A                                    | Enable AT Protocol (Bluesky) login. Truthy values: `true`, `1`, `yes`, `on`   |
+| `ATPROTO_CLIENT_NAME`    | No       | `StartupAPI`                           | Display name advertised in the atproto client-metadata document               |
+| `ATPROTO_PLC_URL`        | No       | `https://plc.directory`                | Override the PLC directory used to resolve `did:plc` identities               |
+| `ATPROTO_DOH_URL`        | No       | `https://cloudflare-dns.com/dns-query` | Override the DNS-over-HTTPS resolver for handle resolution                    |
 
 > Environment variables hold only credentials/secrets (OAuth client IDs and all secrets) plus the per‑deployment values `ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, and `ENVIRONMENT`. **All other configuration — OAuth scopes, Patreon campaign id, the access policy, entitlement freshness — is passed to the `createStartupAPI` factory** (see [Access policy & provider entitlements](#access-policy--provider-entitlements)).
 
@@ -98,6 +102,23 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 2. Click **Create Client** and fill in your app details
 3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/patreon/callback`
 4. Copy the **Client ID** and **Client Secret** and add them to your Worker's environment variables
+
+#### Bluesky / AT Protocol (atproto)
+
+atproto login is decentralized: there is **no central provider to register with and no client secret**. Instead the worker acts as a [public OAuth client](https://atproto.com/specs/oauth) identified by a client-metadata document it serves itself, and it discovers the right authorization server **per user** from their handle or DID — so it works with `bsky.social` and any self-hosted PDS alike, with no Bluesky host hardcoded.
+
+1. Set `ATPROTO_ENABLED=true` (no client id/secret needed).
+2. Deploy over **HTTPS** with a stable hostname. The worker automatically serves its client metadata at `https://<your-worker-url>/users/auth/atproto/client-metadata.json` (this URL is the OAuth `client_id`) and registers the redirect URI `https://<your-worker-url>/users/auth/atproto/callback`.
+3. That's it. When a visitor clicks **Continue with Bluesky**, they're asked for their handle (e.g. `alice.bsky.social`) or DID; the worker then resolves it through the full atproto discovery chain and redirects them to _their own_ server to sign in:
+
+   ```
+   handle ─▶ DID            (HTTPS .well-known/atproto-did, then DNS _atproto.<handle> via DoH)
+   DID    ─▶ DID document   (did:plc via the PLC directory, did:web via the domain)
+   DID doc─▶ PDS endpoint    (the #atproto_pds service)
+   PDS    ─▶ auth server     (.well-known/oauth-protected-resource → oauth-authorization-server)
+   ```
+
+The flow uses PKCE, DPoP-bound (sender-constrained) tokens, and Pushed Authorization Requests (PAR) as required by the atproto OAuth profile. The PLC directory and DNS-over-HTTPS resolver are generic infrastructure and can be overridden via `ATPROTO_PLC_URL` / `ATPROTO_DOH_URL`.
 
 #### Requesting additional scopes
 

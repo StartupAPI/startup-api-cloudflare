@@ -1,5 +1,6 @@
 import { StartupAPIEnv } from '../StartupAPIEnv';
 import { CookieManager } from '../CookieManager';
+import { isAtprotoEnabled } from '../auth/AtprotoProvider';
 
 export function getActiveProviders(env: StartupAPIEnv): string[] {
   const providers: string[] = [];
@@ -11,6 +12,9 @@ export function getActiveProviders(env: StartupAPIEnv): string[] {
   }
   if (env.PATREON_CLIENT_ID && env.PATREON_CLIENT_SECRET) {
     providers.push('patreon');
+  }
+  if (isAtprotoEnabled(env)) {
+    providers.push('atproto');
   }
   return providers;
 }

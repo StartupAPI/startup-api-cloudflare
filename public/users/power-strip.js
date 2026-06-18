@@ -212,6 +212,8 @@ class PowerStrip extends HTMLElement {
       return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#9146FF" stroke="white" stroke-width="1"/><path d="M7 6H6v10h2v3l3-3h3l4-4V6H7zm9 6l-2 2h-3l-2 2v-2H8V7h8v5z" fill="white"/><path d="M14 8.5h1.5v2H14V8.5zm-3 0h1.5v2H11v-2z" fill="white"/></svg>`;
     } else if (provider === 'patreon') {
       return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#FF424D" stroke="white" stroke-width="1"/><circle cx="14" cy="11" r="3.5" fill="white"/><rect x="6.5" y="6.5" width="2" height="11" fill="white"/></svg>`;
+    } else if (provider === 'atproto') {
+      return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#0085FF" stroke="white" stroke-width="1"/><path d="M12 10.5C10.9 8.4 8.2 6.3 6.3 6c-1.5-.2-1.8.7-1.5 2 .2 1 1.5 5 2.3 6 .9 1.2 2 1.4 3 1.2-1.7.3-3.2 1-1.2 3 .9.9 1.6.3 2.1-.6.5-1 .8-2.1 1-2.6.2.5.5 1.6 1 2.6.5.9 1.2 1.5 2.1.6 2-2 .5-2.7-1.2-3 1 .2 2.1 0 3-1.2.8-1 2.1-5 2.3-6 .3-1.3 0-2.2-1.5-2-1.9.3-4.6 2.4-5.7 4.5z" fill="white"/></svg>`;
     }
     return '';
   }
@@ -221,6 +223,7 @@ class PowerStrip extends HTMLElement {
     const googleLink = `${this.basePath}/auth/google?return_url=${returnUrl}`;
     const twitchLink = `${this.basePath}/auth/twitch?return_url=${returnUrl}`;
     const patreonLink = `${this.basePath}/auth/patreon?return_url=${returnUrl}`;
+    const atprotoLink = `${this.basePath}/auth/atproto?return_url=${returnUrl}`;
     const logoutLink = `${this.basePath}/logout?return_url=${returnUrl}`;
 
     const providersStr = this.getAttribute('providers') || '';
@@ -255,6 +258,15 @@ class PowerStrip extends HTMLElement {
                       <path d="M14.82 2.41c3.96 0 7.18 3.24 7.18 7.21 0 3.96-3.22 7.18-7.18 7.18-3.97 0-7.21-3.22-7.21-7.18 0-3.97 3.24-7.21 7.21-7.21M2 21.6h3.5V2.41H2V21.6z" fill="currentColor"/>
                     </svg>
                     Continue with Patreon
+                </a>`;
+    }
+    if (providers.includes('atproto')) {
+      authButtons += `
+                <a href="${atprotoLink}" class="auth-btn atproto">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 10.5C10.9 8.4 8.2 6.3 6.3 6c-1.5-.2-1.8.7-1.5 2 .2 1 1.5 5 2.3 6 .9 1.2 2 1.4 3 1.2-1.7.3-3.2 1-1.2 3 .9.9 1.6.3 2.1-.6.5-1 .8-2.1 1-2.6.2.5.5 1.6 1 2.6.5.9 1.2 1.5 2.1.6 2-2 .5-2.7-1.2-3 1 .2 2.1 0 3-1.2.8-1 2.1-5 2.3-6 .3-1.3 0-2.2-1.5-2-1.9.3-4.6 2.4-5.7 4.5z" fill="currentColor"/>
+                    </svg>
+                    Continue with Bluesky
                 </a>`;
     }
 
@@ -585,6 +597,7 @@ class PowerStrip extends HTMLElement {
         .provider-badge.google { color: #3c4043; }
         .provider-badge.twitch { color: #9146FF; }
         .provider-badge.patreon { color: #FF424D; }
+        .provider-badge.atproto { color: #0085FF; }
 
         .user-info {
             display: flex;
@@ -771,6 +784,16 @@ class PowerStrip extends HTMLElement {
         .auth-btn.patreon:hover {
             background-color: #e63a44;
             border-color: #e63a44;
+        }
+
+        .auth-btn.atproto {
+            background-color: #0085FF;
+            color: white;
+            border-color: #0085FF;
+        }
+        .auth-btn.atproto:hover {
+            background-color: #006fd6;
+            border-color: #006fd6;
         }
 
         /* Account Switcher Styling */
