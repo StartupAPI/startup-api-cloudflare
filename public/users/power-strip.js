@@ -5,6 +5,10 @@ class PowerStrip extends HTMLElement {
     this.basePath = this.detectBasePath();
     this.user = null;
     this.accounts = [];
+    // Theme watchers, wired up once on connect and torn down on disconnect.
+    this._mediaQuery = null;
+    this._onPreferenceChange = null;
+    this._pageObserver = null;
   }
 
   detectBasePath() {
@@ -27,15 +31,128 @@ class PowerStrip extends HTMLElement {
   }
 
   async connectedCallback() {
+    // Resolve the theme before the first paint so the strip never flashes the
+    // wrong colors, then keep it in sync with the page from here on.
+    this.applyTheme();
+    this.watchThemeChanges();
     await this.fetchUser();
     this.render();
     this.addEventListeners();
+  }
+
+  disconnectedCallback() {
+    if (this._mediaQuery && this._onPreferenceChange) {
+      this._mediaQuery.removeEventListener('change', this._onPreferenceChange);
+    }
+    if (this._pageObserver) {
+      this._pageObserver.disconnect();
+    }
   }
 
   async refresh() {
     await this.fetchUser();
     this.render();
     this.addEventListeners();
+  }
+
+  /**
+   * Decide whether the strip should render light or dark by measuring the
+   * actual background the strip sits on. This makes the strip match the page
+   * regardless of *how* the page chose its theme — a hardcoded dark page, a
+   * hardcoded light page, or a page that respects the user's OS preference all
+   * resolve to a concrete background color we can read here. When nothing
+   * conclusive is found (e.g. a transparent body over an image) we fall back to
+   * the user's OS-level color-scheme preference.
+   */
+  detectPageTheme() {
+    const bg = this.getEffectiveBackgroundColor();
+    if (bg) {
+      return this.isDarkColor(bg) ? 'dark' : 'light';
+    }
+    return this.prefersDark() ? 'dark' : 'light';
+  }
+
+  prefersDark() {
+    return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  /**
+   * Walk up from the strip's placement looking for the first ancestor that
+   * paints an opaque (or partly opaque) background, mirroring how the strip is
+   * actually composited over the page. Falls back to the document element.
+   */
+  getEffectiveBackgroundColor() {
+    let el = this.parentElement;
+    while (el) {
+      const color = getComputedStyle(el).backgroundColor;
+      if (color && !this.isTransparentColor(color)) {
+        return color;
+      }
+      el = el.parentElement;
+    }
+    const rootColor = getComputedStyle(document.documentElement).backgroundColor;
+    if (rootColor && !this.isTransparentColor(rootColor)) {
+      return rootColor;
+    }
+    return null;
+  }
+
+  parseColor(color) {
+    const parts = (color.match(/[\d.]+/g) || []).map(Number);
+    if (parts.length < 3) {
+      return null;
+    }
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length >= 4 ? parts[3] : 1 };
+  }
+
+  isTransparentColor(color) {
+    if (!color || color === 'transparent') {
+      return true;
+    }
+    const c = this.parseColor(color);
+    return !c || c.a === 0;
+  }
+
+  isDarkColor(color) {
+    const c = this.parseColor(color);
+    if (!c) {
+      return false;
+    }
+    // Perceived luminance (ITU-R BT.601). Below the midpoint reads as "dark".
+    const luminance = (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255;
+    return luminance < 0.5;
+  }
+
+  /**
+   * Tag the host with the resolved theme. CSS keys all of its colors off this
+   * attribute, so updating it is enough to re-theme the whole shadow tree
+   * (panel, dialogs and all) without re-rendering or losing dialog state.
+   */
+  applyTheme() {
+    const theme = this.detectPageTheme();
+    if (this.getAttribute('data-resolved-theme') !== theme) {
+      this.setAttribute('data-resolved-theme', theme);
+    }
+  }
+
+  watchThemeChanges() {
+    // React to the user flipping their OS-level color-scheme preference.
+    if (typeof window.matchMedia === 'function') {
+      this._mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      this._onPreferenceChange = () => this.applyTheme();
+      this._mediaQuery.addEventListener('change', this._onPreferenceChange);
+    }
+
+    // React to the page re-theming itself at runtime — e.g. a theme toggle
+    // flipping data-theme/class/style on <html> or <body>.
+    if (typeof MutationObserver === 'function') {
+      this._pageObserver = new MutationObserver(() => this.applyTheme());
+      const observeOptions = { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] };
+      this._pageObserver.observe(document.documentElement, observeOptions);
+      if (document.body) {
+        this._pageObserver.observe(document.body, observeOptions);
+      }
+    }
   }
 
   async fetchUser() {
@@ -214,8 +331,8 @@ class PowerStrip extends HTMLElement {
 
         const avatarContent = this.user.profile.picture
           ? `<img src="${this.user.profile.picture}" alt="${this.user.profile.name}" title="${this.user.profile.name}" class="avatar" width="16" height="16" />`
-          : `<div class="avatar placeholder" style="background: #eee; display: flex; align-items: center; justify-content: center;">
-              <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; fill: #999;">
+          : `<div class="avatar placeholder">
+              <svg viewBox="0 0 24 24" style="width: 12px; height: 12px;">
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
             </div>`;
@@ -251,6 +368,108 @@ class PowerStrip extends HTMLElement {
         :host {
           display: block;
           font-family: system-ui, -apple-system, sans-serif;
+
+          /* Light theme (the default). Every color in the strip is keyed off
+             these custom properties so the whole shadow tree can be re-themed
+             by flipping a single set of variables. The dark overrides live in
+             the rules below — one driven by the user's OS preference (used as a
+             flash-free fallback) and one driven by the [data-resolved-theme]
+             attribute the component measures and sets at runtime. */
+          --ps-panel-bg: rgba(255, 255, 255, 0.85);
+          --ps-panel-border: rgba(0, 0, 0, 0.15);
+          --ps-panel-shadow: 0 0.0625rem 0.25rem rgba(0, 0, 0, 0.25);
+          --ps-text: #333;
+          --ps-text-muted: #444;
+          --ps-accent: #1a73e8;
+          --ps-danger: #d93025;
+          --ps-warning: #c77700;
+          --ps-hover-bg: rgba(0, 0, 0, 0.06);
+          --ps-avatar-bg: #eee;
+          --ps-avatar-fg: #999;
+
+          --ps-dialog-bg: #fff;
+          --ps-dialog-text: #333;
+          --ps-dialog-shadow: 0 0.625rem 1.5625rem rgba(0, 0, 0, 0.25);
+          --ps-dialog-muted: #999;
+          --ps-dialog-hover-bg: #f0f0f0;
+          --ps-surface-bg: #fff;
+          --ps-surface-border: #ddd;
+          --ps-surface-soft-border: #eee;
+          --ps-surface-hover-bg: #f5f5f5;
+          --ps-neutral-btn-bg: #fff;
+          --ps-neutral-btn-text: #3c4043;
+          --ps-neutral-btn-border: #dadce0;
+          --ps-neutral-btn-hover-bg: #f8f9fa;
+          --ps-active-bg: #e8f0fe;
+
+          color-scheme: light;
+        }
+
+        /* Shared dark palette. Applied either when the page has been measured
+           as dark, or — before/without measurement — when the user's OS asks
+           for dark and the page hasn't been explicitly resolved to light. */
+        :host([data-resolved-theme='dark']) {
+          --ps-panel-bg: rgba(32, 33, 36, 0.92);
+          --ps-panel-border: rgba(255, 255, 255, 0.22);
+          --ps-panel-shadow: 0 0.0625rem 0.3125rem rgba(0, 0, 0, 0.65);
+          --ps-text: #e8eaed;
+          --ps-text-muted: #dadce0;
+          --ps-accent: #8ab4f8;
+          --ps-danger: #f28b82;
+          --ps-warning: #fdd663;
+          --ps-hover-bg: rgba(255, 255, 255, 0.12);
+          --ps-avatar-bg: #5f6368;
+          --ps-avatar-fg: #dadce0;
+
+          --ps-dialog-bg: #2a2b2e;
+          --ps-dialog-text: #e8eaed;
+          --ps-dialog-shadow: 0 0.625rem 1.5625rem rgba(0, 0, 0, 0.7);
+          --ps-dialog-muted: #9aa0a6;
+          --ps-dialog-hover-bg: #3c4043;
+          --ps-surface-bg: #303134;
+          --ps-surface-border: #5f6368;
+          --ps-surface-soft-border: #3c4043;
+          --ps-surface-hover-bg: #3c4043;
+          --ps-neutral-btn-bg: #303134;
+          --ps-neutral-btn-text: #e8eaed;
+          --ps-neutral-btn-border: #5f6368;
+          --ps-neutral-btn-hover-bg: #3c4043;
+          --ps-active-bg: #283142;
+
+          color-scheme: dark;
+        }
+
+        @media (prefers-color-scheme: dark) {
+          :host(:not([data-resolved-theme='light'])) {
+            --ps-panel-bg: rgba(32, 33, 36, 0.92);
+            --ps-panel-border: rgba(255, 255, 255, 0.22);
+            --ps-panel-shadow: 0 0.0625rem 0.3125rem rgba(0, 0, 0, 0.65);
+            --ps-text: #e8eaed;
+            --ps-text-muted: #dadce0;
+            --ps-accent: #8ab4f8;
+            --ps-danger: #f28b82;
+            --ps-warning: #fdd663;
+            --ps-hover-bg: rgba(255, 255, 255, 0.12);
+            --ps-avatar-bg: #5f6368;
+            --ps-avatar-fg: #dadce0;
+
+            --ps-dialog-bg: #2a2b2e;
+            --ps-dialog-text: #e8eaed;
+            --ps-dialog-shadow: 0 0.625rem 1.5625rem rgba(0, 0, 0, 0.7);
+            --ps-dialog-muted: #9aa0a6;
+            --ps-dialog-hover-bg: #3c4043;
+            --ps-surface-bg: #303134;
+            --ps-surface-border: #5f6368;
+            --ps-surface-soft-border: #3c4043;
+            --ps-surface-hover-bg: #3c4043;
+            --ps-neutral-btn-bg: #303134;
+            --ps-neutral-btn-text: #e8eaed;
+            --ps-neutral-btn-border: #5f6368;
+            --ps-neutral-btn-hover-bg: #3c4043;
+            --ps-active-bg: #283142;
+
+            color-scheme: dark;
+          }
         }
 
         /* Honor the native [hidden] attribute so authors can load the script
@@ -272,10 +491,14 @@ class PowerStrip extends HTMLElement {
           height: 1.3rem;
           padding: 0.0625rem;
           animation: fadeIn 0.4s ease-out;
-          background-color: rgba(255, 255, 255, 0.7);
+          background-color: var(--ps-panel-bg);
+          /* A contrasting border keeps the chip distinguishable even when its
+             panel color happens to be close to the page background. */
+          border: 0.0625rem solid var(--ps-panel-border);
           border-radius: 0 0 0 0.3rem;
-          box-shadow: 0 0.0625rem 0.1875rem rgba(0,0,0,0.1);
+          box-shadow: var(--ps-panel-shadow);
           font-size: 1rem;
+          backdrop-filter: blur(0.25rem);
         }
 
         .trigger {
@@ -285,7 +508,7 @@ class PowerStrip extends HTMLElement {
            border-radius: 0.25rem;
            font-size: 0.8rem;
            font-weight: 500;
-           color: #444;
+           color: var(--ps-text-muted);
            text-decoration: none;
            border: none;
            background: transparent;
@@ -293,19 +516,19 @@ class PowerStrip extends HTMLElement {
         }
 
         .trigger:hover {
-            background-color: rgba(0, 0, 0, 0.05);
+            background-color: var(--ps-hover-bg);
             text-decoration: underline;
-            color: #1a73e8;
+            color: var(--ps-accent);
         }
-        
+
         .switch-btn {
-            color: #1a73e8;
+            color: var(--ps-accent);
         }
 
         svg.bolt, ::slotted(svg) {
           width: 1rem !important;
           height: 1rem !important;
-          fill: #ffcc00 !important; 
+          fill: #ffcc00 !important;
           filter: drop-shadow(0.0625rem 0.0625rem 0.0625rem rgba(0, 0, 0, 0.5));
           flex-shrink: 0;
         }
@@ -330,6 +553,17 @@ class PowerStrip extends HTMLElement {
             object-fit: cover;
         }
 
+        .avatar.placeholder {
+            background: var(--ps-avatar-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .avatar.placeholder svg {
+            fill: var(--ps-avatar-fg);
+        }
+
         .provider-badge {
             position: absolute;
             bottom: -0.0625rem;
@@ -340,7 +574,7 @@ class PowerStrip extends HTMLElement {
             align-items: center;
             justify-content: center;
         }
-        
+
         .provider-badge svg {
             width: 0.5rem;
             height: 0.5rem;
@@ -365,7 +599,7 @@ class PowerStrip extends HTMLElement {
 
         .user-name {
             font-size: 0.8rem;
-            color: #333;
+            color: var(--ps-text);
             max-width: 10rem;
             white-space: nowrap;
             overflow: hidden;
@@ -377,12 +611,12 @@ class PowerStrip extends HTMLElement {
 
         .user-name:hover {
             text-decoration: underline;
-            color: #1a73e8;
+            color: var(--ps-accent);
         }
-        
+
         .account-label {
             font-size: 0.8rem;
-            color: #1a73e8;
+            color: var(--ps-accent);
             max-width: 10rem;
             white-space: nowrap;
             overflow: hidden;
@@ -400,11 +634,11 @@ class PowerStrip extends HTMLElement {
         }
 
         .admin-btn {
-            color: #d93025 !important;
+            color: var(--ps-danger) !important;
         }
 
         .stop-impersonation-btn {
-            color: #fbbc05 !important;
+            color: var(--ps-warning) !important;
             font-weight: bold;
         }
 
@@ -419,9 +653,9 @@ class PowerStrip extends HTMLElement {
           border: none;
           border-radius: 0.75rem;
           padding: 0;
-          box-shadow: 0 0.625rem 1.5625rem rgba(0,0,0,0.2);
-          background: white;
-          color: #333;
+          box-shadow: var(--ps-dialog-shadow);
+          background: var(--ps-dialog-bg);
+          color: var(--ps-dialog-text);
           max-width: 20rem;
           width: 90%;
           overflow: hidden;
@@ -442,7 +676,7 @@ class PowerStrip extends HTMLElement {
             align-items: center;
             margin-bottom: 1.25rem;
         }
-        
+
         .dialog-title {
             font-weight: 700;
             font-size: 1.25rem;
@@ -454,7 +688,7 @@ class PowerStrip extends HTMLElement {
             border: none;
             cursor: pointer;
             font-size: 1.5rem;
-            color: #999;
+            color: var(--ps-dialog-muted);
             padding: 0;
             line-height: 1;
             display: flex;
@@ -467,8 +701,8 @@ class PowerStrip extends HTMLElement {
         }
 
         .close-btn:hover {
-            background-color: #f0f0f0;
-            color: #333;
+            background-color: var(--ps-dialog-hover-bg);
+            color: var(--ps-dialog-text);
         }
 
         .auth-buttons {
@@ -479,7 +713,7 @@ class PowerStrip extends HTMLElement {
 
         .auth-btn {
             padding: 0.75rem 1rem;
-            border: 1px solid #ddd;
+            border: 1px solid var(--ps-surface-border);
             border-radius: 0.375rem;
             cursor: pointer;
             display: flex;
@@ -491,7 +725,7 @@ class PowerStrip extends HTMLElement {
             transition: all 0.2s ease;
             text-decoration: none;
             color: inherit;
-            background-color: white;
+            background-color: var(--ps-neutral-btn-bg);
         }
 
         .auth-btn:hover {
@@ -509,12 +743,12 @@ class PowerStrip extends HTMLElement {
         }
 
         .auth-btn.google {
-            color: #3c4043;
-            border-color: #dadce0;
+            color: var(--ps-neutral-btn-text);
+            background-color: var(--ps-neutral-btn-bg);
+            border-color: var(--ps-neutral-btn-border);
         }
         .auth-btn.google:hover {
-            background-color: #f8f9fa;
-            border-color: #d2e3fc;
+            background-color: var(--ps-neutral-btn-hover-bg);
         }
 
         .auth-btn.twitch {
@@ -543,12 +777,13 @@ class PowerStrip extends HTMLElement {
             flex-direction: column;
             gap: 0.5rem;
         }
-        
+
         .account-item {
             padding: 0.75rem;
-            border: 1px solid #eee;
+            border: 1px solid var(--ps-surface-soft-border);
             border-radius: 0.375rem;
-            background: white;
+            background: var(--ps-surface-bg);
+            color: var(--ps-dialog-text);
             text-align: left;
             cursor: pointer;
             display: flex;
@@ -558,25 +793,25 @@ class PowerStrip extends HTMLElement {
             font-size: 1rem;
             gap: 1rem;
         }
-        
+
         .account-item:hover {
-            background-color: #f5f5f5;
+            background-color: var(--ps-surface-hover-bg);
         }
-        
+
         .account-item.active {
-            border-color: #1a73e8;
-            background-color: #e8f0fe;
+            border-color: var(--ps-accent);
+            background-color: var(--ps-active-bg);
         }
-        
+
         .current-badge {
             font-size: 0.75rem;
-            background: #1a73e8;
+            background: var(--ps-accent);
             color: white;
             padding: 0.125rem 0.375rem;
             border-radius: 0.75rem;
         }
       </style>
-      
+
       <div class="container">
         ${content}
         <slot></slot>
@@ -593,7 +828,7 @@ class PowerStrip extends HTMLElement {
             </div>
         </div>
       </dialog>
-      
+
       ${accountSwitcher}
     `;
   }

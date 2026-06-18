@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Power Strip — Color Theme Manual Preview</title>
+    <style>
+      /* The page itself follows the user's OS color-scheme preference, so the
+         "respects preference" demo at the bottom flips with your system theme. */
+      :root {
+        color-scheme: light dark;
+        --page-bg: #f8f9fa;
+        --page-fg: #222;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page-bg: #1a1a1a;
+          --page-fg: #e0e0e0;
+        }
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: var(--page-bg);
+        color: var(--page-fg);
+        padding: 2rem;
+      }
+      h1 {
+        font-size: 1.25rem;
+      }
+      p {
+        max-width: 48rem;
+        line-height: 1.5;
+      }
+      .panels {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+      }
+      /* Each panel is an opaque "mini page" the strip detects and matches. */
+      .panel {
+        position: relative;
+        width: 22rem;
+        height: 9rem;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.4);
+      }
+      .panel .label {
+        position: absolute;
+        bottom: 0.5rem;
+        left: 0.75rem;
+        font-size: 0.8rem;
+        opacity: 0.85;
+      }
+      .panel.hardcoded-light {
+        background: #ffffff;
+        color: #222;
+      }
+      .panel.hardcoded-dark {
+        background: #15171a;
+        color: #e8eaed;
+      }
+      .panel.respects {
+        background: var(--page-bg);
+        color: var(--page-fg);
+      }
+      /* The strips are placed in the panel's top-right corner, like the worker
+         positions the default strip on a real page. */
+      .panel power-strip {
+        position: absolute;
+        top: 0;
+        right: 0;
+        z-index: 10;
+      }
+      .bolt {
+        width: 1rem;
+        height: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Power Strip — color theme preview</h1>
+    <p>
+      Each panel below is an independent "hosted page". The power strip measures the background it is
+      composited over and themes itself to match — while keeping a contrasting border and shadow so it
+      stays visible and distinguishable on every variation. Toggle your OS dark/light setting to watch
+      the preference-respecting panel (and this page) flip live.
+    </p>
+
+    <div class="panels">
+      <div class="panel hardcoded-light">
+        <power-strip providers="google,twitch,patreon">
+          <svg class="bolt" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z" /></svg>
+        </power-strip>
+        <span class="label">Hardcoded light page</span>
+      </div>
+
+      <div class="panel hardcoded-dark">
+        <power-strip providers="google,twitch,patreon">
+          <svg class="bolt" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z" /></svg>
+        </power-strip>
+        <span class="label">Hardcoded dark page</span>
+      </div>
+
+      <div class="panel respects">
+        <power-strip providers="google,twitch,patreon">
+          <svg class="bolt" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z" /></svg>
+        </power-strip>
+        <span class="label">Respects OS preference</span>
+      </div>
+    </div>
+
+    <!-- Loads the real component. Relative path resolves from test/manual/ to public/users/. -->
+    <script src="../../public/users/power-strip.js"></script>
+  </body>
+</html>
