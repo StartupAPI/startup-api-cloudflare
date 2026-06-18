@@ -152,10 +152,6 @@
         "PATREON_CLIENT_ID": "",
         "PATREON_CLIENT_SECRET": "",
         "PATREON_WEBHOOK_SECRET": "",
-        "ATPROTO_ENABLED": "",
-        "ATPROTO_CLIENT_NAME": "",
-        "ATPROTO_PLC_URL": "",
-        "ATPROTO_DOH_URL": "",
       },
     },
     "test": {

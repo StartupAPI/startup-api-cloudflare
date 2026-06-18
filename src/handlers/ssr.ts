@@ -1,6 +1,7 @@
 import { StartupAPIEnv } from '../StartupAPIEnv';
 import { CookieManager } from '../CookieManager';
 import { getUserFromSession, checkAndClearStaleSession, isAdmin, getActiveProviders } from './utils';
+import type { ProviderConfigs } from '../auth/providers';
 import { Plan } from '../billing/Plan';
 
 export async function handleSSR(
@@ -9,6 +10,7 @@ export async function handleSSR(
   url: URL,
   usersPath: string,
   cookieManager: CookieManager,
+  providerConfigs: ProviderConfigs = {},
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user) {
@@ -90,7 +92,7 @@ export async function handleSSR(
     // Prepare SSR values
     const replacements: Record<string, string> = {
       plans_json: JSON.stringify(Plan.getAll()).replace(/"/g, '&quot;'),
-      providers: getActiveProviders(env).join(','),
+      providers: getActiveProviders(env, providerConfigs).join(','),
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
       credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),
       profile_name: data.profile.name || 'Anonymous',
@@ -105,7 +107,7 @@ export async function handleSSR(
         : '',
       nav_account_display: account && (account.role === 1 || data.is_admin) ? 'display: block;' : 'display: none;',
       credentials_list_html: renderCredentialsList(credentials, data.credential?.provider),
-      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env), url.href),
+      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env, providerConfigs), url.href),
     };
 
     if (account) {

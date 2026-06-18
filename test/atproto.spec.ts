@@ -3,8 +3,8 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createStartupAPI } from '../src/createStartupAPI';
 import { CookieManager } from '../src/CookieManager';
 
-// atproto is a public OAuth client gated by an explicit flag (no client secret in the test env).
-const atprotoEnv = { ...env, ATPROTO_ENABLED: 'true' } as typeof env;
+// atproto is a public OAuth client (no secret); it is enabled purely via the factory config object.
+const atprotoConfig = { providers: { atproto: { enabled: true } } } as const;
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -76,9 +76,9 @@ function installAtprotoMocks(opts: { onPar?: (init: RequestInit) => void; onToke
 
 describe('atproto provider', () => {
   it('serves the OAuth client-metadata document', async () => {
-    const api = createStartupAPI();
+    const api = createStartupAPI(atprotoConfig);
     const ctx = createExecutionContext();
-    const res = await api.fetch(new Request('http://example.com/users/auth/atproto/client-metadata.json'), atprotoEnv, ctx);
+    const res = await api.fetch(new Request('http://example.com/users/auth/atproto/client-metadata.json'), env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(res.status).toBe(200);
@@ -91,9 +91,9 @@ describe('atproto provider', () => {
   });
 
   it('shows a handle-entry form when no identifier is provided', async () => {
-    const api = createStartupAPI();
+    const api = createStartupAPI(atprotoConfig);
     const ctx = createExecutionContext();
-    const res = await api.fetch(new Request('http://example.com/users/auth/atproto'), atprotoEnv, ctx);
+    const res = await api.fetch(new Request('http://example.com/users/auth/atproto'), env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(res.status).toBe(200);
@@ -112,11 +112,11 @@ describe('atproto provider', () => {
       },
     });
 
-    const api = createStartupAPI();
+    const api = createStartupAPI(atprotoConfig);
     const ctx = createExecutionContext();
     const res = await api.fetch(
       new Request('http://example.com/users/auth/atproto?handle=alice.test&return_url=/dashboard'),
-      atprotoEnv,
+      env,
       ctx,
     );
     await waitOnExecutionContext(ctx);
@@ -155,12 +155,12 @@ describe('atproto provider', () => {
       },
     });
 
-    const api = createStartupAPI();
+    const api = createStartupAPI(atprotoConfig);
     const cm = new CookieManager('dev-secret');
 
     // 1. Start the flow to obtain a valid (encrypted) flow-state cookie + its state value.
     const startCtx = createExecutionContext();
-    const startRes = await api.fetch(new Request('http://example.com/users/auth/atproto?handle=alice.test'), atprotoEnv, startCtx);
+    const startRes = await api.fetch(new Request('http://example.com/users/auth/atproto?handle=alice.test'), env, startCtx);
     await waitOnExecutionContext(startCtx);
     const flowCookie = (startRes.headers.get('Set-Cookie') ?? '').split('atproto_flow=')[1].split(';')[0];
     const flow = JSON.parse((await cm.decrypt(flowCookie))!);
@@ -172,7 +172,7 @@ describe('atproto provider', () => {
         headers: { Cookie: `atproto_flow=${flowCookie}` },
         redirect: 'manual',
       }),
-      atprotoEnv,
+      env,
       cbCtx,
     );
     await waitOnExecutionContext(cbCtx);
@@ -191,7 +191,7 @@ describe('atproto provider', () => {
     expect(cookies.some((c) => c.startsWith('atproto_flow=') && c.includes('Max-Age=0'))).toBe(true);
 
     // Credential persisted under the atproto provider, keyed by DID.
-    const credentialStub = atprotoEnv.CREDENTIAL.get(atprotoEnv.CREDENTIAL.idFromName('atproto'));
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('atproto'));
     const cred = await credentialStub.get('did:plc:alicedid');
     expect(cred).not.toBeNull();
     expect(cred.access_token).toBe('atproto-access-token');
@@ -200,10 +200,10 @@ describe('atproto provider', () => {
 
   it('rejects a callback whose state does not match the flow cookie', async () => {
     installAtprotoMocks();
-    const api = createStartupAPI();
+    const api = createStartupAPI(atprotoConfig);
 
     const startCtx = createExecutionContext();
-    const startRes = await api.fetch(new Request('http://example.com/users/auth/atproto?handle=alice.test'), atprotoEnv, startCtx);
+    const startRes = await api.fetch(new Request('http://example.com/users/auth/atproto?handle=alice.test'), env, startCtx);
     await waitOnExecutionContext(startCtx);
     const flowCookie = (startRes.headers.get('Set-Cookie') ?? '').split('atproto_flow=')[1].split(';')[0];
 
@@ -212,7 +212,7 @@ describe('atproto provider', () => {
       new Request('http://example.com/users/auth/atproto/callback?code=authcode&state=WRONG&iss=https://auth.test', {
         headers: { Cookie: `atproto_flow=${flowCookie}` },
       }),
-      atprotoEnv,
+      env,
       cbCtx,
     );
     await waitOnExecutionContext(cbCtx);
@@ -223,7 +223,7 @@ describe('atproto provider', () => {
 
   it('lists atproto among active providers only when enabled', async () => {
     const { getActiveProviders } = await import('../src/handlers/utils');
-    expect(getActiveProviders(atprotoEnv)).toContain('atproto');
+    expect(getActiveProviders(env, { atproto: { enabled: true } })).toContain('atproto');
     expect(getActiveProviders(env)).not.toContain('atproto');
   });
 });

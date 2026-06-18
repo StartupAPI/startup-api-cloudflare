@@ -28,10 +28,9 @@ interface AtprotoFlowState {
 }
 
 /** Whether the atproto provider is turned on. It has no client secret (public OAuth client), so it is
- *  enabled by an explicit flag rather than the presence of credentials. */
-export function isAtprotoEnabled(env: StartupAPIEnv): boolean {
-  const value = (env.ATPROTO_ENABLED ?? '').toString().trim().toLowerCase();
-  return value === 'true' || value === '1' || value === 'yes' || value === 'on';
+ *  enabled by an explicit factory-config flag rather than the presence of credentials in env. */
+export function isAtprotoEnabled(options?: ProviderOptions): boolean {
+  return options?.enabled === true;
 }
 
 /**
@@ -49,15 +48,15 @@ export class AtprotoProvider extends OAuthProvider {
   private clientName = 'StartupAPI';
   private resolverOptions: ResolverOptions = {};
 
-  static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
-    if (!isAtprotoEnabled(env)) return null;
+  static create(_env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
+    if (!isAtprotoEnabled(options)) return null;
     const provider = new AtprotoProvider('', '', redirectBase + '/atproto/callback', 'atproto', options?.scopes);
     provider.clientMetadataUrl = redirectBase + '/atproto/client-metadata.json';
     provider.clientUri = new URL(redirectBase).origin;
-    provider.clientName = env.ATPROTO_CLIENT_NAME?.trim() || 'StartupAPI';
+    provider.clientName = options?.clientName?.trim() || 'StartupAPI';
     provider.resolverOptions = {
-      plcUrl: env.ATPROTO_PLC_URL?.trim() || undefined,
-      dohUrl: env.ATPROTO_DOH_URL?.trim() || undefined,
+      plcUrl: options?.plcUrl?.trim() || undefined,
+      dohUrl: options?.dohUrl?.trim() || undefined,
     };
     return provider;
   }
