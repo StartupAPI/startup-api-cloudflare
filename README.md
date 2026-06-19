@@ -105,20 +105,22 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 
 atproto login is decentralized: there is **no central provider to register with and no client secret**. Instead the worker acts as a [public OAuth client](https://atproto.com/specs/oauth) identified by a client-metadata document it serves itself, and it discovers the right authorization server **per user** from their handle or DID — so it works with `bsky.social` and any self-hosted PDS alike, with no Bluesky host hardcoded.
 
-Because it has no secrets, atproto is configured **entirely through the `createStartupAPI` factory** (not env vars):
+Because it has no secrets, atproto is configured **entirely through the `createStartupAPI` factory** (not env vars). Just like the env-credential providers are enabled by the presence of their credentials, atproto is enabled simply by **including its config key** — an empty object is enough:
 
 ```ts
 import { createStartupAPI } from '@startup-api/cloudflare';
 
 const api = createStartupAPI({
   providers: {
-    atproto: {
-      enabled: true, // required — turns the provider on (it has no env credentials)
-      // clientName: 'My App',          // optional: shown on the consent screen (default "StartupAPI")
-      // plcUrl: 'https://plc.directory',// optional: override the PLC directory for did:plc
-      // dohUrl: 'https://cloudflare-dns.com/dns-query', // optional: override the DoH resolver
-      // scopes: 'transition:generic',   // optional: extra scopes on top of the base `atproto`
-    },
+    atproto: {}, // including the key enables it — no client id/secret needed
+    // All fields below are optional:
+    // atproto: {
+    //   clientName: 'My App',           // shown on the consent screen (default "StartupAPI")
+    //   plcUrl: 'https://plc.directory', // override the PLC directory for did:plc
+    //   dohUrl: 'https://cloudflare-dns.com/dns-query', // override the DoH resolver
+    //   scopes: 'transition:generic',    // extra scopes on top of the base `atproto`
+    //   enabled: false,                  // explicit opt-out (e.g. for dynamically-built config)
+    // },
   },
 });
 
@@ -126,7 +128,7 @@ export default api.default;
 export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
 ```
 
-1. Set `providers.atproto.enabled: true` in the factory config (no client id/secret needed).
+1. Include `atproto: {}` in the factory `providers` config (no client id/secret needed). Pass `enabled: false` to opt out explicitly.
 2. Deploy over **HTTPS** with a stable hostname. The worker automatically serves its client metadata at `https://<your-worker-url>/users/auth/atproto/client-metadata.json` (this URL is the OAuth `client_id`) and registers the redirect URI `https://<your-worker-url>/users/auth/atproto/callback`.
 3. That's it. When a visitor clicks **Continue with Bluesky**, they're asked for their handle (e.g. `alice.bsky.social`) or DID; the worker then resolves it through the full atproto discovery chain and redirects them to _their own_ server to sign in:
 

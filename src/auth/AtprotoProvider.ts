@@ -27,10 +27,14 @@ interface AtprotoFlowState {
   returnUrl: string | null;
 }
 
-/** Whether the atproto provider is turned on. It has no client secret (public OAuth client), so it is
- *  enabled by an explicit factory-config flag rather than the presence of credentials in env. */
+/**
+ * Whether the atproto provider is turned on. It has no client secret (public OAuth client), so — like
+ * the env-credential providers are enabled by the presence of their credentials — atproto is enabled
+ * simply by including its config key (`providers: { atproto: {} }`). Pass `enabled: false` to opt out
+ * explicitly (e.g. when the config is built dynamically).
+ */
 export function isAtprotoEnabled(options?: ProviderOptions): boolean {
-  return options?.enabled === true;
+  return options !== undefined && options.enabled !== false;
 }
 
 /**

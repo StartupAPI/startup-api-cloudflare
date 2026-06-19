@@ -3,8 +3,8 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createStartupAPI } from '../src/createStartupAPI';
 import { CookieManager } from '../src/CookieManager';
 
-// atproto is a public OAuth client (no secret); it is enabled purely via the factory config object.
-const atprotoConfig = { providers: { atproto: { enabled: true } } } as const;
+// atproto is a public OAuth client (no secret); including its config key enables it.
+const atprotoConfig = { providers: { atproto: {} } } as const;
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -221,9 +221,13 @@ describe('atproto provider', () => {
     expect(await cbRes.text()).toContain('State mismatch');
   });
 
-  it('lists atproto among active providers only when enabled', async () => {
+  it('enables atproto by presence of its config key, and opts out via enabled: false', async () => {
     const { getActiveProviders } = await import('../src/handlers/utils');
-    expect(getActiveProviders(env, { atproto: { enabled: true } })).toContain('atproto');
+    // Present (even empty) → enabled.
+    expect(getActiveProviders(env, { atproto: {} })).toContain('atproto');
+    // Absent → disabled.
     expect(getActiveProviders(env)).not.toContain('atproto');
+    // Explicit opt-out → disabled.
+    expect(getActiveProviders(env, { atproto: { enabled: false } })).not.toContain('atproto');
   });
 });
