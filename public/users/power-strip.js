@@ -495,6 +495,8 @@ class PowerStrip extends HTMLElement {
           /* A contrasting border keeps the chip distinguishable even when its
              panel color happens to be close to the page background. */
           border: 0.0625rem solid var(--ps-panel-border);
+          border-top: none;
+          border-right: none;
           border-radius: 0 0 0 0.3rem;
           box-shadow: var(--ps-panel-shadow);
           font-size: 1rem;

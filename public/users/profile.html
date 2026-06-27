@@ -7,10 +7,7 @@
     <link rel="stylesheet" href="/users/style.css" />
   </head>
   <body data-ssr-profile="{{ssr:profile_json}}" data-ssr-credentials="{{ssr:credentials_json}}">
-    <power-strip
-      providers="{{ssr:providers}}"
-      style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
-    >
+    <power-strip providers="{{ssr:providers}}" style="position: absolute; top: 0; right: 0; z-index: 9999; border-radius: 0 0 0 0.3rem">
       <svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="#ffcc00" /></svg>
     </power-strip>
     <script src="/users/power-strip.js" async></script>
@@ -56,7 +53,7 @@
               <div
                 id="profile-avatar-placeholder"
                 class="avatar-large"
-                style="background: #f1f3f4; {{ssr:profile_placeholder_display}} align-items: center; justify-content: center; color: #5f6368"
+                style="background: var(--surface-alt); {{ssr:profile_placeholder_display}} align-items: center; justify-content: center; color: var(--muted-badge-text)"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -99,7 +96,7 @@
               </button>
             </div>
             <div>
-              <p id="display-email" style="margin: 0.25rem 0 0 0; color: #666">{{ssr:profile_email}}</p>
+              <p id="display-email" style="margin: 0.25rem 0 0 0; color: var(--text-faint)">{{ssr:profile_email}}</p>
             </div>
           </div>
 
@@ -125,7 +122,7 @@
 
         <section>
           <h2>Login Credentials</h2>
-          <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem">Manage the login methods linked to your account.</p>
+          <p style="color: var(--text-faint); font-size: 0.9rem; margin-bottom: 1.5rem">Manage the login methods linked to your account.</p>
 
           <div id="credentials-list" style="margin-bottom: 2rem">{{ssr:credentials_list_html}}</div>
 
@@ -383,7 +380,7 @@
                       ${c.provider.charAt(0).toUpperCase() + c.provider.slice(1)}
                       ${isCurrent ? '<span class="current-badge">logged in</span>' : ''}
                     </div>
-                    <div style="font-size: 0.8rem; color: #666;">${c.email || c.subject_id}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-faint);">${c.email || c.subject_id}</div>
                   </div>
                 </div>
                 <button class="remove-btn" onclick="removeCredential('${c.provider}')" ${isCurrent || credentials.length === 1 ? 'disabled title="' + (isCurrent ? 'Cannot remove the method you are currently logged in with' : 'Cannot remove your last login method') + '"' : ''}>

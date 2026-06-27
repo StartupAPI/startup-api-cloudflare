@@ -31,7 +31,7 @@ export async function injectPowerStrip(response: Response, usersPath: string, pr
           element.onEndTag((end) => {
             if (!hasUserPowerStrip) {
               end.before(
-                `<power-strip providers="${providersAttr}" style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem;">` +
+                `<power-strip providers="${providersAttr}" style="position: absolute; top: 0; right: 0; z-index: 9999; border-radius: 0 0 0 0.3rem;">` +
                   '<svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem;"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>' +
                   '</power-strip>',
                 { html: true },

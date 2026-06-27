@@ -12,10 +12,7 @@
     data-ssr-members="{{ssr:account_members_json}}"
     data-ssr-plans="{{ssr:plans_json}}"
   >
-    <power-strip
-      providers="{{ssr:providers}}"
-      style="position: absolute; top: 0; right: 0; z-index: 9999; padding: 0.1rem; border-radius: 0 0 0 0.3rem"
-    >
+    <power-strip providers="{{ssr:providers}}" style="position: absolute; top: 0; right: 0; z-index: 9999; border-radius: 0 0 0 0.3rem">
       <svg viewBox="0 0 24 24" style="width: 1rem; height: 1rem"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="#ffcc00" /></svg>
     </power-strip>
     <script src="/users/power-strip.js" async></script>
@@ -61,7 +58,7 @@
               <div
                 id="account-avatar-placeholder"
                 class="account-avatar-large"
-                style="background: #f1f3f4; {{ssr:account_placeholder_display}} align-items: center; justify-content: center; color: #5f6368"
+                style="background: var(--surface-alt); {{ssr:account_placeholder_display}} align-items: center; justify-content: center; color: var(--muted-badge-text)"
               >
                 <svg viewBox="0 0 24 24" style="width: 48px; height: 48px; fill: currentColor">
                   <path
@@ -97,8 +94,8 @@
               </button>
             </div>
             <div>
-              <h2 id="display-account-name" style="margin: 0; color: #333">{{ssr:account_name}}</h2>
-              <p id="display-account-plan" style="margin: 0.25rem 0 0 0; color: #666">{{ssr:account_plan_name}}</p>
+              <h2 id="display-account-name" style="margin: 0; color: var(--text)">{{ssr:account_name}}</h2>
+              <p id="display-account-plan" style="margin: 0.25rem 0 0 0; color: var(--text-faint)">{{ssr:account_plan_name}}</p>
             </div>
           </div>
 

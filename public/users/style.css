@@ -1,3 +1,89 @@
+/* Color tokens. Every color below is keyed off these variables so the whole
+   page can be re-themed by flipping a single set of values — matching how the
+   landing page (index.html) and the <power-strip> component theme themselves.
+   The light palette is the default; the dark overrides are driven by the
+   user's OS color-scheme preference, with a [data-theme] escape hatch so a
+   page (or the power strip) can force a theme at runtime. */
+:root {
+  --bg: #f9f9f9;
+  --surface: #fff;
+  --surface-muted: #f8f9fa;
+  --surface-alt: #f1f3f4;
+  --hover-bg: #f0f0f0;
+  --text: #333;
+  --text-secondary: #555;
+  --text-faint: #666;
+  --text-muted: #717171;
+  --border: #ddd;
+  --border-light: #eee;
+  --accent: #ffcc00;
+  --accent-hover: #e6b800;
+  --accent-text: #826700;
+  --accent-soft-bg: #fff7d6;
+  --on-accent: #202124;
+  --muted-badge-text: #5f6368;
+  --danger: #d93025;
+  --danger-hover: #ea4335;
+  --danger-soft-bg: #fce8e6;
+  --disabled-bg: #ccc;
+  --avatar-remove-bg: #727579;
+  --avatar-remove-icon: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #1a1a1a;
+    --surface: #2d2d2d;
+    --surface-muted: #333;
+    --surface-alt: #3c4043;
+    --hover-bg: #3c4043;
+    --text: #e0e0e0;
+    --text-secondary: #c0c0c0;
+    --text-faint: #bdc1c6;
+    --text-muted: #9aa0a6;
+    --border: #5f6368;
+    --border-light: #444;
+    --accent: #ffcc00;
+    --accent-hover: #e6b800;
+    --accent-text: #ffcc00;
+    --accent-soft-bg: #3a3320;
+    --on-accent: #202124;
+    --muted-badge-text: #a8adb2;
+    --danger: #f28b82;
+    --danger-hover: #ee675c;
+    --danger-soft-bg: #3c2a28;
+    --disabled-bg: #5f6368;
+    --avatar-remove-bg: #5f6368;
+    --avatar-remove-icon: #e0e0e0;
+  }
+}
+
+[data-theme='dark'] {
+  --bg: #1a1a1a;
+  --surface: #2d2d2d;
+  --surface-muted: #333;
+  --surface-alt: #3c4043;
+  --hover-bg: #3c4043;
+  --text: #e0e0e0;
+  --text-secondary: #c0c0c0;
+  --text-faint: #bdc1c6;
+  --text-muted: #9aa0a6;
+  --border: #5f6368;
+  --border-light: #444;
+  --accent: #ffcc00;
+  --accent-hover: #e6b800;
+  --accent-text: #ffcc00;
+  --accent-soft-bg: #3a3320;
+  --on-accent: #202124;
+  --muted-badge-text: #a8adb2;
+  --danger: #f28b82;
+  --danger-hover: #ee675c;
+  --danger-soft-bg: #3c2a28;
+  --disabled-bg: #5f6368;
+  --avatar-remove-bg: #5f6368;
+  --avatar-remove-icon: #e0e0e0;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -9,7 +95,8 @@ body {
     sans-serif;
   padding: 2rem;
   margin: 0 auto;
-  background: #f9f9f9;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .main-layout,
@@ -68,7 +155,7 @@ body {
 .nav-link {
   display: block;
   padding: 0.75rem 1rem;
-  color: #555;
+  color: var(--text-secondary);
   text-decoration: none;
   border-radius: 6px;
   transition: all 0.2s;
@@ -77,20 +164,20 @@ body {
 }
 
 .nav-link:hover {
-  background: #f0f0f0;
-  color: #1a73e8;
+  background: var(--hover-bg);
+  color: var(--accent-text);
 }
 
 .nav-link.active {
-  color: #1a73e8;
+  color: var(--accent-text);
   font-weight: 600;
-  border-left: 3px solid #1a73e8;
+  border-left: 3px solid var(--accent-text);
   border-radius: 0;
   padding-left: calc(1rem - 3px);
 }
 
 h1.page-subtitle {
-  color: #666;
+  color: var(--text-faint);
   margin-bottom: 0.25rem;
   font-size: 1.1rem;
   text-transform: uppercase;
@@ -101,7 +188,7 @@ h1.page-subtitle {
 .page-title {
   font-size: 2.5rem;
   font-weight: bold;
-  color: #333;
+  color: var(--text);
   margin-bottom: 0.5rem;
   white-space: nowrap;
   overflow: hidden;
@@ -111,7 +198,7 @@ h1.page-subtitle {
 
 .subtitle {
   font-size: 0.75rem;
-  color: #888;
+  color: var(--text-muted);
   margin-bottom: 2rem;
   font-family: monospace;
   display: flex;
@@ -121,7 +208,7 @@ h1.page-subtitle {
 }
 
 section {
-  background: white;
+  background: var(--surface);
   padding: 1.5rem;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -136,28 +223,30 @@ section {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .form-group input,
 .form-group select {
   width: 100%;
   padding: 0.75rem;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   border-radius: 4px;
   box-sizing: border-box;
   font-size: 1rem;
+  background: var(--surface);
+  color: var(--text);
 }
 
 .form-group input:disabled {
-  background: #f0f0f0;
-  color: #888;
+  background: var(--surface-muted);
+  color: var(--text-muted);
 }
 
 button {
   padding: 0.75rem 1.5rem;
-  background: #1a73e8;
-  color: white;
+  background: var(--accent);
+  color: var(--on-accent);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -166,21 +255,21 @@ button {
 }
 
 button:hover {
-  background: #1557b0;
+  background: var(--accent-hover);
 }
 
 button.secondary-btn {
-  background: #fff;
-  color: #1a73e8;
-  border: 1px solid #1a73e8;
+  background: var(--surface);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-text);
 }
 
 button.secondary-btn:hover {
-  background: #f8f9fa;
+  background: var(--surface-muted);
 }
 
 button:disabled {
-  background: #ccc;
+  background: var(--disabled-bg);
   cursor: not-allowed;
 }
 
@@ -200,7 +289,7 @@ button:disabled {
 .back-link {
   display: inline-block;
   margin-bottom: 1rem;
-  color: #1a73e8;
+  color: var(--accent-text);
   text-decoration: none;
 }
 
@@ -210,29 +299,29 @@ button:disabled {
 
 .remove-btn {
   background: transparent;
-  color: #d93025;
-  border: 1px solid #d93025;
+  color: var(--danger);
+  border: 1px solid var(--danger);
   padding: 0.4rem 0.8rem;
   font-size: 0.85rem;
 }
 
 .remove-btn:hover {
-  background: #fce8e6;
+  background: var(--danger-soft-bg);
 }
 
 .remove-btn:disabled {
-  background: #fafafa;
-  border-color: #eee;
-  color: #999;
+  background: var(--surface-muted);
+  border-color: var(--border-light);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
 .btn-link {
   display: inline-block;
   padding: 0.75rem 1rem;
-  background: white;
-  color: #1a73e8;
-  border: 1px solid #1a73e8;
+  background: var(--surface);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-text);
   border-radius: 4px;
   text-decoration: none;
   font-weight: 500;
@@ -241,7 +330,7 @@ button:disabled {
 }
 
 .btn-link:hover {
-  background: #f8f9fa;
+  background: var(--surface-muted);
 }
 
 .remove-image-btn {
@@ -251,9 +340,9 @@ button:disabled {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #bdc1c6;
-  color: white;
-  border: 2px solid white;
+  background: var(--avatar-remove-bg);
+  color: var(--avatar-remove-icon);
+  border: 2px solid var(--surface);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -284,7 +373,7 @@ button:disabled {
   height: 100px;
   border-radius: 50%;
   object-fit: cover;
-  border: 3px solid white;
+  border: 3px solid var(--surface);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
@@ -293,7 +382,7 @@ button:disabled {
   height: 100px;
   border-radius: 8px;
   object-fit: cover;
-  border: 3px solid white;
+  border: 3px solid var(--surface);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
@@ -302,20 +391,20 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  border: 1px solid #eee;
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   margin-bottom: 0.75rem;
 }
 
 .credential-item.active {
-  border-color: #1a73e8;
-  background-color: #e8f0fe;
+  border-color: var(--accent-text);
+  background-color: var(--accent-soft-bg);
 }
 
 .current-badge {
   font-size: 0.75rem;
-  background: #1a73e8;
-  color: white;
+  background: var(--accent);
+  color: var(--on-accent);
   padding: 0.125rem 0.375rem;
   border-radius: 0.75rem;
   margin-left: 0.5rem;
@@ -349,13 +438,13 @@ button:disabled {
   text-decoration: none;
   font-weight: 500;
   font-size: 0.875rem;
-  border: 1px solid #ddd;
-  color: #333;
+  border: 1px solid var(--border);
+  color: var(--text);
   transition: background 0.2s;
 }
 
 .link-account-btn.google:hover {
-  background: #f8f9fa;
+  background: var(--surface-muted);
 }
 
 .link-account-btn.twitch {
@@ -378,7 +467,7 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .member-item:last-child {
@@ -398,11 +487,11 @@ button:disabled {
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
-  background: #f1f3f4;
+  background: var(--surface-alt);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #5f6368;
+  color: var(--muted-badge-text);
 }
 
 .member-avatar svg {
@@ -436,27 +525,28 @@ button:disabled {
   font-size: 0.75rem;
   padding: 0.25rem 0.5rem;
   border-radius: 1rem;
-  background: #f1f3f4;
-  color: #5f6368;
+  background: var(--surface-alt);
+  color: var(--muted-badge-text);
   font-weight: 500;
 }
 
 .role-badge.admin {
-  background: #e8f0fe;
-  color: #1a73e8;
+  background: var(--accent-soft-bg);
+  color: var(--accent-text);
 }
 
 .role-select {
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   font-size: 0.85rem;
-  background: #fff;
+  background: var(--surface);
+  color: var(--text);
 }
 
 .role-select:disabled {
-  background: #f1f3f4;
-  color: #5f6368;
+  background: var(--surface-alt);
+  color: var(--muted-badge-text);
   border-color: transparent;
   appearance: none;
   -webkit-appearance: none;
@@ -475,7 +565,7 @@ button:disabled {
   border: none;
   padding: 0.25rem;
   cursor: pointer;
-  color: #1a73e8;
+  color: var(--accent-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -484,7 +574,7 @@ button:disabled {
 }
 
 .copy-btn:hover {
-  background: #f0f0f0;
+  background: var(--hover-bg);
 }
 
 .copy-btn svg {

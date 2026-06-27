@@ -147,7 +147,7 @@ describe('Plan Visibility', () => {
     const html = await res.text();
 
     // Check that SSR replacement for plan name is empty
-    expect(html).toContain('id="display-account-plan" style="margin: 0.25rem 0 0 0; color: #666">');
+    expect(html).toContain('id="display-account-plan" style="margin: 0.25rem 0 0 0; color: var(--text-faint)">');
     // It should literally be an empty string where {{ssr:account_plan_name}} was
     const pTagContent = html.match(/id="display-account-plan"[^>]*>([^<]*)/);
     expect(pTagContent?.[1]).toBe('');
