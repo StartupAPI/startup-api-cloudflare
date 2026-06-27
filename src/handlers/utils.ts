@@ -1,7 +1,9 @@
 import { StartupAPIEnv } from '../StartupAPIEnv';
 import { CookieManager } from '../CookieManager';
+import { isAtprotoEnabled } from '../auth/AtprotoProvider';
+import type { ProviderConfigs } from '../auth/providers';
 
-export function getActiveProviders(env: StartupAPIEnv): string[] {
+export function getActiveProviders(env: StartupAPIEnv, providerConfigs: ProviderConfigs = {}): string[] {
   const providers: string[] = [];
   if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
     providers.push('google');
@@ -11,6 +13,10 @@ export function getActiveProviders(env: StartupAPIEnv): string[] {
   }
   if (env.PATREON_CLIENT_ID && env.PATREON_CLIENT_SECRET) {
     providers.push('patreon');
+  }
+  // atproto has no env credentials; it is enabled purely via factory config.
+  if (isAtprotoEnabled(providerConfigs.atproto)) {
+    providers.push('atproto');
   }
   return providers;
 }

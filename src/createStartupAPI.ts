@@ -167,7 +167,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       const isAccounts = subPath === 'accounts.html' || subPath === 'accounts';
 
       if (isProfile || isAccounts) {
-        return handleSSR(request, env, url, usersPath, cookieManager);
+        return handleSSR(request, env, url, usersPath, cookieManager, providerConfigs);
       }
     }
 
@@ -262,7 +262,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
 
     // Admin Routes
     if (url.pathname.startsWith(usersPath + 'admin/')) {
-      return handleAdmin(request, env, usersPath, cookieManager);
+      return handleAdmin(request, env, usersPath, cookieManager, providerConfigs);
     }
 
     // Intercept requests to usersPath and serve them from the public/users directory.
@@ -336,7 +336,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
         return denyResponse(decision, {
           usersPath,
           returnUrl,
-          activeProviders: getActiveProviders(env),
+          activeProviders: getActiveProviders(env, providerConfigs),
           authenticated,
           request,
           env,
@@ -345,7 +345,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       }
 
       const response = await originFetch(newRequest);
-      const providers = getActiveProviders(env);
+      const providers = getActiveProviders(env, providerConfigs);
       return injectPowerStrip(response, usersPath, providers);
     }
 

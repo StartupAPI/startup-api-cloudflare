@@ -70,6 +70,8 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 | `PATREON_CLIENT_SECRET`  | No       | N/A       | Patreon OAuth2 Client Secret                                                  |
 | `PATREON_WEBHOOK_SECRET` | No       | N/A       | Secret for verifying Patreon webhook signatures                               |
 
+> AT Protocol (Bluesky) login needs **no environment variables at all** — it is a public OAuth client with no secret, so it is configured entirely through the `createStartupAPI` factory (see [Bluesky / AT Protocol](#bluesky--at-protocol-atproto) below).
+
 > Environment variables hold only credentials/secrets (OAuth client IDs and all secrets) plus the per‑deployment values `ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, and `ENVIRONMENT`. **All other configuration — OAuth scopes, Patreon campaign id, the access policy, entitlement freshness — is passed to the `createStartupAPI` factory** (see [Access policy & provider entitlements](#access-policy--provider-entitlements)).
 
 ### Setting up OAuth
@@ -98,6 +100,46 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 2. Click **Create Client** and fill in your app details
 3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/patreon/callback`
 4. Copy the **Client ID** and **Client Secret** and add them to your Worker's environment variables
+
+#### Bluesky / AT Protocol (atproto)
+
+atproto login is decentralized: there is **no central provider to register with and no client secret**. Instead the worker acts as a [public OAuth client](https://atproto.com/specs/oauth) identified by a client-metadata document it serves itself, and it discovers the right authorization server **per user** from their handle or DID — so it works with `bsky.social` and any self-hosted PDS alike, with no Bluesky host hardcoded.
+
+Because it has no secrets, atproto is configured **entirely through the `createStartupAPI` factory** (not env vars). Just like the env-credential providers are enabled by the presence of their credentials, atproto is enabled simply by **including its config key** — an empty object is enough:
+
+```ts
+import { createStartupAPI } from '@startup-api/cloudflare';
+
+const api = createStartupAPI({
+  providers: {
+    atproto: {}, // including the key enables it — no client id/secret needed
+    // All fields below are optional:
+    // atproto: {
+    //   clientName: 'My App',           // shown on the consent screen (default "StartupAPI")
+    //   plcUrl: 'https://plc.directory', // override the PLC directory for did:plc
+    //   dohUrl: 'https://cloudflare-dns.com/dns-query', // override the DoH resolver
+    //   scopes: 'transition:generic',    // extra scopes on top of the base `atproto`
+    //   enabled: false,                  // explicit opt-out (e.g. for dynamically-built config)
+    // },
+  },
+});
+
+export default api.default;
+export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
+```
+
+1. Include `atproto: {}` in the factory `providers` config (no client id/secret needed). Pass `enabled: false` to opt out explicitly.
+2. Deploy over **HTTPS** with a stable hostname. The worker automatically serves its client metadata at `https://<your-worker-url>/users/auth/atproto/client-metadata.json` (this URL is the OAuth `client_id`) and registers the redirect URI `https://<your-worker-url>/users/auth/atproto/callback`.
+3. That's it. When a visitor clicks **Continue with Bluesky**, they're asked for their handle (e.g. `alice.bsky.social`) or DID; the worker then resolves it through the full atproto discovery chain and redirects them to _their own_ server to sign in:
+
+   ```
+   handle ─▶ DID            (HTTPS .well-known/atproto-did, then DNS _atproto.<handle> via DoH)
+   DID    ─▶ DID document   (did:plc via the PLC directory, did:web via the domain)
+   DID doc─▶ PDS endpoint    (the #atproto_pds service)
+   PDS    ─▶ auth server     (.well-known/oauth-protected-resource → oauth-authorization-server)
+   ```
+
+The flow uses PKCE, DPoP-bound (sender-constrained) tokens, and Pushed Authorization Requests (PAR) as required by the atproto OAuth profile. The PLC directory and DNS-over-HTTPS resolver are generic infrastructure and can be overridden via the `plcUrl` / `dohUrl` factory options.
 
 #### Requesting additional scopes
 

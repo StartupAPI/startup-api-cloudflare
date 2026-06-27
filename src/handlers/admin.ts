@@ -1,6 +1,7 @@
 import { StartupAPIEnv } from '../StartupAPIEnv';
 import { CookieManager } from '../CookieManager';
 import { getUserFromSession, checkAndClearStaleSession, isAdmin, parseCookies, getActiveProviders } from './utils';
+import type { ProviderConfigs } from '../auth/providers';
 import { Plan } from '../billing/Plan';
 import { UserProfileSchema } from '../schemas/user';
 import { SystemAccountSchema, MemberSchema } from '../schemas/account';
@@ -11,6 +12,7 @@ export async function handleAdmin(
   env: StartupAPIEnv,
   usersPath: string,
   cookieManager: CookieManager,
+  providerConfigs: ProviderConfigs = {},
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user || !isAdmin(user, env)) {
@@ -31,7 +33,7 @@ export async function handleAdmin(
     html = html.replace(/\{\{ssr:([a-z0-9_]+)\}\}/g, (match, key) => {
       const replacements: Record<string, string> = {
         plans_json: JSON.stringify(Plan.getAll()).replace(/"/g, '&quot;'),
-        providers: getActiveProviders(env).join(','),
+        providers: getActiveProviders(env, providerConfigs).join(','),
       };
       return replacements[key] !== undefined ? replacements[key] : match;
     });

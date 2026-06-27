@@ -16,6 +16,50 @@ export interface UserProfile {
 }
 
 import type { Entitlements } from '../entitlements/types';
+import type { StartupAPIEnv } from '../StartupAPIEnv';
+import type { CookieManager } from '../CookieManager';
+
+/**
+ * Per-request context handed to a provider's flow hooks. Carries everything needed to run an
+ * authorization start or callback without the provider reaching back into the router.
+ */
+export interface AuthContext {
+  request: Request;
+  env: StartupAPIEnv;
+  url: URL;
+  /** Base URL provider redirect/callback URIs are built from, e.g. `https://host/users/auth`. */
+  redirectBase: string;
+  /** Pathname of `redirectBase`, e.g. `/users/auth`. */
+  authPath: string;
+  /** Configured users path, e.g. `/users/`. */
+  usersPath: string;
+  /** Effective origin (AUTH_ORIGIN override or request origin). */
+  origin: string;
+  cookieManager: CookieManager;
+}
+
+/**
+ * Result of a successful callback exchange: the token, the resolved user profile, where to send the
+ * user next, and any extra cookies to emit (e.g. clearing transient flow state).
+ */
+export interface ExchangeResult {
+  token: OAuthTokenResponse;
+  profile: UserProfile;
+  returnUrl: string | null;
+  setCookies?: string[];
+}
+
+/** Decode the base64url state param used by the standard flow back into its return_url. */
+function parseReturnUrl(stateBase64: string | null): string | null {
+  if (!stateBase64) return null;
+  try {
+    const base64 = stateBase64.replace(/-/g, '+').replace(/_/g, '/');
+    const stateJson = decodeURIComponent(escape(atob(base64)));
+    return JSON.parse(stateJson).return_url ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export abstract class OAuthProvider {
   protected clientId: string;
@@ -58,10 +102,66 @@ export abstract class OAuthProvider {
     return path === `${authBasePath}/${this.name}/callback`;
   }
 
-  abstract getAuthUrl(state: string): string;
   abstract getIcon(): string;
-  abstract getToken(code: string): Promise<OAuthTokenResponse>;
-  abstract getUserProfile(token: string): Promise<UserProfile>;
+
+  /**
+   * Simple OAuth2 hooks used by the default {@link authorize}/{@link exchange}. Providers whose flow
+   * fits the classic "redirect → code → token → profile" shape implement these. Providers with a
+   * heavier flow (e.g. atproto's PKCE/DPoP/PAR) instead override {@link authorize}/{@link exchange}
+   * and may leave these as the throwing defaults.
+   */
+  getAuthUrl(_state: string): string {
+    throw new Error(`${this.name}: getAuthUrl is not implemented`);
+  }
+
+  async getToken(_code: string): Promise<OAuthTokenResponse> {
+    throw new Error(`${this.name}: getToken is not implemented`);
+  }
+
+  async getUserProfile(_token: string): Promise<UserProfile> {
+    throw new Error(`${this.name}: getUserProfile is not implemented`);
+  }
+
+  /**
+   * Begin the authorization flow. Default: build a base64url `state` (nonce + return_url) and redirect
+   * to {@link getAuthUrl}. Providers needing async setup, server-side flow state, or custom request
+   * shapes override this and return their own Response.
+   */
+  async authorize(ctx: AuthContext): Promise<Response> {
+    const returnUrl = ctx.url.searchParams.get('return_url');
+    const stateObj = { nonce: Math.random().toString(36).substring(2), return_url: returnUrl };
+    const state = btoa(unescape(encodeURIComponent(JSON.stringify(stateObj))))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    return Response.redirect(this.getAuthUrl(state), 302);
+  }
+
+  /**
+   * Exchange a callback for a token and resolved profile. Default: read `code`, recover the return_url
+   * from `state`, then {@link getToken} + {@link getUserProfile}. Providers override this for custom
+   * token exchanges (PKCE/DPoP, dynamic endpoints, etc.).
+   */
+  async exchange(ctx: AuthContext): Promise<ExchangeResult> {
+    const code = ctx.url.searchParams.get('code');
+    if (!code) {
+      const err = new Error('Missing code') as Error & { status?: number };
+      err.status = 400;
+      throw err;
+    }
+    const returnUrl = parseReturnUrl(ctx.url.searchParams.get('state'));
+    const token = await this.getToken(code);
+    const profile = await this.getUserProfile(token.access_token);
+    return { token, profile, returnUrl };
+  }
+
+  /**
+   * Serve any provider-specific auxiliary GET routes mounted under the auth base path (e.g. the atproto
+   * client-metadata document). Default: not a provider route → null, so the router moves on.
+   */
+  async handleExtraRoute(_ctx: AuthContext): Promise<Response | null> {
+    return null;
+  }
 
   /**
    * Whether this provider produces entitlements (memberships / perks). Providers that gate access on

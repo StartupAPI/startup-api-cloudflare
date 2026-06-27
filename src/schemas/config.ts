@@ -28,6 +28,12 @@ export const ProviderOptionsSchema = z.object({
   scopes: z.union([z.string(), z.array(z.string())]).optional(),
   /** Patreon only: restrict entitlements to a single campaign id. */
   campaignId: z.string().optional(),
+  /** atproto only: display name advertised in the client-metadata document. Default: "StartupAPI". */
+  clientName: z.string().optional(),
+  /** atproto only: override the PLC directory used to resolve did:plc identities. Default: https://plc.directory. */
+  plcUrl: z.string().optional(),
+  /** atproto only: override the DNS-over-HTTPS resolver used for handle resolution. */
+  dohUrl: z.string().optional(),
   freshness: ProviderFreshnessSchema.optional(),
 });
 

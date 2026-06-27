@@ -1,6 +1,7 @@
 import { StartupAPIEnv } from '../StartupAPIEnv';
 import { CookieManager } from '../CookieManager';
 import { getUserFromSession, checkAndClearStaleSession, isAdmin, getActiveProviders } from './utils';
+import type { ProviderConfigs } from '../auth/providers';
 import { Plan } from '../billing/Plan';
 
 export async function handleSSR(
@@ -9,6 +10,7 @@ export async function handleSSR(
   url: URL,
   usersPath: string,
   cookieManager: CookieManager,
+  providerConfigs: ProviderConfigs = {},
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user) {
@@ -90,7 +92,7 @@ export async function handleSSR(
     // Prepare SSR values
     const replacements: Record<string, string> = {
       plans_json: JSON.stringify(Plan.getAll()).replace(/"/g, '&quot;'),
-      providers: getActiveProviders(env).join(','),
+      providers: getActiveProviders(env, providerConfigs).join(','),
       profile_json: JSON.stringify(data).replace(/"/g, '&quot;'),
       credentials_json: JSON.stringify(credentials).replace(/"/g, '&quot;'),
       profile_name: data.profile.name || 'Anonymous',
@@ -105,7 +107,7 @@ export async function handleSSR(
         : '',
       nav_account_display: account && (account.role === 1 || data.is_admin) ? 'display: block;' : 'display: none;',
       credentials_list_html: renderCredentialsList(credentials, data.credential?.provider),
-      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env), url.href),
+      link_credentials_html: renderLinkCredentialsList(getActiveProviders(env, providerConfigs), url.href),
     };
 
     if (account) {
@@ -212,6 +214,8 @@ function getProviderIcon(provider: string): string {
     return '<svg viewBox="0 0 24 24" width="24" height="24" class="twitch-icon"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z" fill="currentColor"/></svg>';
   } else if (provider === 'patreon') {
     return '<svg viewBox="0 0 24 24" width="24" height="24" class="patreon-icon"><path d="M14.82 2.41c3.96 0 7.18 3.24 7.18 7.21 0 3.96-3.22 7.18-7.18 7.18-3.97 0-7.21-3.22-7.21-7.18 0-3.97 3.24-7.21 7.21-7.21M2 21.6h3.5V2.41H2V21.6z" fill="currentColor"/></svg>';
+  } else if (provider === 'atproto') {
+    return '<svg viewBox="0 0 24 24" width="24" height="24" class="atproto-icon"><path d="M12 10.5C10.9 8.4 8.2 6.3 6.3 6c-1.5-.2-1.8.7-1.5 2 .2 1 1.5 5 2.3 6 .9 1.2 2 1.4 3 1.2-1.7.3-3.2 1-1.2 3 .9.9 1.6.3 2.1-.6.5-1 .8-2.1 1-2.6.2.5.5 1.6 1 2.6.5.9 1.2 1.5 2.1.6 2-2 .5-2.7-1.2-3 1 .2 2.1 0 3-1.2.8-1 2.1-5 2.3-6 .3-1.3 0-2.2-1.5-2-1.9.3-4.6 2.4-5.7 4.5z" fill="#0085FF"/></svg>';
   }
   return '';
 }
