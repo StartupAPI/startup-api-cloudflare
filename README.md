@@ -12,36 +12,35 @@ This application uses the Cloudflare Developer Platform, including Workers and D
 
 ## Installation
 
-### Option 1: Cloudflare Workers GitHub Integration (Recommended)
+Start a new project with the **`npm create startup-api`** scaffolder. It generates a tiny Cloudflare Worker that pulls this framework in as the [`@startup-api/cloudflare`](https://www.npmjs.com/package/@startup-api/cloudflare) npm dependency — so you stay up to date with `npm update` instead of maintaining a fork of this repository.
 
-This is the easiest way to deploy and keep your worker up to date.
+```bash
+npm create startup-api my-app -- --origin https://your-app-origin.com
+cd my-app
+npm run dev      # local dev at http://localhost:8787
+npm run deploy   # deploy to Cloudflare
+```
 
-1. **Fork this repository** to your account
-2. Go to your [Cloudflare Dashboard's Workers & pages > Create Application](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create)
-3. Click **Continue with GitHub**
-4. Select your forked `startup-api-cloudflare` repository
-5. Pick the name for your site's worker (e.g. you might have multiple)
-6. Deploy the Worker
-7. In the **Settings** tab of your Worker, go to **Variables** and add the required `ORIGIN_URL` (see [Configuration](#configuration-details) below)
+Run `npm create startup-api` with no arguments to be prompted for the project name and origin URL interactively. Useful flags: `--no-install` (skip `npm install`) and `--yes` / `-y` (non-interactive — requires a `name` and `--origin`).
 
-### Option 2: Manual Installation (CLI)
+What you get:
 
-Use this option if you want to deploy from your local machine.
+- A minimal `src/index.ts` that re-exports the worker plus a `wrangler.jsonc` you control. The framework ships as the `@startup-api/cloudflare` dependency, so your project stays small.
+- A `.dev.vars` file with a random `SESSION_SECRET` for local development. For production, set your own with `npx wrangler secret put SESSION_SECRET`.
+- Framework updates are just `npm update @startup-api/cloudflare` — no fork to rebase.
 
-1. **Clone and Install**
-   ```bash
-   git clone https://github.com/StartupAPI/startup-api-cloudflare.git
-   cd startup-api-cloudflare
-   npm install
-   ```
-2. **Configure Environment Variables**
+Then set the required `ORIGIN_URL` and any OAuth credentials (see [Configuration](#configuration-details) below) and run `npm run deploy`. See [create-startup-api](https://github.com/StartupAPI/create-startup-api) for full details.
 
-   Update `wrangler.jsonc` or use dashboard **Settings** tab of your Worker, go to **Variables** and add the required `ORIGIN_URL` (see [Configuration](#configuration-details) below)
+### Automated deployments
 
-3. **Deploy**
-   ```bash
-   npm run deploy
-   ```
+`npm run deploy` deploys from your machine. To deploy automatically instead, push your scaffolded project to a GitHub repository and use either:
+
+- **Cloudflare Workers GitHub app** — connect the repo to Cloudflare's [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) Git integration and Cloudflare builds and deploys on every push, no CI config to maintain.
+- **A GitHub Actions workflow** — run [`cloudflare/wrangler-action`](https://github.com/cloudflare/wrangler-action) on push to deploy with Wrangler. Add a `CLOUDFLARE_API_TOKEN` (and `CLOUDFLARE_ACCOUNT_ID`) repository secret so the action can authenticate.
+
+Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on the Worker in the Cloudflare dashboard or with `npx wrangler secret put` rather than committing them.
+
+> **Working on the framework itself?** See [CONTRIBUTING.md](./CONTRIBUTING.md) for cloning and running this repository locally.
 
 ## Configuration Details
 
@@ -58,18 +57,18 @@ Use this option if you want to deploy from your local machine.
 - **Using `wrangler.jsonc`:**
   Add the variables to the `"vars"` object in your configuration file. See [Cloudflare documentation](https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables) for more details.
 
-| Variable               | Required | Default   | Description                                                                   |
-| :--------------------- | :------- | :-------- | :---------------------------------------------------------------------------- |
-| `ORIGIN_URL`           | **Yes**  | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
-| `USERS_PATH`           | No       | `/users/` | The path used to serve internal assets like `power-strip.js`                  |
-| `AUTH_ORIGIN`          | No       | N/A       | Optional base URL for OAuth redirects (overrides request origin)              |
-| `GOOGLE_CLIENT_ID`     | No       | N/A       | Google OAuth2 Client ID                                                       |
-| `GOOGLE_CLIENT_SECRET` | No       | N/A       | Google OAuth2 Client Secret                                                   |
-| `TWITCH_CLIENT_ID`     | No       | N/A       | Twitch OAuth2 Client ID                                                       |
-| `TWITCH_CLIENT_SECRET` | No       | N/A       | Twitch OAuth2 Client Secret                                                   |
-| `PATREON_CLIENT_ID`    | No       | N/A       | Patreon OAuth2 Client ID                                                      |
-| `PATREON_CLIENT_SECRET`| No       | N/A       | Patreon OAuth2 Client Secret                                                  |
-| `PATREON_WEBHOOK_SECRET`| No      | N/A       | Secret for verifying Patreon webhook signatures                              |
+| Variable                 | Required | Default   | Description                                                                   |
+| :----------------------- | :------- | :-------- | :---------------------------------------------------------------------------- |
+| `ORIGIN_URL`             | **Yes**  | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
+| `USERS_PATH`             | No       | `/users/` | The path used to serve internal assets like `power-strip.js`                  |
+| `AUTH_ORIGIN`            | No       | N/A       | Optional base URL for OAuth redirects (overrides request origin)              |
+| `GOOGLE_CLIENT_ID`       | No       | N/A       | Google OAuth2 Client ID                                                       |
+| `GOOGLE_CLIENT_SECRET`   | No       | N/A       | Google OAuth2 Client Secret                                                   |
+| `TWITCH_CLIENT_ID`       | No       | N/A       | Twitch OAuth2 Client ID                                                       |
+| `TWITCH_CLIENT_SECRET`   | No       | N/A       | Twitch OAuth2 Client Secret                                                   |
+| `PATREON_CLIENT_ID`      | No       | N/A       | Patreon OAuth2 Client ID                                                      |
+| `PATREON_CLIENT_SECRET`  | No       | N/A       | Patreon OAuth2 Client Secret                                                  |
+| `PATREON_WEBHOOK_SECRET` | No       | N/A       | Secret for verifying Patreon webhook signatures                               |
 
 > Environment variables hold only credentials/secrets (OAuth client IDs and all secrets) plus the per‑deployment values `ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, and `ENVIRONMENT`. **All other configuration — OAuth scopes, Patreon campaign id, the access policy, entitlement freshness — is passed to the `createStartupAPI` factory** (see [Access policy & provider entitlements](#access-policy--provider-entitlements)).
 
@@ -144,7 +143,7 @@ By default the worker injects its own `<power-strip>` pinned to the top-right co
 ```
 
 - **`providers` is optional.** If you omit it, the worker fills in the active providers for you (e.g. `providers="google,twitch,patreon"`). Set it yourself to override which login buttons appear.
-- **Prefer an explicit closing tag.** `<power-strip></power-strip>` and `<power-strip/>` are both detected, but per the HTML spec `<power-strip/>` is *not* truly self-closing — the browser treats it as an open tag and nests the following content inside it. Use a closing tag (or place the element last in its container) to avoid surprises.
+- **Prefer an explicit closing tag.** `<power-strip></power-strip>` and `<power-strip/>` are both detected, but per the HTML spec `<power-strip/>` is _not_ truly self-closing — the browser treats it as an open tag and nests the following content inside it. Use a closing tag (or place the element last in its container) to avoid surprises.
 - **Script-only opt-out.** Use `<power-strip hidden>` to load `power-strip.js` (and its JS API) without rendering a visible strip.
 
 ## Access policy & provider entitlements
@@ -243,7 +242,12 @@ const api = createStartupAPI({
       freshness: { ttl: true, cron: { schedule: '0 */6 * * *' }, webhook: true },
     },
   },
-  accessPolicy: { rules: [/* ... */], default: { mode: 'public' } },
+  accessPolicy: {
+    rules: [
+      /* ... */
+    ],
+    default: { mode: 'public' },
+  },
 });
 
 export default api.default; // includes scheduled() because cron is enabled
@@ -254,7 +258,7 @@ export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to clone, run, test, and submit changes to the framework.
 
 ## License
 
