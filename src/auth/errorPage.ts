@@ -24,9 +24,11 @@ const MAX_DETAIL_LENGTH = 300;
  * (scripts, images, frames, connections). We additively allow `style-src 'self' 'unsafe-inline'`
  * for the linked `style.css` (same-origin) and the page's own inline `<style>`. With no `script-src`,
  * no inline or external script can ever run — neutralizing HTML/script injection as a class.
+ * `frame-ancestors 'none'` is listed explicitly because it does NOT fall back to `default-src`, and
+ * without it the page could be framed by another origin (clickjacking) — unwanted for an auth endpoint.
  */
 const CONTENT_SECURITY_POLICY =
-  "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+  "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 /** Render a minimal styled "sign-in failed" page that matches the app theme. */
 export function renderAuthError(message: string, status = 500, usersPath = '/users/'): Response {
@@ -64,6 +66,8 @@ export function renderAuthError(message: string, status = 500, usersPath = '/use
       'Content-Security-Policy': CONTENT_SECURITY_POLICY,
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
+      // Reflects a user handle / remote server message — never let a browser or intermediary cache it.
+      'Cache-Control': 'no-store',
     },
   });
 }

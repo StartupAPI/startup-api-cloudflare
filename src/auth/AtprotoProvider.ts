@@ -300,7 +300,19 @@ export class AtprotoProvider extends OAuthProvider {
   </form>
 </body>
 </html>`;
-    return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    return new Response(html, {
+      status,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        // Same hardening as the auth error page: only same-origin styles/form, never framed, never cached
+        // (the re-rendered form reflects the user-supplied handle).
+        'Content-Security-Policy':
+          "default-src 'none'; style-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+        'Cache-Control': 'no-store',
+      },
+    });
   }
 }
 

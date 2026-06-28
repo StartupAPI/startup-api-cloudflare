@@ -98,8 +98,18 @@ describe('atproto provider', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('text/html');
+    // Auth page hardening: not framable, not cached (it can reflect the user's handle).
+    expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
     const html = await res.text();
     expect(html).toContain('name="handle"');
+  });
+
+  it('serves the error page non-framable and non-cacheable', async () => {
+    const { renderAuthError } = await import('../src/auth/errorPage');
+    const res = renderAuthError('Could not resolve handle "x"', 500, '/users/');
+    expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
   it('resolves identity, performs PAR with DPoP + PKCE (with nonce retry), and redirects', async () => {
