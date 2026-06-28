@@ -1,6 +1,6 @@
 /**
  * AT Protocol identity resolution. Given a user-supplied handle or DID we walk the full discovery
- * chain — with NO hardcoded Bluesky/PDS hosts — to find the authorization server that owns the
+ * chain — with NO hardcoded provider/PDS hosts — to find the authorization server that owns the
  * identity:
  *
  *   handle ──▶ DID            (HTTPS `.well-known/atproto-did`, then DNS TXT `_atproto.<handle>` via DoH)

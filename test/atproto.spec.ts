@@ -221,6 +221,38 @@ describe('atproto provider', () => {
     expect(await cbRes.text()).toContain('State mismatch');
   });
 
+  it('re-renders the handle form (pre-filled) with an inline error when resolution fails', async () => {
+    // Every identity lookup fails → resolveHandleToDid throws "Could not resolve handle ...".
+    globalThis.fetch = (async () => new Response('not found', { status: 404 })) as typeof fetch;
+
+    const api = createStartupAPI(atprotoConfig);
+    const ctx = createExecutionContext();
+    const res = await api.fetch(new Request('http://example.com/users/auth/atproto?handle=ghost.invalid'), env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get('Content-Type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toContain('name="handle"'); // the entry form is shown again
+    expect(html).toContain('value="ghost.invalid"'); // with the handle pre-filled to retry
+    expect(html).toContain('role="alert"'); // and an error banner
+    expect(html).toContain('Could not resolve handle &quot;ghost.invalid&quot; to a DID');
+  });
+
+  it('HTML-escapes an untrusted handle when re-rendering the error form', async () => {
+    globalThis.fetch = (async () => new Response('not found', { status: 404 })) as typeof fetch;
+
+    const api = createStartupAPI(atprotoConfig);
+    const ctx = createExecutionContext();
+    const malicious = encodeURIComponent('"><script>alert(1)</script>');
+    const res = await api.fetch(new Request(`http://example.com/users/auth/atproto?handle=${malicious}`), env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    const html = await res.text();
+    expect(html).not.toContain('<script>alert(1)</script>'); // no markup breaks out
+    expect(html).toContain('&lt;script&gt;'); // it is encoded instead
+  });
+
   it('enables atproto by presence of its config key, and opts out via enabled: false', async () => {
     const { getActiveProviders } = await import('../src/handlers/utils');
     // Present (even empty) → enabled.

@@ -1,3 +1,5 @@
+import { escape as escapeHtml } from 'he';
+
 import type { StartupAPIEnv } from '../StartupAPIEnv';
 import type { ProviderOptions } from '../schemas/config';
 
@@ -38,7 +40,7 @@ export function isAtprotoEnabled(options?: ProviderOptions): boolean {
 }
 
 /**
- * AT Protocol (Bluesky and any atproto PDS) authentication.
+ * AT Protocol (Atmosphere) authentication — works with any atproto PDS.
  *
  * Unlike the classic OAuth2 providers, atproto requires PKCE, DPoP-bound tokens, Pushed Authorization
  * Requests (PAR), and per-user dynamic endpoints discovered from the identity (handle → DID → PDS →
@@ -66,7 +68,7 @@ export class AtprotoProvider extends OAuthProvider {
   }
 
   getIcon(): string {
-    // AT Protocol / Bluesky butterfly mark.
+    // AT Protocol (Atmosphere) butterfly mark.
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="11" fill="#0085FF" stroke="white" stroke-width="1"/>
       <path d="M12 10.5C10.9 8.4 8.2 6.3 6.3 6c-1.5-.2-1.8.7-1.5 2 .2 1 1.5 5 2.3 6 .9 1.2 2 1.4 3 1.2-1.7.3-3.2 1-1.2 3 .9.9 1.6.3 2.1-.6.5-1 .8-2.1 1-2.6.2.5.5 1.6 1 2.6.5.9 1.2 1.5 2.1.6 2-2 .5-2.7-1.2-3 1 .2 2.1 0 3-1.2.8-1 2.1-5 2.3-6 .3-1.3 0-2.2-1.5-2-1.9.3-4.6 2.4-5.7 4.5z" fill="white"/>
@@ -109,6 +111,19 @@ export class AtprotoProvider extends OAuthProvider {
       return this.renderHandleForm(ctx, returnUrl);
     }
 
+    try {
+      return await this.startAuthorization(ctx, identifier, returnUrl);
+    } catch (e) {
+      // The user supplied a handle and is still on our side of the redirect, so the most useful
+      // recovery is to re-render the entry form with the failure shown and their handle pre-filled,
+      // rather than a dead-end error page. (Callback-phase failures fall back to renderAuthError.)
+      const message = e instanceof Error ? e.message : String(e);
+      return this.renderHandleForm(ctx, returnUrl, { error: message, handle: identifier });
+    }
+  }
+
+  /** Resolve the identity, run the DPoP-protected PAR, and redirect to the discovered auth endpoint. */
+  private async startAuthorization(ctx: AuthContext, identifier: string, returnUrl: string | null): Promise<Response> {
     const identity = await resolveIdentity(identifier, this.resolverOptions);
     const { verifier, challenge } = await generatePkce();
     const dpopKey = await generateDpopKey();
@@ -227,16 +242,27 @@ export class AtprotoProvider extends OAuthProvider {
     return { token, profile, returnUrl: flow.returnUrl ?? null, setCookies: [clearCookie] };
   }
 
-  /** Minimal handle-entry page shown when the user starts the flow without an identifier. */
-  private renderHandleForm(ctx: AuthContext, returnUrl: string | null): Response {
+  /**
+   * Handle-entry page. Shown when the user starts the flow without an identifier, and re-shown when a
+   * supplied handle fails to authorize — in which case `options.error` renders an inline banner and
+   * `options.handle` pre-fills the input so the user can correct and retry without leaving the page.
+   */
+  private renderHandleForm(
+    ctx: AuthContext,
+    returnUrl: string | null,
+    options: { error?: string; handle?: string } = {},
+  ): Response {
     const action = `${ctx.authPath}/atproto`;
     const returnField = returnUrl ? `<input type="hidden" name="return_url" value="${escapeHtml(returnUrl)}" />` : '';
+    const errorBanner = options.error ? `<div class="error" role="alert">${escapeHtml(options.error)}</div>` : '';
+    const handleValue = options.handle ? ` value="${escapeHtml(options.handle)}"` : '';
+    const status = options.error ? 400 : 200;
     const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sign in with Bluesky / atproto</title>
+<title>Login with your Atmosphere account</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #f5f7fb; margin: 0; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
   .card { background: #fff; padding: 2rem; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); width: 320px; }
@@ -245,20 +271,22 @@ export class AtprotoProvider extends OAuthProvider {
   input[type=text] { width: 100%; box-sizing: border-box; padding: 0.6rem 0.7rem; border: 1px solid #ccd2dd; border-radius: 8px; font-size: 0.95rem; }
   button { margin-top: 1rem; width: 100%; padding: 0.65rem; border: 0; border-radius: 8px; background: #0085FF; color: #fff; font-size: 0.95rem; cursor: pointer; }
   p { font-size: 0.8rem; color: #777; margin-top: 0.75rem; }
+  .error { background: #fdecea; border: 1px solid #f5c6c2; color: #b3261e; border-radius: 8px; padding: 0.6rem 0.7rem; font-size: 0.82rem; margin-bottom: 1rem; word-break: break-word; }
 </style>
 </head>
 <body>
   <form class="card" method="GET" action="${escapeHtml(action)}">
-    <h1>Sign in with Bluesky / atproto</h1>
+    <h1>Login with your Atmosphere account</h1>
+    ${errorBanner}
     <label for="handle">Your handle or DID</label>
-    <input type="text" id="handle" name="handle" placeholder="alice.bsky.social" autocomplete="username" autofocus required />
+    <input type="text" id="handle" name="handle" placeholder="alice.bsky.social"${handleValue} autocomplete="username" autofocus required />
     ${returnField}
     <button type="submit">Continue</button>
     <p>Enter your atproto handle (e.g. alice.bsky.social) or DID. Your account's own server handles the login.</p>
   </form>
 </body>
 </html>`;
-    return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
 }
 
@@ -270,13 +298,4 @@ function readCookie(header: string | null, name: string): string | undefined {
     if (key.trim() === name) return rest.join('=').trim();
   }
   return undefined;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
