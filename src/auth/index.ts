@@ -41,7 +41,7 @@ export async function handleAuth(
       try {
         return await provider.authorize(ctx);
       } catch (e) {
-        return renderAuthError(e instanceof Error ? e.message : String(e), 500);
+        return renderAuthError(e instanceof Error ? e.message : String(e), 500, usersPath);
       }
     }
   }
@@ -55,7 +55,7 @@ export async function handleAuth(
         return await finishLogin(provider, result, ctx);
       } catch (e) {
         const status = (e as { status?: number })?.status ?? 500;
-        return renderAuthError(e instanceof Error ? e.message : String(e), status);
+        return renderAuthError(e instanceof Error ? e.message : String(e), status, usersPath);
       }
     }
   }
