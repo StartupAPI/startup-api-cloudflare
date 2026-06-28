@@ -30,14 +30,23 @@ interface AtprotoFlowState {
   returnUrl: string | null;
 }
 
+/** A string env flag is truthy when it reads as "true"/"1"/"yes"/"on" (case-insensitive). */
+function isEnvFlagTruthy(value: string | undefined): boolean {
+  return value !== undefined && ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
+}
+
 /**
- * Whether the atproto provider is turned on. It has no client secret (public OAuth client), so — like
- * the env-credential providers are enabled by the presence of their credentials — atproto is enabled
- * simply by including its config key (`providers: { atproto: {} }`). Pass `enabled: false` to opt out
- * explicitly (e.g. when the config is built dynamically).
+ * Whether the atproto provider is turned on. It has no client secret (public OAuth client), so it is
+ * enabled either by:
+ *   - including its factory config key (`providers: { atproto: {} }`), or
+ *   - setting the `ATPROTO_ENABLED` env var truthy (a per-deployment switch needing no code change).
+ * A factory `atproto: { enabled: false }` is an explicit opt-out that overrides the env flag, so a
+ * deployment can force the provider off regardless of the environment.
  */
-export function isAtprotoEnabled(options?: ProviderOptions): boolean {
-  return options !== undefined && options.enabled !== false;
+export function isAtprotoEnabled(options?: ProviderOptions, env?: Pick<StartupAPIEnv, 'ATPROTO_ENABLED'>): boolean {
+  if (options?.enabled === false) return false; // explicit factory opt-out always wins
+  if (options !== undefined) return true; // present in the factory config
+  return isEnvFlagTruthy(env?.ATPROTO_ENABLED); // otherwise honor the per-deployment env toggle
 }
 
 /**
@@ -55,8 +64,8 @@ export class AtprotoProvider extends OAuthProvider {
   private clientName = 'StartupAPI';
   private resolverOptions: ResolverOptions = {};
 
-  static create(_env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
-    if (!isAtprotoEnabled(options)) return null;
+  static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
+    if (!isAtprotoEnabled(options, env)) return null;
     const provider = new AtprotoProvider('', '', redirectBase + '/atproto/callback', 'atproto', options?.scopes);
     provider.clientMetadataUrl = redirectBase + '/atproto/client-metadata.json';
     provider.clientUri = new URL(redirectBase).origin;

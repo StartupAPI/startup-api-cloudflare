@@ -262,4 +262,18 @@ describe('atproto provider', () => {
     // Explicit opt-out → disabled.
     expect(getActiveProviders(env, { atproto: { enabled: false } })).not.toContain('atproto');
   });
+
+  it('enables atproto via the ATPROTO_ENABLED env flag, with factory enabled:false still winning', async () => {
+    const { getActiveProviders } = await import('../src/handlers/utils');
+    // Env flag on, no factory config → enabled.
+    for (const truthy of ['true', '1', 'YES', 'on']) {
+      expect(getActiveProviders({ ...env, ATPROTO_ENABLED: truthy })).toContain('atproto');
+    }
+    // Non-truthy / unset env values → disabled.
+    for (const falsy of ['false', '0', '', 'nope']) {
+      expect(getActiveProviders({ ...env, ATPROTO_ENABLED: falsy })).not.toContain('atproto');
+    }
+    // Explicit factory opt-out overrides a truthy env flag.
+    expect(getActiveProviders({ ...env, ATPROTO_ENABLED: 'true' }, { atproto: { enabled: false } })).not.toContain('atproto');
+  });
 });

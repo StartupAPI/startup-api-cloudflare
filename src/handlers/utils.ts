@@ -14,8 +14,8 @@ export function getActiveProviders(env: StartupAPIEnv, providerConfigs: Provider
   if (env.PATREON_CLIENT_ID && env.PATREON_CLIENT_SECRET) {
     providers.push('patreon');
   }
-  // atproto has no env credentials; it is enabled purely via factory config.
-  if (isAtprotoEnabled(providerConfigs.atproto)) {
+  // atproto has no env credentials; it is enabled via factory config or the ATPROTO_ENABLED env flag.
+  if (isAtprotoEnabled(providerConfigs.atproto, env)) {
     providers.push('atproto');
   }
   return providers;
