@@ -12,4 +12,7 @@ export type StartupAPIEnv = {
   ADMIN_IDS: string;
   SESSION_SECRET: string;
   ENVIRONMENT?: string;
+  // atproto has no credentials; this per-deployment flag enables it without touching the factory
+  // config (truthy = "true"/"1"/"yes"/"on"). A factory `atproto: { enabled: false }` still overrides it.
+  ATPROTO_ENABLED?: string;
 } & Env;

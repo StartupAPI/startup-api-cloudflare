@@ -98,8 +98,18 @@ describe('atproto provider', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('text/html');
+    // Auth page hardening: not framable, not cached (it can reflect the user's handle).
+    expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
     const html = await res.text();
     expect(html).toContain('name="handle"');
+  });
+
+  it('serves the error page non-framable and non-cacheable', async () => {
+    const { renderAuthError } = await import('../src/auth/errorPage');
+    const res = renderAuthError('Could not resolve handle "x"', 500, '/users/');
+    expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
   it('resolves identity, performs PAR with DPoP + PKCE (with nonce retry), and redirects', async () => {
@@ -221,6 +231,38 @@ describe('atproto provider', () => {
     expect(await cbRes.text()).toContain('State mismatch');
   });
 
+  it('re-renders the handle form (pre-filled) with an inline error when resolution fails', async () => {
+    // Every identity lookup fails → resolveHandleToDid throws "Could not resolve handle ...".
+    globalThis.fetch = (async () => new Response('not found', { status: 404 })) as typeof fetch;
+
+    const api = createStartupAPI(atprotoConfig);
+    const ctx = createExecutionContext();
+    const res = await api.fetch(new Request('http://example.com/users/auth/atproto?handle=ghost.invalid'), env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get('Content-Type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toContain('name="handle"'); // the entry form is shown again
+    expect(html).toContain('value="ghost.invalid"'); // with the handle pre-filled to retry
+    expect(html).toContain('role="alert"'); // and an error banner
+    expect(html).toContain('Could not resolve handle &quot;ghost.invalid&quot; to a DID');
+  });
+
+  it('HTML-escapes an untrusted handle when re-rendering the error form', async () => {
+    globalThis.fetch = (async () => new Response('not found', { status: 404 })) as typeof fetch;
+
+    const api = createStartupAPI(atprotoConfig);
+    const ctx = createExecutionContext();
+    const malicious = encodeURIComponent('"><script>alert(1)</script>');
+    const res = await api.fetch(new Request(`http://example.com/users/auth/atproto?handle=${malicious}`), env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    const html = await res.text();
+    expect(html).not.toContain('<script>alert(1)</script>'); // no markup breaks out
+    expect(html).toContain('&lt;script&gt;'); // it is encoded instead
+  });
+
   it('enables atproto by presence of its config key, and opts out via enabled: false', async () => {
     const { getActiveProviders } = await import('../src/handlers/utils');
     // Present (even empty) → enabled.
@@ -229,5 +271,19 @@ describe('atproto provider', () => {
     expect(getActiveProviders(env)).not.toContain('atproto');
     // Explicit opt-out → disabled.
     expect(getActiveProviders(env, { atproto: { enabled: false } })).not.toContain('atproto');
+  });
+
+  it('enables atproto via the ATPROTO_ENABLED env flag, with factory enabled:false still winning', async () => {
+    const { getActiveProviders } = await import('../src/handlers/utils');
+    // Env flag on, no factory config → enabled.
+    for (const truthy of ['true', '1', 'YES', 'on']) {
+      expect(getActiveProviders({ ...env, ATPROTO_ENABLED: truthy })).toContain('atproto');
+    }
+    // Non-truthy / unset env values → disabled.
+    for (const falsy of ['false', '0', '', 'nope']) {
+      expect(getActiveProviders({ ...env, ATPROTO_ENABLED: falsy })).not.toContain('atproto');
+    }
+    // Explicit factory opt-out overrides a truthy env flag.
+    expect(getActiveProviders({ ...env, ATPROTO_ENABLED: 'true' }, { atproto: { enabled: false } })).not.toContain('atproto');
   });
 });

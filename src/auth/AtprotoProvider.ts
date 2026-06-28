@@ -1,3 +1,6 @@
+import { escape as escapeHtml } from 'he';
+
+import { ATMOSPHERE_MARK_PATH } from './atmosphereMark';
 import type { StartupAPIEnv } from '../StartupAPIEnv';
 import type { ProviderOptions } from '../schemas/config';
 
@@ -27,18 +30,27 @@ interface AtprotoFlowState {
   returnUrl: string | null;
 }
 
-/**
- * Whether the atproto provider is turned on. It has no client secret (public OAuth client), so — like
- * the env-credential providers are enabled by the presence of their credentials — atproto is enabled
- * simply by including its config key (`providers: { atproto: {} }`). Pass `enabled: false` to opt out
- * explicitly (e.g. when the config is built dynamically).
- */
-export function isAtprotoEnabled(options?: ProviderOptions): boolean {
-  return options !== undefined && options.enabled !== false;
+/** A string env flag is truthy when it reads as "true"/"1"/"yes"/"on" (case-insensitive). */
+function isEnvFlagTruthy(value: string | undefined): boolean {
+  return value !== undefined && ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
 }
 
 /**
- * AT Protocol (Bluesky and any atproto PDS) authentication.
+ * Whether the atproto provider is turned on. It has no client secret (public OAuth client), so it is
+ * enabled either by:
+ *   - including its factory config key (`providers: { atproto: {} }`), or
+ *   - setting the `ATPROTO_ENABLED` env var truthy (a per-deployment switch needing no code change).
+ * A factory `atproto: { enabled: false }` is an explicit opt-out that overrides the env flag, so a
+ * deployment can force the provider off regardless of the environment.
+ */
+export function isAtprotoEnabled(options?: ProviderOptions, env?: Pick<StartupAPIEnv, 'ATPROTO_ENABLED'>): boolean {
+  if (options?.enabled === false) return false; // explicit factory opt-out always wins
+  if (options !== undefined) return true; // present in the factory config
+  return isEnvFlagTruthy(env?.ATPROTO_ENABLED); // otherwise honor the per-deployment env toggle
+}
+
+/**
+ * AT Protocol (Atmosphere) authentication — works with any atproto PDS.
  *
  * Unlike the classic OAuth2 providers, atproto requires PKCE, DPoP-bound tokens, Pushed Authorization
  * Requests (PAR), and per-user dynamic endpoints discovered from the identity (handle → DID → PDS →
@@ -52,8 +64,8 @@ export class AtprotoProvider extends OAuthProvider {
   private clientName = 'StartupAPI';
   private resolverOptions: ResolverOptions = {};
 
-  static create(_env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
-    if (!isAtprotoEnabled(options)) return null;
+  static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
+    if (!isAtprotoEnabled(options, env)) return null;
     const provider = new AtprotoProvider('', '', redirectBase + '/atproto/callback', 'atproto', options?.scopes);
     provider.clientMetadataUrl = redirectBase + '/atproto/client-metadata.json';
     provider.clientUri = new URL(redirectBase).origin;
@@ -66,10 +78,10 @@ export class AtprotoProvider extends OAuthProvider {
   }
 
   getIcon(): string {
-    // AT Protocol / Bluesky butterfly mark.
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="11" fill="#0085FF" stroke="white" stroke-width="1"/>
-      <path d="M12 10.5C10.9 8.4 8.2 6.3 6.3 6c-1.5-.2-1.8.7-1.5 2 .2 1 1.5 5 2.3 6 .9 1.2 2 1.4 3 1.2-1.7.3-3.2 1-1.2 3 .9.9 1.6.3 2.1-.6.5-1 .8-2.1 1-2.6.2.5.5 1.6 1 2.6.5.9 1.2 1.5 2.1.6 2-2 .5-2.7-1.2-3 1 .2 2.1 0 3-1.2.8-1 2.1-5 2.3-6 .3-1.3 0-2.2-1.5-2-1.9.3-4.6 2.4-5.7 4.5z" fill="white"/>
+    // Atmosphere (atproto) "union" logo mark, white on the brand-blue badge.
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+      <circle cx="16" cy="16" r="16" fill="#4a8ad4"/>
+      <g transform="translate(3.2 3.2) scale(0.8)"><path fill-rule="evenodd" clip-rule="evenodd" d="${ATMOSPHERE_MARK_PATH}" fill="white"/></g>
     </svg>`;
   }
 
@@ -109,6 +121,19 @@ export class AtprotoProvider extends OAuthProvider {
       return this.renderHandleForm(ctx, returnUrl);
     }
 
+    try {
+      return await this.startAuthorization(ctx, identifier, returnUrl);
+    } catch (e) {
+      // The user supplied a handle and is still on our side of the redirect, so the most useful
+      // recovery is to re-render the entry form with the failure shown and their handle pre-filled,
+      // rather than a dead-end error page. (Callback-phase failures fall back to renderAuthError.)
+      const message = e instanceof Error ? e.message : String(e);
+      return this.renderHandleForm(ctx, returnUrl, { error: message, handle: identifier });
+    }
+  }
+
+  /** Resolve the identity, run the DPoP-protected PAR, and redirect to the discovered auth endpoint. */
+  private async startAuthorization(ctx: AuthContext, identifier: string, returnUrl: string | null): Promise<Response> {
     const identity = await resolveIdentity(identifier, this.resolverOptions);
     const { verifier, challenge } = await generatePkce();
     const dpopKey = await generateDpopKey();
@@ -227,38 +252,67 @@ export class AtprotoProvider extends OAuthProvider {
     return { token, profile, returnUrl: flow.returnUrl ?? null, setCookies: [clearCookie] };
   }
 
-  /** Minimal handle-entry page shown when the user starts the flow without an identifier. */
-  private renderHandleForm(ctx: AuthContext, returnUrl: string | null): Response {
+  /**
+   * Handle-entry page. Shown when the user starts the flow without an identifier, and re-shown when a
+   * supplied handle fails to authorize — in which case `options.error` renders an inline banner and
+   * `options.handle` pre-fills the input so the user can correct and retry without leaving the page.
+   */
+  private renderHandleForm(
+    ctx: AuthContext,
+    returnUrl: string | null,
+    options: { error?: string; handle?: string } = {},
+  ): Response {
     const action = `${ctx.authPath}/atproto`;
     const returnField = returnUrl ? `<input type="hidden" name="return_url" value="${escapeHtml(returnUrl)}" />` : '';
+    const errorBanner = options.error ? `<div class="error" role="alert">${escapeHtml(options.error)}</div>` : '';
+    const handleValue = options.handle ? ` value="${escapeHtml(options.handle)}"` : '';
+    const status = options.error ? 400 : 200;
+    const stylesheet = `${escapeHtml(ctx.usersPath)}style.css`;
     const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sign in with Bluesky / atproto</title>
+<title>Login with your Atmosphere account</title>
+<link rel="stylesheet" href="${stylesheet}" />
 <style>
-  body { font-family: system-ui, sans-serif; background: #f5f7fb; margin: 0; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
-  .card { background: #fff; padding: 2rem; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); width: 320px; }
-  h1 { font-size: 1.15rem; margin: 0 0 1rem; }
-  label { display: block; font-size: 0.85rem; color: #444; margin-bottom: 0.35rem; }
-  input[type=text] { width: 100%; box-sizing: border-box; padding: 0.6rem 0.7rem; border: 1px solid #ccd2dd; border-radius: 8px; font-size: 0.95rem; }
-  button { margin-top: 1rem; width: 100%; padding: 0.65rem; border: 0; border-radius: 8px; background: #0085FF; color: #fff; font-size: 0.95rem; cursor: pointer; }
-  p { font-size: 0.8rem; color: #777; margin-top: 0.75rem; }
+  body { margin: 0; padding: 1rem; box-sizing: border-box; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text); }
+  .auth-card { background: var(--surface); border: 1px solid var(--border); padding: 2rem; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); width: 23rem; max-width: 100%; box-sizing: border-box; }
+  .auth-card h1 { font-size: 1rem; margin: 0 0 1rem; color: var(--text); white-space: nowrap; }
+  .auth-card label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.35rem; }
+  .auth-card input[type=text] { width: 100%; box-sizing: border-box; padding: 0.6rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; background: var(--surface); color: var(--text); }
+  .auth-card input[type=text]:focus { outline: none; border-color: #4a8ad4; }
+  .auth-card button { margin-top: 1rem; width: 100%; padding: 0.65rem; border: 0; border-radius: 8px; background: #4a8ad4; color: #fff; font-size: 0.95rem; cursor: pointer; }
+  .auth-card button:hover { background: #3d77ba; }
+  .auth-card p { font-size: 0.8rem; color: var(--text-muted); margin: 0.75rem 0 0; }
+  .auth-card .error { background: var(--danger-soft-bg); border: 1px solid var(--danger); color: var(--danger); border-radius: 8px; padding: 0.6rem 0.7rem; font-size: 0.82rem; margin-bottom: 1rem; word-break: break-word; }
 </style>
 </head>
 <body>
-  <form class="card" method="GET" action="${escapeHtml(action)}">
-    <h1>Sign in with Bluesky / atproto</h1>
+  <form class="auth-card" method="GET" action="${escapeHtml(action)}">
+    <h1>Login with your Atmosphere account</h1>
+    ${errorBanner}
     <label for="handle">Your handle or DID</label>
-    <input type="text" id="handle" name="handle" placeholder="alice.bsky.social" autocomplete="username" autofocus required />
+    <input type="text" id="handle" name="handle" placeholder="alice.bsky.social"${handleValue} autocomplete="username" autofocus required />
     ${returnField}
     <button type="submit">Continue</button>
     <p>Enter your atproto handle (e.g. alice.bsky.social) or DID. Your account's own server handles the login.</p>
   </form>
 </body>
 </html>`;
-    return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    return new Response(html, {
+      status,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        // Same hardening as the auth error page: only same-origin styles/form, never framed, never cached
+        // (the re-rendered form reflects the user-supplied handle).
+        'Content-Security-Policy':
+          "default-src 'none'; style-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+        'Cache-Control': 'no-store',
+      },
+    });
   }
 }
 
@@ -270,13 +324,4 @@ function readCookie(header: string | null, name: string): string | undefined {
     if (key.trim() === name) return rest.join('=').trim();
   }
   return undefined;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }

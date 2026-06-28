@@ -69,8 +69,9 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 | `PATREON_CLIENT_ID`      | No       | N/A       | Patreon OAuth2 Client ID                                                      |
 | `PATREON_CLIENT_SECRET`  | No       | N/A       | Patreon OAuth2 Client Secret                                                  |
 | `PATREON_WEBHOOK_SECRET` | No       | N/A       | Secret for verifying Patreon webhook signatures                               |
+| `ATPROTO_ENABLED`        | No       | N/A       | Set truthy (`true`/`1`/`yes`/`on`) to enable AT Protocol (Atmosphere) login   |
 
-> AT Protocol (Bluesky) login needs **no environment variables at all** — it is a public OAuth client with no secret, so it is configured entirely through the `createStartupAPI` factory (see [Bluesky / AT Protocol](#bluesky--at-protocol-atproto) below).
+> AT Protocol (Atmosphere) login needs **no client secret** — it is a public OAuth client. Enable it either by setting `ATPROTO_ENABLED` truthy (a per-deployment switch) **or** through the `createStartupAPI` factory (see [AT Protocol / Atmosphere](#at-protocol--atmosphere-atproto) below). A factory `atproto: { enabled: false }` overrides the env flag, so a deployment can force it off.
 
 > Environment variables hold only credentials/secrets (OAuth client IDs and all secrets) plus the per‑deployment values `ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, and `ENVIRONMENT`. **All other configuration — OAuth scopes, Patreon campaign id, the access policy, entitlement freshness — is passed to the `createStartupAPI` factory** (see [Access policy & provider entitlements](#access-policy--provider-entitlements)).
 
@@ -101,11 +102,16 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 3. Add your authorized redirect URI: `https://<your-worker-url>/users/auth/patreon/callback`
 4. Copy the **Client ID** and **Client Secret** and add them to your Worker's environment variables
 
-#### Bluesky / AT Protocol (atproto)
+#### AT Protocol / Atmosphere (atproto)
 
-atproto login is decentralized: there is **no central provider to register with and no client secret**. Instead the worker acts as a [public OAuth client](https://atproto.com/specs/oauth) identified by a client-metadata document it serves itself, and it discovers the right authorization server **per user** from their handle or DID — so it works with `bsky.social` and any self-hosted PDS alike, with no Bluesky host hardcoded.
+atproto login is decentralized: there is **no central provider to register with and no client secret**. Instead the worker acts as a [public OAuth client](https://atproto.com/specs/oauth) identified by a client-metadata document it serves itself, and it discovers the right authorization server **per user** from their handle or DID — so it works with `bsky.social` and any self-hosted PDS alike, with no provider host hardcoded.
 
-Because it has no secrets, atproto is configured **entirely through the `createStartupAPI` factory** (not env vars). Just like the env-credential providers are enabled by the presence of their credentials, atproto is enabled simply by **including its config key** — an empty object is enough:
+Because it has no secrets, atproto is enabled in one of two ways:
+
+- **Env flag (no code):** set `ATPROTO_ENABLED` truthy (`true`/`1`/`yes`/`on`) — handy for toggling it per deployment (e.g. on in prod, off in preview) without touching code. This uses the default settings.
+- **Factory config (for customization):** include its config key in `createStartupAPI` — an empty object is enough, and the optional fields below let you set the client name, resolvers, or scopes.
+
+A factory `atproto: { enabled: false }` is an explicit opt-out that **overrides** the env flag, so a deployment can force the provider off.
 
 ```ts
 import { createStartupAPI } from '@startup-api/cloudflare';
@@ -128,9 +134,9 @@ export default api.default;
 export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
 ```
 
-1. Include `atproto: {}` in the factory `providers` config (no client id/secret needed). Pass `enabled: false` to opt out explicitly.
+1. Enable it — set `ATPROTO_ENABLED` truthy, or include `atproto: {}` in the factory `providers` config (no client id/secret needed either way). A factory `enabled: false` forces it off.
 2. Deploy over **HTTPS** with a stable hostname. The worker automatically serves its client metadata at `https://<your-worker-url>/users/auth/atproto/client-metadata.json` (this URL is the OAuth `client_id`) and registers the redirect URI `https://<your-worker-url>/users/auth/atproto/callback`.
-3. That's it. When a visitor clicks **Continue with Bluesky**, they're asked for their handle (e.g. `alice.bsky.social`) or DID; the worker then resolves it through the full atproto discovery chain and redirects them to _their own_ server to sign in:
+3. That's it. When a visitor clicks **Login with your Atmosphere account**, they're asked for their handle (e.g. `alice.bsky.social`) or DID; the worker then resolves it through the full atproto discovery chain and redirects them to _their own_ server to sign in:
 
    ```
    handle ─▶ DID            (HTTPS .well-known/atproto-did, then DNS _atproto.<handle> via DoH)
