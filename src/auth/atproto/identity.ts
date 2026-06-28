@@ -49,8 +49,12 @@ async function fetchJson(url: string, init?: RequestInit): Promise<any> {
 /** Resolve a handle to a DID via the HTTPS well-known method, falling back to DNS TXT over DoH. */
 async function resolveHandleToDid(handle: string, options: ResolverOptions): Promise<string> {
   // 1. HTTPS well-known (works for any host that serves it; no third-party dependency).
+  // Use `redirect: 'manual'` rather than `'error'`: the Cloudflare Workers runtime does not implement
+  // the `'error'` redirect mode and throws a TypeError when it is used, which would silently disable
+  // this method (and break resolution for *.bsky.social handles, which have no `_atproto` DNS record).
+  // With `'manual'`, a redirected response is not followed and `res.ok` is false, so we fall through.
   try {
-    const res = await fetch(`https://${handle}/.well-known/atproto-did`, { redirect: 'error' });
+    const res = await fetch(`https://${handle}/.well-known/atproto-did`, { redirect: 'manual' });
     if (res.ok) {
       const did = (await res.text()).trim();
       if (DID_PREFIX.test(did)) return did;

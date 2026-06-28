@@ -2,6 +2,7 @@ import type { StartupAPIEnv } from '../StartupAPIEnv';
 
 import { CookieManager } from '../CookieManager';
 import { refreshEntitlements } from '../entitlements/service';
+import { renderAuthError } from './errorPage';
 import { computeRedirectBase, createProviders } from './providers';
 import type { ProviderConfigs } from './providers';
 import type { AuthContext, ExchangeResult, OAuthProvider } from './OAuthProvider';
@@ -40,7 +41,7 @@ export async function handleAuth(
       try {
         return await provider.authorize(ctx);
       } catch (e) {
-        return new Response(`Auth failed: ${e instanceof Error ? e.message : String(e)}`, { status: 500 });
+        return renderAuthError(e instanceof Error ? e.message : String(e), 500);
       }
     }
   }
@@ -54,7 +55,7 @@ export async function handleAuth(
         return await finishLogin(provider, result, ctx);
       } catch (e) {
         const status = (e as { status?: number })?.status ?? 500;
-        return new Response(`Auth failed: ${e instanceof Error ? e.message : String(e)}`, { status });
+        return renderAuthError(e instanceof Error ? e.message : String(e), status);
       }
     }
   }
