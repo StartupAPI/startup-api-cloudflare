@@ -13,6 +13,8 @@ export interface UserProfile {
   name?: string;
   picture?: string;
   verified_email?: boolean;
+  /** atproto only: the user's handle (e.g. `alice.bsky.social`), distinct from the `id` (a DID). */
+  handle?: string;
 }
 
 import type { Entitlements } from '../entitlements/types';

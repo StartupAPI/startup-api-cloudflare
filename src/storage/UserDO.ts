@@ -233,6 +233,7 @@ export class UserDO extends DurableObject {
           provider: row.provider,
           subject_id: c.subject_id,
           email: c.profile_data?.email,
+          handle: c.profile_data?.handle,
           created_at: c.created_at,
         })),
       );

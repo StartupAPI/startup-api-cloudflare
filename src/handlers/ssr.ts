@@ -193,10 +193,10 @@ function renderCredentialsList(credentials: any[], currentProvider?: string): st
           </div>
           <div>
             <div style="font-weight: 600;">
-              ${c.provider.charAt(0).toUpperCase() + c.provider.slice(1)}
+              ${providerLabel(c.provider)}
               ${isCurrent ? '<span class="current-badge">logged in</span>' : ''}
             </div>
-            <div style="font-size: 0.8rem; color: #666;">${c.email || c.subject_id}</div>
+            <div style="font-size: 0.8rem; color: #666;">${credentialIdentifier(c)}</div>
           </div>
         </div>
         <button class="remove-btn" onclick="removeCredential('${c.provider}')" ${isCurrent || credentials.length === 1 ? 'disabled title="' + (isCurrent ? 'Cannot remove the method you are currently logged in with' : 'Cannot remove your last login method') + '"' : ''}>
@@ -206,6 +206,20 @@ function renderCredentialsList(credentials: any[], currentProvider?: string): st
     `;
     })
     .join('');
+}
+
+/** Human-friendly provider name. atproto is branded "Atmosphere / ATproto"; others are capitalized. */
+function providerLabel(provider: string): string {
+  if (provider === 'atproto') return 'Atmosphere / ATproto';
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+/** The identifier shown under the provider name. atproto shows the handle with the DID in parens. */
+function credentialIdentifier(c: any): string {
+  if (c.provider === 'atproto') {
+    return c.handle ? `${c.handle} (${c.subject_id})` : c.subject_id;
+  }
+  return c.email || c.subject_id;
 }
 
 function getProviderIcon(provider: string): string {
