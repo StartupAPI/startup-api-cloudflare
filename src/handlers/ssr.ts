@@ -214,10 +214,14 @@ function providerLabel(provider: string): string {
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
-/** The identifier shown under the provider name. atproto shows the handle with the DID in parens. */
+/**
+ * The identifier shown under the provider name. atproto emphasizes the handle (larger, with an `@`)
+ * and de-emphasizes the DID in parentheses.
+ */
 function credentialIdentifier(c: any): string {
   if (c.provider === 'atproto') {
-    return c.handle ? `${c.handle} (${c.subject_id})` : c.subject_id;
+    if (!c.handle) return c.subject_id;
+    return `<span style="font-size: 1.05rem; font-weight: 600;">@${c.handle}</span> <span style="opacity: 0.6;">(${c.subject_id})</span>`;
   }
   return c.email || c.subject_id;
 }
