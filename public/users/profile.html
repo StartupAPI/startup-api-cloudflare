@@ -451,7 +451,8 @@
       }
       function credentialIdentifier(c) {
         if (c.provider === 'atproto') {
-          return c.handle ? `${c.handle} (${c.subject_id})` : c.subject_id;
+          if (!c.handle) return c.subject_id;
+          return `<span style="font-size: 1.05rem; font-weight: 600;">@${c.handle}</span> <span style="opacity: 0.6;">(${c.subject_id})</span>`;
         }
         return c.email || c.subject_id;
       }

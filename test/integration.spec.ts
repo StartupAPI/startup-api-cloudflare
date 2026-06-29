@@ -344,9 +344,10 @@ describe('Integration Tests', () => {
     expect(html).toContain('twitch@example.com');
     expect(html).toContain('providers="google,twitch,patreon"');
     expect(html).not.toContain('{{ssr:profile_name}}');
-    // atproto credential: branded label + "handle (did)" identifier, not the bare provider key.
+    // atproto credential: branded label + "@handle (did)" identifier, not the bare provider key.
     expect(html).toContain('Atmosphere / ATproto');
-    expect(html).toContain('tester.bsky.social (did:plc:abc123)');
+    expect(html).toContain('@tester.bsky.social');
+    expect(html).toContain('(did:plc:abc123)');
     // The old Bluesky butterfly mark must not appear anywhere on the rendered page (SSR or client script).
     expect(html).not.toContain('M12 10.5C10.9');
   });
