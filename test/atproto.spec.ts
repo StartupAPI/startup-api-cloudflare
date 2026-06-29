@@ -101,6 +101,9 @@ describe('atproto provider', () => {
     // Auth page hardening: not framable, not cached (it can reflect the user's handle).
     expect(res.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
     expect(res.headers.get('Cache-Control')).toBe('no-store');
+    // Must NOT set form-action: submitting this form 302-redirects to the user's own auth server
+    // (any PDS), and form-action is enforced across the redirect chain — restricting it breaks login.
+    expect(res.headers.get('Content-Security-Policy')).not.toContain('form-action');
     const html = await res.text();
     expect(html).toContain('name="handle"');
   });
