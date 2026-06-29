@@ -304,10 +304,12 @@ export class AtprotoProvider extends OAuthProvider {
       status,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
-        // Same hardening as the auth error page: only same-origin styles/form, never framed, never cached
-        // (the re-rendered form reflects the user-supplied handle).
-        'Content-Security-Policy':
-          "default-src 'none'; style-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        // Hardening: same-origin styles only, never framed, never cached (the form reflects the
+        // user-supplied handle). NOTE: deliberately NO `form-action` directive — submitting this form
+        // hits our endpoint, which 302-redirects to the user's *own* authorization server (any PDS).
+        // `form-action` is enforced across the whole redirect chain, so `'self'` (or any fixed list)
+        // would block that cross-origin redirect and the login would silently fail.
+        'Content-Security-Policy': "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
         'Cache-Control': 'no-store',
