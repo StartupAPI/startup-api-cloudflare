@@ -239,7 +239,7 @@ export class AtprotoProvider extends OAuthProvider {
     const did = tokenData.sub || flow.did;
     const { name, picture } = await fetchProfile(flow.pds, did, flow.handle);
 
-    const profile: UserProfile = { id: did, name: name || flow.handle || did, picture };
+    const profile: UserProfile = { id: did, name: name || flow.handle || did, picture, handle: flow.handle };
     const token: OAuthTokenResponse = {
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token,

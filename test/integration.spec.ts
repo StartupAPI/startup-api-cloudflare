@@ -319,6 +319,14 @@ describe('Integration Tests', () => {
     });
     await stub.addCredential('twitch', 'twitch-456');
 
+    const atprotoCredStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('atproto'));
+    await atprotoCredStub.put({
+      user_id: userIdStr,
+      subject_id: 'did:plc:abc123',
+      profile_data: { id: 'did:plc:abc123', name: 'AT Tester', handle: 'tester.bsky.social' },
+    });
+    await stub.addCredential('atproto', 'did:plc:abc123');
+
     const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
 
     const res = await SELF.fetch('http://example.com/users/profile.html', {
@@ -336,6 +344,11 @@ describe('Integration Tests', () => {
     expect(html).toContain('twitch@example.com');
     expect(html).toContain('providers="google,twitch,patreon"');
     expect(html).not.toContain('{{ssr:profile_name}}');
+    // atproto credential: branded label + "handle (did)" identifier, not the bare provider key.
+    expect(html).toContain('Atmosphere / ATproto');
+    expect(html).toContain('tester.bsky.social (did:plc:abc123)');
+    // The old Bluesky butterfly mark must not appear anywhere on the rendered page (SSR or client script).
+    expect(html).not.toContain('M12 10.5C10.9');
   });
 
   it('should render correct providers in "Link another account" section', async () => {

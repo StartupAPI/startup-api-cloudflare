@@ -209,6 +209,8 @@ describe('atproto provider', () => {
     expect(cred).not.toBeNull();
     expect(cred.access_token).toBe('atproto-access-token');
     expect(cred.profile_data.name).toBe('Alice in AT');
+    // The handle is stored alongside the DID so the credentials UI can show "handle (did)".
+    expect(cred.profile_data.handle).toBe('alice.test');
   });
 
   it('rejects a callback whose state does not match the flow cookie', async () => {
