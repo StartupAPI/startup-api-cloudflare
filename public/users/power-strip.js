@@ -17,22 +17,15 @@ class PowerStrip extends HTMLElement {
   }
 
   detectBasePath() {
-    const script =
-      document.currentScript ||
-      (function () {
-        const scripts = document.getElementsByTagName('script');
-        return scripts[scripts.length - 1];
-      })();
-
-    if (script && script.src) {
-      try {
-        const url = new URL(script.src);
-        return url.pathname.substring(0, url.pathname.lastIndexOf('/'));
-      } catch (e) {
-        console.error('Failed to parse script URL', e);
-      }
+    // This file is loaded as an ES module (`<script type="module">`), so `document.currentScript`
+    // is null. `import.meta.url` is the module's own URL and is the reliable way to locate ourselves.
+    try {
+      const url = new URL(import.meta.url);
+      return url.pathname.substring(0, url.pathname.lastIndexOf('/'));
+    } catch (e) {
+      console.error('Failed to derive base path from import.meta.url', e);
+      return '';
     }
-    return '';
   }
 
   async connectedCallback() {

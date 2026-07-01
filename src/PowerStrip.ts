@@ -24,7 +24,7 @@ export async function injectPowerStrip(response: Response, usersPath: string, pr
         element(element) {
           // The script is always needed to define the <power-strip> custom element.
           // It is loaded from the USERS_PATH, which is intercepted by this worker.
-          element.prepend(`<script src="${usersPath}power-strip.js" async></script>`, { html: true });
+          element.prepend(`<script type="module" src="${usersPath}power-strip.js" async></script>`, { html: true });
 
           // Defer the component decision until the end of <body>, by which point
           // the streaming parser has seen any author-supplied <power-strip>.

@@ -21,7 +21,7 @@ describe('injectPowerStrip', () => {
     const res = await injectPowerStrip(htmlResponse('<html><body><h1>Hi</h1></body></html>'), USERS_PATH, PROVIDERS);
     const html = await res.text();
 
-    expect(html).toContain(`<script src="${USERS_PATH}power-strip.js" async></script>`);
+    expect(html).toContain(`<script type="module" src="${USERS_PATH}power-strip.js" async></script>`);
     expect(html).toContain(DEFAULT_STRIP_STYLE);
     expect(html).toContain('<power-strip providers="google,twitch,patreon"');
     expect(countPowerStrips(html)).toBe(1);
@@ -35,7 +35,7 @@ describe('injectPowerStrip', () => {
     );
     const html = await res.text();
 
-    expect(html).toContain(`<script src="${USERS_PATH}power-strip.js" async></script>`);
+    expect(html).toContain(`<script type="module" src="${USERS_PATH}power-strip.js" async></script>`);
     // No default strip appended, and the author's element is left in place.
     expect(html).not.toContain(DEFAULT_STRIP_STYLE);
     expect(countPowerStrips(html)).toBe(1);
@@ -74,7 +74,7 @@ describe('injectPowerStrip', () => {
     );
     const html = await res.text();
 
-    expect(html).toContain(`<script src="${USERS_PATH}power-strip.js" async></script>`);
+    expect(html).toContain(`<script type="module" src="${USERS_PATH}power-strip.js" async></script>`);
     expect(html).not.toContain(DEFAULT_STRIP_STYLE);
     expect(html).toContain('providers="google,twitch,patreon"');
   });
