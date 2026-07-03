@@ -133,6 +133,50 @@ describe('Entitlement headers + access policy', () => {
     }
   });
 
+  it('defaults Patreon entitlement TTL to 1 day (a ~1h-old cache is not re-fetched)', async () => {
+    // ttl enabled without an explicit ms → Patreon default of 1 day. A cache checked 1h ago is still
+    // fresh, so the request path must NOT hit www.patreon.com to refresh (it would under a 15-min default).
+    const api = createStartupAPI({ providers: { patreon: { freshness: { ttl: true } } }, accessPolicy: POLICY });
+
+    const userId = env.USER.newUniqueId();
+    const userStub = env.USER.get(userId);
+    const userIdStr = userId.toString();
+    const subjectId = 'patreon-' + userIdStr.slice(0, 10);
+    await userStub.addMembership(env.ACCOUNT.newUniqueId().toString(), 1, true);
+    await userStub.addCredential('patreon', subjectId);
+    const { sessionId } = await userStub.createSession({ provider: 'patreon' });
+
+    const checkedAt = Date.now() - 60 * 60 * 1000; // 1 hour ago
+    await userStub.setEntitlements(
+      'patreon',
+      subjectId,
+      {
+        provider: 'patreon',
+        checked_at: checkedAt,
+        source: 'oauth',
+        patreon: { patron_status: 'active_patron', is_active_patron: true, entitled_tier_ids: ['t1'], entitled_benefit_ids: ['benefit-vip'], pledge_amount_cents: 500 },
+      },
+      checkedAt,
+    );
+    const cookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
+
+    const calls: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      calls.push(url);
+      return new Response('<html><body>origin</body></html>', { status: 200, headers: { 'Content-Type': 'text/html' } }) as any;
+    });
+    try {
+      const ctx = createExecutionContext();
+      const res = await api.fetch(new Request('http://example.com/special', { headers: { Cookie: `session_id=${cookie}` } }), env, ctx);
+      await waitOnExecutionContext(ctx);
+      expect(res.status).toBe(200); // still entitled from the fresh cache
+      expect(calls.some((u) => u.includes('patreon.com'))).toBe(false); // no refresh under the 1-day default
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('bypass path forwards with NO X-StartupAPI headers and no power-strip injection, even when logged in', async () => {
     const cookie = await createPatreonUser(['benefit-vip']);
     const fetchSpy = spyOrigin();

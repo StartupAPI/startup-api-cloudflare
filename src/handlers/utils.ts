@@ -53,7 +53,20 @@ export function parseCookies(cookieHeader: string): Record<string, string> {
   );
 }
 
-export async function getUserFromSession(request: Request, env: StartupAPIEnv, cookieManager: CookieManager): Promise<any> {
+/**
+ * Build the `Set-Cookie` string for the encrypted `session_id`. A positive `ttlSeconds` makes it a
+ * persistent cookie (survives browser restarts); pass 0 via the clear paths to expire it.
+ */
+export function sessionSetCookie(value: string, ttlSeconds: number): string {
+  return `session_id=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${ttlSeconds}`;
+}
+
+export async function getUserFromSession(
+  request: Request,
+  env: StartupAPIEnv,
+  cookieManager: CookieManager,
+  ttlMs?: number,
+): Promise<any> {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return null;
 
@@ -68,12 +81,34 @@ export async function getUserFromSession(request: Request, env: StartupAPIEnv, c
   try {
     const id = env.USER.idFromString(doId);
     const userStub = env.USER.get(id);
-    const result = await userStub.validateSession(sessionId);
-    if (result.valid) return { id: doId, sessionId, profile: result.profile, credential: result.credential };
+    const result = await userStub.validateSession(sessionId, ttlMs);
+    if (result.valid) {
+      const user: any = { id: doId, sessionId, profile: result.profile, credential: result.credential };
+      // If the DO extended the session, surface enough to re-issue the persistent cookie on the response.
+      if (result.renewedExpiresAt && ttlMs) {
+        user.renew = { encryptedValue: sessionCookieEncrypted, ttlMs };
+      }
+      return user;
+    }
   } catch (_e) {
     // ignore
   }
   return null;
+}
+
+/**
+ * Re-issue the `session_id` cookie with a fresh `Max-Age` when the DO extended the session (sliding
+ * renewal). The encrypted value is unchanged — only the cookie's lifetime is refreshed. Mirrors the
+ * response-cloning shape of `checkAndClearStaleSession`.
+ */
+export function applySessionRenewal(response: Response, renew: { encryptedValue: string; ttlMs: number } | undefined): Response {
+  if (!renew) return response;
+  const headers = new Headers(response.headers);
+  headers.append('Set-Cookie', sessionSetCookie(renew.encryptedValue, Math.floor(renew.ttlMs / 1000)));
+  if (response.status === 301 || response.status === 302) {
+    return new Response(null, { status: response.status, headers });
+  }
+  return new Response(response.body, { status: response.status, headers });
 }
 
 export async function checkAndClearStaleSession(
@@ -105,7 +140,7 @@ export async function checkAndClearStaleSession(
       await userStub.deleteSession(sessionId);
 
       const headers = new Headers(originalResponse.headers);
-      headers.set('Set-Cookie', 'session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+      headers.set('Set-Cookie', sessionSetCookie('', 0));
 
       // If it was a redirect, we just update the headers
       if (originalResponse.status === 301 || originalResponse.status === 302) {

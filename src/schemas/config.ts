@@ -9,11 +9,17 @@ import { AccessPolicySchema } from './policy';
  * env-derived defaults, so `createStartupAPI()` with no config behaves like the previous package.
  */
 
+/** Default login session lifetime (rolling window) when no `session.ttl` is configured. */
+export const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 const TtlFreshnessSchema = z.union([z.boolean(), z.object({ ms: z.number().positive().optional() })]);
 const CronFreshnessSchema = z.union([z.boolean(), z.object({ schedule: z.string().optional() })]);
 
 export const ProviderFreshnessSchema = z.object({
-  /** Lazily re-check entitlements on the request hot path when older than the TTL. Off by default. */
+  /**
+   * Lazily re-check entitlements on the request hot path when older than the TTL. Off by default.
+   * When enabled without an explicit `{ ms }`, the default is 1 day for Patreon and 15 min otherwise.
+   */
   ttl: TtlFreshnessSchema.optional(),
   /** Periodically re-sync entitlements via a scheduled() handler. Off by default. */
   cron: CronFreshnessSchema.optional(),
@@ -37,15 +43,25 @@ export const ProviderOptionsSchema = z.object({
   freshness: ProviderFreshnessSchema.optional(),
 });
 
+export const SessionConfigSchema = z.object({
+  /**
+   * Login session lifetime. `{ ms }` sets the rolling window (default 30 days); the session is
+   * renewed on activity once less than half the window remains. Independent of entitlement freshness.
+   */
+  ttl: TtlFreshnessSchema.optional(),
+});
+
 export const StartupAPIConfigSchema = z.object({
   providers: z.record(z.string(), ProviderOptionsSchema).optional(),
   accessPolicy: AccessPolicySchema.optional(),
+  session: SessionConfigSchema.optional(),
   // Plans are validated by the billing layer; accept an array passthrough here.
   plans: z.array(z.any()).optional(),
 });
 
 export type ProviderFreshness = z.infer<typeof ProviderFreshnessSchema>;
 export type ProviderOptions = z.infer<typeof ProviderOptionsSchema>;
+export type SessionConfig = z.infer<typeof SessionConfigSchema>;
 export type StartupAPIConfig = z.input<typeof StartupAPIConfigSchema>;
 
 /** Normalized per-provider freshness after resolving boolean/object forms and env fallbacks. */

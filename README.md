@@ -263,11 +263,27 @@ For non-`bypass` paths the worker forwards `X-StartupAPI-Authenticated`, `X-Star
 
 Entitlements are fetched once at login. Each provider can additionally opt into freshness mechanisms in its factory config (all off by default — if none are enabled, entitlements are only checked at login):
 
-- **TTL** — lazily re-check on the request path when older than the TTL (`freshness.ttl: { ms }`, default 15 min), using the OAuth refresh token.
+- **TTL** — lazily re-check on the request path when older than the TTL (`freshness.ttl: { ms }`), using the OAuth refresh token. When enabled without an explicit `ms`, the default is **1 day for Patreon** (memberships change slowly; this backstops missed webhooks) and 15 min for other providers.
 - **Cron** — a scheduled re-sync of all of a provider's credentials (`freshness.cron: { schedule }`). The `scheduled()` handler is only present when at least one provider enables cron; you must also add a matching `triggers.crons` to your wrangler config.
 - **Webhook** (Patreon only) — set `freshness.webhook: true`, provide `PATREON_WEBHOOK_SECRET` (a secret, in env), and point a Patreon webhook at `<your-worker-url>/users/webhooks/patreon` (signature verified with HMAC-MD5).
 
 Set `providers.patreon.campaignId` to disambiguate when a user belongs to multiple campaigns.
+
+### Login session lifetime
+
+Login sessions are **separate** from entitlement freshness: how long a user stays logged in (authentication) is independent of how often their paid status is re-checked (authorization). A user can stay logged in for weeks while their entitlements are refreshed every few minutes via TTL/webhook — and a churned subscriber still loses access within the entitlement window regardless of session validity.
+
+- **Default lifetime is 30 days** with a **rolling window**: on activity, once less than half the window remains, the session expiry is pushed forward and the `session_id` cookie's `Max-Age` is refreshed. Active users effectively never have to re-login; idle users expire after the window.
+- The `session_id` cookie is a **persistent cookie** (`Max-Age`), so it survives browser restarts.
+- Configure the window via the factory:
+
+```ts
+const api = createStartupAPI({
+  session: { ttl: { ms: 30 * 24 * 60 * 60 * 1000 } }, // default; lower/raise as needed
+});
+```
+
+> Changed in 0.4.6: the default session lifetime went from a fixed 24h (no renewal) to a rolling 30 days, `session_id` is now a persistent cookie, and Patreon's entitlement `ttl` (when enabled) defaults to 1 day.
 
 ### Configuring via the factory
 
@@ -290,6 +306,7 @@ const api = createStartupAPI({
       freshness: { ttl: true, cron: { schedule: '0 */6 * * *' }, webhook: true },
     },
   },
+  session: { ttl: { ms: 30 * 24 * 60 * 60 * 1000 } }, // optional; login session lifetime (default 30d, rolling)
   accessPolicy: {
     rules: [
       /* ... */

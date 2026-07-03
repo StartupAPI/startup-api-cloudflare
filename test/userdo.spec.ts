@@ -29,6 +29,49 @@ describe('UserDO Durable Object', () => {
     expect(data).toHaveProperty('expiresAt');
   });
 
+  it('should honor a custom session ttl', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+
+    const ttlMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+    const before = Date.now();
+    const data: any = await stub.createSession({ provider: 'test' }, ttlMs);
+    const after = Date.now();
+
+    // expiresAt should be ~ttlMs from now (allow scheduling slack).
+    expect(data.expiresAt).toBeGreaterThanOrEqual(before + ttlMs);
+    expect(data.expiresAt).toBeLessThanOrEqual(after + ttlMs + 1000);
+  });
+
+  it('should slide the session expiry when past the renewal threshold', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+
+    // Short window so we start already inside the renewal half-life: created with a tiny ttl, then
+    // validated with a much larger ttl. Since remaining (<=100ms) < largeTtl/2, it must renew.
+    const { sessionId, expiresAt } = (await stub.createSession({ provider: 'test' }, 100)) as any;
+
+    const largeTtl = 30 * 24 * 60 * 60 * 1000;
+    const result: any = await stub.validateSession(sessionId, largeTtl);
+
+    expect(result.valid).toBe(true);
+    expect(result.renewedExpiresAt).toBeDefined();
+    expect(result.renewedExpiresAt).toBeGreaterThan(expiresAt);
+  });
+
+  it('should NOT slide the session expiry when well within the window', async () => {
+    const id = env.USER.newUniqueId();
+    const stub = env.USER.get(id);
+
+    // Fresh session with the same ttl used for validation: remaining ~= ttl, far above ttl/2 → no renew.
+    const ttlMs = 30 * 24 * 60 * 60 * 1000;
+    const { sessionId } = (await stub.createSession({ provider: 'test' }, ttlMs)) as any;
+
+    const result: any = await stub.validateSession(sessionId, ttlMs);
+    expect(result.valid).toBe(true);
+    expect(result.renewedExpiresAt).toBeUndefined();
+  });
+
   it('should delete session', async () => {
     const id = env.USER.newUniqueId();
     const stub = env.USER.get(id);
