@@ -1,7 +1,8 @@
 import { StartupAPIEnv } from '../StartupAPIEnv';
 import { CookieManager } from '../CookieManager';
-import { getUserFromSession, checkAndClearStaleSession, isAdmin, parseCookies, getActiveProviders } from './utils';
+import { getUserFromSession, checkAndClearStaleSession, isAdmin, parseCookies, getActiveProviders, sessionSetCookie } from './utils';
 import type { ProviderConfigs } from '../auth/providers';
+import { DEFAULT_SESSION_TTL_MS } from '../schemas/config';
 import { Plan } from '../billing/Plan';
 import { UserProfileSchema } from '../schemas/user';
 import { SystemAccountSchema, MemberSchema } from '../schemas/account';
@@ -13,6 +14,7 @@ export async function handleAdmin(
   usersPath: string,
   cookieManager: CookieManager,
   providerConfigs: ProviderConfigs = {},
+  sessionTtlMs: number = DEFAULT_SESSION_TTL_MS,
 ): Promise<Response> {
   const user = await getUserFromSession(request, env, cookieManager);
   if (!user || !isAdmin(user, env)) {
@@ -113,7 +115,7 @@ export async function handleAdmin(
 
         const userDOId = env.USER.idFromString(user_id);
         const userStub = env.USER.get(userDOId);
-        const session = await userStub.createSession({ provider: 'admin-impersonation', impersonator: user.id });
+        const session = await userStub.createSession({ provider: 'admin-impersonation', impersonator: user.id }, sessionTtlMs);
 
         const cookieHeader = request.headers.get('Cookie');
         const cookies = parseCookies(cookieHeader || '');
@@ -121,7 +123,7 @@ export async function handleAdmin(
 
         const headers = new Headers();
         const newSessionIdEncrypted = await cookieManager.encrypt(`${session.sessionId}:${user_id}`);
-        headers.set('Set-Cookie', `session_id=${newSessionIdEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        headers.set('Set-Cookie', sessionSetCookie(newSessionIdEncrypted, Math.floor(sessionTtlMs / 1000)));
         if (currentSessionEncrypted) {
           const backupSession = await cookieManager.decrypt(currentSessionEncrypted);
           if (backupSession) {

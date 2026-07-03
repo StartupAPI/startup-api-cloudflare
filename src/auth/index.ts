@@ -1,6 +1,8 @@
 import type { StartupAPIEnv } from '../StartupAPIEnv';
 
 import { CookieManager } from '../CookieManager';
+import { DEFAULT_SESSION_TTL_MS } from '../schemas/config';
+import { sessionSetCookie } from '../handlers/utils';
 import { refreshEntitlements } from '../entitlements/service';
 import { renderAuthError } from './errorPage';
 import { computeRedirectBase, createProviders } from './providers';
@@ -14,6 +16,7 @@ export async function handleAuth(
   usersPath: string,
   cookieManager: CookieManager,
   providerConfigs: ProviderConfigs = {},
+  sessionTtlMs: number = DEFAULT_SESSION_TTL_MS,
 ): Promise<Response> {
   const path = url.pathname;
   const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
@@ -27,7 +30,7 @@ export async function handleAuth(
   // Instantiate active providers
   const activeProviders = createProviders(env, redirectBase, providerConfigs);
 
-  const ctx: AuthContext = { request, env, url, redirectBase, authPath, usersPath, origin, cookieManager };
+  const ctx: AuthContext = { request, env, url, redirectBase, authPath, usersPath, origin, cookieManager, sessionTtlMs };
 
   // Provider-specific auxiliary routes (e.g. the atproto client-metadata document).
   for (const provider of activeProviders) {
@@ -70,7 +73,7 @@ export async function handleAuth(
  * transient flow state).
  */
 async function finishLogin(provider: OAuthProvider, result: ExchangeResult, ctx: AuthContext): Promise<Response> {
-  const { env, request, usersPath, origin, cookieManager } = ctx;
+  const { env, request, usersPath, origin, cookieManager, sessionTtlMs } = ctx;
   const { token, profile, returnUrl } = result;
 
   const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
@@ -225,12 +228,12 @@ async function finishLogin(provider: OAuthProvider, result: ExchangeResult, ctx:
   }
 
   // Create Session
-  const session = await userStub.createSession({ provider: provider.name });
+  const session = await userStub.createSession({ provider: provider.name }, sessionTtlMs);
 
-  // Set cookie and redirect
+  // Set cookie and redirect (persistent cookie so the session survives browser restarts)
   const encryptedSession = await cookieManager.encrypt(`${session.sessionId}:${userIdStr}`);
   const headers = new Headers();
-  headers.set('Set-Cookie', `session_id=${encryptedSession}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+  headers.set('Set-Cookie', sessionSetCookie(encryptedSession, Math.floor(sessionTtlMs / 1000)));
   for (const cookie of result.setCookies ?? []) {
     headers.append('Set-Cookie', cookie);
   }

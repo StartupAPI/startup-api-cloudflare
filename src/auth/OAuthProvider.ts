@@ -38,6 +38,8 @@ export interface AuthContext {
   /** Effective origin (AUTH_ORIGIN override or request origin). */
   origin: string;
   cookieManager: CookieManager;
+  /** Login session lifetime in ms, resolved from factory config. */
+  sessionTtlMs: number;
 }
 
 /**

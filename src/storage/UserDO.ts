@@ -3,6 +3,11 @@ import { StartupAPIEnv } from '../StartupAPIEnv';
 import { UserProfileSchema } from '../schemas/user';
 import type { UserProfile } from '../schemas/user';
 
+/** Safety fallback if a caller does not pass an explicit TTL. Real callers pass the factory-resolved value. */
+const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+/** Renew (extend) a session once less than this fraction of its TTL window remains. */
+const SESSION_RENEW_THRESHOLD = 0.5;
+
 /**
  * A Durable Object representing a User.
  * This class handles the storage and management of user profiles,
@@ -73,7 +78,8 @@ export class UserDO extends DurableObject {
    */
   async validateSession(
     sessionId: string,
-  ): Promise<{ valid: boolean; profile?: UserProfile; credential?: Record<string, any>; error?: string }> {
+    ttlMs?: number,
+  ): Promise<{ valid: boolean; profile?: UserProfile; credential?: Record<string, any>; error?: string; renewedExpiresAt?: number }> {
     try {
       // Check session
       const sessionResult = this.sql.exec('SELECT * FROM sessions WHERE id = ?', sessionId);
@@ -83,8 +89,17 @@ export class UserDO extends DurableObject {
         return { valid: false };
       }
 
-      if (session.expires_at < Date.now()) {
+      const now = Date.now();
+      if (session.expires_at < now) {
         return { valid: false, error: 'Expired' };
+      }
+
+      // Sliding renewal: once less than half the window remains, push the expiry forward. A bump
+      // resets "remaining" to the full window, so this writes at most once per ~half-TTL of activity.
+      let renewedExpiresAt: number | undefined;
+      if (ttlMs && now > session.expires_at - ttlMs * SESSION_RENEW_THRESHOLD) {
+        renewedExpiresAt = now + ttlMs;
+        this.sql.exec('UPDATE sessions SET expires_at = ? WHERE id = ?', renewedExpiresAt, sessionId);
       }
 
       // Get profile data from local 'profile' table
@@ -115,7 +130,7 @@ export class UserDO extends DurableObject {
       // Ensure the ID is set
       profile.id = this.ctx.id.toString();
 
-      return { valid: true, profile, credential };
+      return { valid: true, profile, credential, renewedExpiresAt };
     } catch (_e) {
       return { valid: false };
     }
@@ -261,16 +276,17 @@ export class UserDO extends DurableObject {
 
   /**
    * Creates a new login session for the user.
-   * Generates a random session ID and sets a 24-hour expiration.
+   * Generates a random session ID and sets an expiration `ttlMs` from now.
    *
    * @param meta - Optional metadata to store with the session.
+   * @param ttlMs - Session lifetime in milliseconds. Defaults to a 24h safety fallback; callers pass the resolved value.
    * @returns A Promise resolving to a JSON response with the session ID and expiration time.
    */
-  async createSession(meta?: Record<string, any>): Promise<{ sessionId: string; expiresAt: number }> {
+  async createSession(meta?: Record<string, any>, ttlMs: number = DEFAULT_SESSION_TTL_MS): Promise<{ sessionId: string; expiresAt: number }> {
     // Basic session creation
     const sessionId = crypto.randomUUID();
     const now = Date.now();
-    const expiresAt = now + 24 * 60 * 60 * 1000; // 24 hours
+    const expiresAt = now + ttlMs;
 
     this.sql.exec(
       'INSERT INTO sessions (id, created_at, expires_at, meta) VALUES (?, ?, ?, ?)',

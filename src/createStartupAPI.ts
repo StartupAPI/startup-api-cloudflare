@@ -7,7 +7,7 @@ import { CredentialDO } from './storage/CredentialDO';
 import { CookieManager } from './CookieManager';
 import { initPlans } from './billing/plansConfig';
 import { Plan } from './billing/Plan';
-import { getActiveProviders, parseCookies, getUserFromSession, isAdmin } from './handlers/utils';
+import { getActiveProviders, parseCookies, getUserFromSession, isAdmin, applySessionRenewal, sessionSetCookie } from './handlers/utils';
 import { handleAdmin } from './handlers/admin';
 import {
   handleMe,
@@ -22,7 +22,7 @@ import { handleLogout } from './handlers/auth';
 import { handleSSR } from './handlers/ssr';
 
 import type { StartupAPIEnv } from './StartupAPIEnv';
-import { StartupAPIConfigSchema } from './schemas/config';
+import { StartupAPIConfigSchema, DEFAULT_SESSION_TTL_MS, durationToMs } from './schemas/config';
 import type { StartupAPIConfig, ProviderOptions, ResolvedFreshness } from './schemas/config';
 import type { AccessPolicyConfig, PageSource } from './schemas/policy';
 import { AccessPolicy, evaluateAccess } from './policy/accessPolicy';
@@ -36,6 +36,15 @@ import { handlePatreonWebhook } from './webhooks/patreon';
 const DEFAULT_USERS_PATH = '/users/';
 const DEFAULT_CRON_SCHEDULE = '0 */6 * * *';
 const DEFAULT_ENTITLEMENT_TTL_MS = 15 * 60 * 1000;
+// Patreon memberships change slowly (pledges are monthly) and real-time changes are already covered by
+// the webhook, so a per-request re-check every 15 min is wasteful. Default Patreon's TTL to 1 day; it
+// acts as a backstop for missed webhooks rather than the primary freshness mechanism.
+const DEFAULT_PATREON_ENTITLEMENT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Provider-specific default entitlement TTL, used when `entitlementTtl` is on but no interval is given. */
+function defaultEntitlementTtlMs(providerName?: string): number {
+  return providerName === 'patreon' ? DEFAULT_PATREON_ENTITLEMENT_TTL_MS : DEFAULT_ENTITLEMENT_TTL_MS;
+}
 
 // The factory's request handler is a local `const fetch`, which would shadow the global fetch inside
 // its body. Use this alias to proxy to the origin via the *current* global fetch at call time (so test
@@ -43,22 +52,36 @@ const DEFAULT_ENTITLEMENT_TTL_MS = 15 * 60 * 1000;
 const originFetch = (...args: Parameters<typeof fetch>): Promise<Response> => globalThis.fetch(...args);
 
 function isCronEnabled(options: ProviderOptions): boolean {
-  const cron = options.freshness?.cron;
+  const cron = options.entitlementCron;
   return cron === true || (typeof cron === 'object' && cron !== null);
 }
 
-/** Resolve a provider's freshness config into concrete flags/values. */
-function resolveFreshness(options: ProviderOptions | undefined): ResolvedFreshness {
-  const f = options?.freshness ?? {};
-  const ttlEnabled = f.ttl === true || (typeof f.ttl === 'object' && f.ttl !== null);
-  const ttlMs = typeof f.ttl === 'object' && f.ttl?.ms ? f.ttl.ms : DEFAULT_ENTITLEMENT_TTL_MS;
+/** Resolve a provider's entitlement freshness config into concrete flags/values. */
+function resolveFreshness(options: ProviderOptions | undefined, providerName?: string): ResolvedFreshness {
+  // entitlementTtl is ON by default; only an explicit `false` disables it. A provided Duration sets the
+  // interval, otherwise fall back to the provider default (1 day for Patreon, 15 min otherwise).
+  const ttlRaw = options?.entitlementTtl;
+  const ttlEnabled = ttlRaw !== false;
+  const ttlFromConfig = ttlRaw !== undefined && ttlRaw !== false ? durationToMs(ttlRaw) : 0;
+  const ttlMs = ttlFromConfig > 0 ? ttlFromConfig : defaultEntitlementTtlMs(providerName);
+  const cron = options?.entitlementCron;
   const cronEnabled = isCronEnabled(options ?? {});
-  const cronSchedule = typeof f.cron === 'object' && f.cron?.schedule ? f.cron.schedule : DEFAULT_CRON_SCHEDULE;
+  const cronSchedule = typeof cron === 'object' && cron?.schedule ? cron.schedule : DEFAULT_CRON_SCHEDULE;
   return {
     ttl: { enabled: ttlEnabled, ms: ttlMs },
     cron: { enabled: cronEnabled, schedule: cronSchedule },
-    webhook: { enabled: f.webhook === true },
+    webhook: { enabled: options?.entitlementWebhook === true },
   };
+}
+
+/** Resolve the login session lifetime (rolling window, ms) from factory config, else the 30-day default. */
+function resolveSessionTtlMs(session: StartupAPIConfig['session']): number {
+  const ttl = session?.ttl;
+  if (ttl !== undefined) {
+    const ms = durationToMs(ttl);
+    if (ms > 0) return ms;
+  }
+  return DEFAULT_SESSION_TTL_MS;
 }
 
 /** Resolve the access policy from factory config, else a backward-compatible all-public default. */
@@ -130,11 +153,12 @@ function denyResponse(
 export function createStartupAPI(config: StartupAPIConfig = {}) {
   const parsed = StartupAPIConfigSchema.parse(config);
   const providerConfigs = parsed.providers ?? {};
+  const sessionTtlMs = resolveSessionTtlMs(parsed.session);
   const cronProviders = Object.entries(providerConfigs)
     .filter(([, options]) => isCronEnabled(options))
     .map(([name]) => name);
   const anyCron = cronProviders.length > 0;
-  const patreonWebhookEnabled = providerConfigs.patreon?.freshness?.webhook === true;
+  const patreonWebhookEnabled = providerConfigs.patreon?.entitlementWebhook === true;
 
   const fetch = async (request: Request, env: StartupAPIEnv, ctx: ExecutionContext): Promise<Response> => {
     if (!Plan.isInitialized()) {
@@ -178,7 +202,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
 
     // Handle OAuth Routes
     if (url.pathname.startsWith(usersPath + 'auth/')) {
-      return handleAuth(request, env, url, usersPath, cookieManager, providerConfigs);
+      return handleAuth(request, env, url, usersPath, cookieManager, providerConfigs, sessionTtlMs);
     }
 
     if (url.pathname === usersPath + 'me/avatar') {
@@ -221,7 +245,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
 
         const headers = new Headers();
         const newSessionIdEncrypted = await cookieManager.encrypt(backupSession);
-        headers.set('Set-Cookie', `session_id=${newSessionIdEncrypted}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+        headers.set('Set-Cookie', sessionSetCookie(newSessionIdEncrypted, Math.floor(sessionTtlMs / 1000)));
         headers.append('Set-Cookie', `backup_session_id=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
 
         return Response.json({ success: true }, { headers });
@@ -262,7 +286,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
 
     // Admin Routes
     if (url.pathname.startsWith(usersPath + 'admin/')) {
-      return handleAdmin(request, env, usersPath, cookieManager, providerConfigs);
+      return handleAdmin(request, env, usersPath, cookieManager, providerConfigs, sessionTtlMs);
     }
 
     // Intercept requests to usersPath and serve them from the public/users directory.
@@ -292,7 +316,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
         return originFetch(newRequest);
       }
 
-      const user = await getUserFromSession(request, env, cookieManager);
+      const user = await getUserFromSession(request, env, cookieManager, sessionTtlMs);
       const authenticated = !!user;
       const userIsAdmin = user ? isAdmin(user, env) : false;
       let entitlements: Entitlements | null = null;
@@ -311,7 +335,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
         if (loginProvider && subjectId) {
           const provider = getProvider(env, computeRedirectBase(env, requestOrigin, usersPath), loginProvider, providerConfigs);
           if (provider && provider.supportsEntitlements()) {
-            const fr = resolveFreshness(providerConfigs[loginProvider]);
+            const fr = resolveFreshness(providerConfigs[loginProvider], loginProvider);
             entitlements = await loadEntitlements({
               env,
               provider,
@@ -346,7 +370,9 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
 
       const response = await originFetch(newRequest);
       const providers = getActiveProviders(env, providerConfigs);
-      return injectPowerStrip(response, usersPath, providers);
+      // Refresh the persistent session cookie's Max-Age when the DO extended the session (sliding renewal).
+      const decorated = await injectPowerStrip(response, usersPath, providers);
+      return applySessionRenewal(decorated, user?.renew);
     }
 
     // do not modify the request as it will loop through the same worker again
