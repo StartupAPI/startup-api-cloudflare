@@ -261,11 +261,11 @@ For non-`bypass` paths the worker forwards `X-StartupAPI-Authenticated`, `X-Star
 
 ### Keeping entitlements fresh
 
-Entitlements are fetched once at login. Each provider can additionally opt into freshness mechanisms in its factory config (all off by default — if none are enabled, entitlements are only checked at login):
+Entitlements are fetched at login and then kept fresh per-provider via three mechanisms. **Durations** below are a named-unit object (`{ days: 1 }`, `{ minutes: 15 }` — units are summed) or a plain number of milliseconds.
 
-- **TTL** — lazily re-check on the request path when older than the TTL (`freshness.ttl: { ms }`), using the OAuth refresh token. When enabled without an explicit `ms`, the default is **1 day for Patreon** (memberships change slowly; this backstops missed webhooks) and 15 min for other providers.
-- **Cron** — a scheduled re-sync of all of a provider's credentials (`freshness.cron: { schedule }`). The `scheduled()` handler is only present when at least one provider enables cron; you must also add a matching `triggers.crons` to your wrangler config.
-- **Webhook** (Patreon only) — set `freshness.webhook: true`, provide `PATREON_WEBHOOK_SECRET` (a secret, in env), and point a Patreon webhook at `<your-worker-url>/users/webhooks/patreon` (signature verified with HMAC-MD5).
+- **TTL** (`entitlementTtl`) — lazily re-check on the request path when the cache is older than the duration, using the OAuth refresh token. **On by default** for entitlement providers: default **1 day for Patreon** (memberships change slowly; this backstops missed webhooks) and 15 min for other providers. Pass a Duration to tune it (`entitlementTtl: { hours: 6 }`), or `entitlementTtl: false` to disable (e.g. rely on the webhook only).
+- **Cron** (`entitlementCron: { schedule }`) — a scheduled re-sync of all of a provider's credentials. Off by default. The `scheduled()` handler is only present when at least one provider enables cron; you must also add a matching `triggers.crons` to your wrangler config.
+- **Webhook** (Patreon only, `entitlementWebhook: true`) — off by default. Provide `PATREON_WEBHOOK_SECRET` (a secret, in env) and point a Patreon webhook at `<your-worker-url>/users/webhooks/patreon` (signature verified with HMAC-MD5).
 
 Set `providers.patreon.campaignId` to disambiguate when a user belongs to multiple campaigns.
 
@@ -275,15 +275,15 @@ Login sessions are **separate** from entitlement freshness: how long a user stay
 
 - **Default lifetime is 30 days** with a **rolling window**: on activity, once less than half the window remains, the session expiry is pushed forward and the `session_id` cookie's `Max-Age` is refreshed. Active users effectively never have to re-login; idle users expire after the window.
 - The `session_id` cookie is a **persistent cookie** (`Max-Age`), so it survives browser restarts.
-- Configure the window via the factory:
+- Configure the window via the factory (`session.ttl` is a Duration):
 
 ```ts
 const api = createStartupAPI({
-  session: { ttl: { ms: 30 * 24 * 60 * 60 * 1000 } }, // default; lower/raise as needed
+  session: { ttl: { days: 30 } }, // default; lower/raise as needed (or a number of ms)
 });
 ```
 
-> Changed in 0.4.6: the default session lifetime went from a fixed 24h (no renewal) to a rolling 30 days, `session_id` is now a persistent cookie, and Patreon's entitlement `ttl` (when enabled) defaults to 1 day.
+> **Breaking in 0.5.0:** entitlement freshness moved from the `freshness: { ttl, cron, webhook }` block to flat per-provider keys `entitlementTtl` / `entitlementCron` / `entitlementWebhook`; `entitlementTtl` is now **on by default** (1 day for Patreon) and takes a Duration or `false`. The default session lifetime went from a fixed 24h (no renewal) to a **rolling 30 days**, and `session_id` is now a **persistent cookie**.
 
 ### Configuring via the factory
 
@@ -303,10 +303,13 @@ const api = createStartupAPI({
     patreon: {
       scopes: 'identity.memberships',
       campaignId: '<CAMPAIGN_ID>',
-      freshness: { ttl: true, cron: { schedule: '0 */6 * * *' }, webhook: true },
+      // entitlementTtl is on by default (1 day for Patreon); tune with a Duration or set false to disable.
+      entitlementTtl: { hours: 12 },
+      entitlementCron: { schedule: '0 */6 * * *' },
+      entitlementWebhook: true,
     },
   },
-  session: { ttl: { ms: 30 * 24 * 60 * 60 * 1000 } }, // optional; login session lifetime (default 30d, rolling)
+  session: { ttl: { days: 30 } }, // optional; login session lifetime (default 30d, rolling)
   accessPolicy: {
     rules: [
       /* ... */

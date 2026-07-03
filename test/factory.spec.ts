@@ -2,7 +2,24 @@ import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:
 import { describe, it, expect, vi } from 'vitest';
 import { createStartupAPI } from '../src/createStartupAPI';
 import { CookieManager } from '../src/CookieManager';
+import { durationToMs } from '../src/schemas/config';
 import { hmacMd5Hex } from '../src/webhooks/md5hmac';
+
+describe('durationToMs', () => {
+  it('treats a bare number as milliseconds', () => {
+    expect(durationToMs(86400000)).toBe(86400000);
+    expect(durationToMs(0)).toBe(0);
+  });
+
+  it('sums named units', () => {
+    expect(durationToMs({ days: 30 })).toBe(30 * 24 * 60 * 60 * 1000);
+    expect(durationToMs({ minutes: 15 })).toBe(15 * 60 * 1000);
+    expect(durationToMs({ hours: 1, minutes: 30 })).toBe(90 * 60 * 1000);
+    expect(durationToMs({ days: 1, hours: 2, minutes: 3, seconds: 4, ms: 5 })).toBe(
+      1 * 86400000 + 2 * 3600000 + 3 * 60000 + 4 * 1000 + 5,
+    );
+  });
+});
 
 describe('createStartupAPI factory', () => {
   it('returns the Worker handler and all Durable Object classes', () => {
@@ -21,7 +38,7 @@ describe('createStartupAPI factory', () => {
   });
 
   it('attaches scheduled() when a provider enables cron', () => {
-    const api = createStartupAPI({ providers: { patreon: { freshness: { cron: { schedule: '0 */6 * * *' } } } } });
+    const api = createStartupAPI({ providers: { patreon: { entitlementCron: { schedule: '0 */6 * * *' } } } });
     expect(typeof api.scheduled).toBe('function');
     expect(typeof api.default.scheduled).toBe('function');
   });
@@ -64,12 +81,11 @@ describe('createStartupAPI factory', () => {
       }
     }
 
-    it('renews with a custom session ttl reflected in Max-Age', async () => {
-      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    it('renews with a custom session ttl (named units) reflected in Max-Age', async () => {
       // Remaining 1h is below the 7d/2 threshold → renew with the custom 7-day Max-Age.
-      const setCookie = await proxyRenewalCookie({ session: { ttl: { ms: sevenDaysMs } } }, 60 * 60 * 1000);
+      const setCookie = await proxyRenewalCookie({ session: { ttl: { days: 7 } } }, 60 * 60 * 1000);
       expect(setCookie).toContain('session_id=');
-      expect(setCookie).toContain(`Max-Age=${sevenDaysMs / 1000}`); // 604800
+      expect(setCookie).toContain(`Max-Age=${7 * 24 * 60 * 60}`); // 604800
     });
 
     it('defaults to a 30-day session when unconfigured', async () => {
@@ -83,7 +99,7 @@ describe('createStartupAPI factory', () => {
     const webhookBody = JSON.stringify({ data: { relationships: { user: { data: { id: 'sub-unknown' } } } } });
 
     it('verifies a valid signature and returns 200 when webhook is enabled', async () => {
-      const api = createStartupAPI({ providers: { patreon: { freshness: { webhook: true } } } });
+      const api = createStartupAPI({ providers: { patreon: { entitlementWebhook: true } } });
       const sig = hmacMd5Hex(env.PATREON_WEBHOOK_SECRET!, webhookBody);
       const ctx = createExecutionContext();
       const res = await api.fetch(
@@ -96,7 +112,7 @@ describe('createStartupAPI factory', () => {
     });
 
     it('rejects an invalid signature with 401', async () => {
-      const api = createStartupAPI({ providers: { patreon: { freshness: { webhook: true } } } });
+      const api = createStartupAPI({ providers: { patreon: { entitlementWebhook: true } } });
       const ctx = createExecutionContext();
       const res = await api.fetch(
         new Request('http://example.com/users/webhooks/patreon', { method: 'POST', body: webhookBody, headers: { 'X-Patreon-Signature': 'deadbeef' } }),

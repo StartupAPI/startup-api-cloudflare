@@ -22,7 +22,7 @@ import { handleLogout } from './handlers/auth';
 import { handleSSR } from './handlers/ssr';
 
 import type { StartupAPIEnv } from './StartupAPIEnv';
-import { StartupAPIConfigSchema, DEFAULT_SESSION_TTL_MS } from './schemas/config';
+import { StartupAPIConfigSchema, DEFAULT_SESSION_TTL_MS, durationToMs } from './schemas/config';
 import type { StartupAPIConfig, ProviderOptions, ResolvedFreshness } from './schemas/config';
 import type { AccessPolicyConfig, PageSource } from './schemas/policy';
 import { AccessPolicy, evaluateAccess } from './policy/accessPolicy';
@@ -41,7 +41,7 @@ const DEFAULT_ENTITLEMENT_TTL_MS = 15 * 60 * 1000;
 // acts as a backstop for missed webhooks rather than the primary freshness mechanism.
 const DEFAULT_PATREON_ENTITLEMENT_TTL_MS = 24 * 60 * 60 * 1000;
 
-/** Provider-specific default entitlement TTL, used when a provider enables `ttl` without an explicit `ms`. */
+/** Provider-specific default entitlement TTL, used when `entitlementTtl` is on but no interval is given. */
 function defaultEntitlementTtlMs(providerName?: string): number {
   return providerName === 'patreon' ? DEFAULT_PATREON_ENTITLEMENT_TTL_MS : DEFAULT_ENTITLEMENT_TTL_MS;
 }
@@ -52,28 +52,35 @@ function defaultEntitlementTtlMs(providerName?: string): number {
 const originFetch = (...args: Parameters<typeof fetch>): Promise<Response> => globalThis.fetch(...args);
 
 function isCronEnabled(options: ProviderOptions): boolean {
-  const cron = options.freshness?.cron;
+  const cron = options.entitlementCron;
   return cron === true || (typeof cron === 'object' && cron !== null);
 }
 
-/** Resolve a provider's freshness config into concrete flags/values. */
+/** Resolve a provider's entitlement freshness config into concrete flags/values. */
 function resolveFreshness(options: ProviderOptions | undefined, providerName?: string): ResolvedFreshness {
-  const f = options?.freshness ?? {};
-  const ttlEnabled = f.ttl === true || (typeof f.ttl === 'object' && f.ttl !== null);
-  const ttlMs = typeof f.ttl === 'object' && f.ttl?.ms ? f.ttl.ms : defaultEntitlementTtlMs(providerName);
+  // entitlementTtl is ON by default; only an explicit `false` disables it. A provided Duration sets the
+  // interval, otherwise fall back to the provider default (1 day for Patreon, 15 min otherwise).
+  const ttlRaw = options?.entitlementTtl;
+  const ttlEnabled = ttlRaw !== false;
+  const ttlFromConfig = ttlRaw !== undefined && ttlRaw !== false ? durationToMs(ttlRaw) : 0;
+  const ttlMs = ttlFromConfig > 0 ? ttlFromConfig : defaultEntitlementTtlMs(providerName);
+  const cron = options?.entitlementCron;
   const cronEnabled = isCronEnabled(options ?? {});
-  const cronSchedule = typeof f.cron === 'object' && f.cron?.schedule ? f.cron.schedule : DEFAULT_CRON_SCHEDULE;
+  const cronSchedule = typeof cron === 'object' && cron?.schedule ? cron.schedule : DEFAULT_CRON_SCHEDULE;
   return {
     ttl: { enabled: ttlEnabled, ms: ttlMs },
     cron: { enabled: cronEnabled, schedule: cronSchedule },
-    webhook: { enabled: f.webhook === true },
+    webhook: { enabled: options?.entitlementWebhook === true },
   };
 }
 
 /** Resolve the login session lifetime (rolling window, ms) from factory config, else the 30-day default. */
 function resolveSessionTtlMs(session: StartupAPIConfig['session']): number {
   const ttl = session?.ttl;
-  if (typeof ttl === 'object' && ttl?.ms) return ttl.ms;
+  if (ttl !== undefined) {
+    const ms = durationToMs(ttl);
+    if (ms > 0) return ms;
+  }
   return DEFAULT_SESSION_TTL_MS;
 }
 
@@ -151,7 +158,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
     .filter(([, options]) => isCronEnabled(options))
     .map(([name]) => name);
   const anyCron = cronProviders.length > 0;
-  const patreonWebhookEnabled = providerConfigs.patreon?.freshness?.webhook === true;
+  const patreonWebhookEnabled = providerConfigs.patreon?.entitlementWebhook === true;
 
   const fetch = async (request: Request, env: StartupAPIEnv, ctx: ExecutionContext): Promise<Response> => {
     if (!Plan.isInitialized()) {

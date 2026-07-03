@@ -133,10 +133,10 @@ describe('Entitlement headers + access policy', () => {
     }
   });
 
-  it('defaults Patreon entitlement TTL to 1 day (a ~1h-old cache is not re-fetched)', async () => {
-    // ttl enabled without an explicit ms → Patreon default of 1 day. A cache checked 1h ago is still
-    // fresh, so the request path must NOT hit www.patreon.com to refresh (it would under a 15-min default).
-    const api = createStartupAPI({ providers: { patreon: { freshness: { ttl: true } } }, accessPolicy: POLICY });
+  it('defaults Patreon entitlement TTL to 1 day, on by default (a ~1h-old cache is not re-fetched)', async () => {
+    // No freshness config at all — entitlementTtl is ON by default at 1 day for Patreon. A cache checked
+    // 1h ago is still fresh, so the request path must NOT hit www.patreon.com to refresh.
+    const api = createStartupAPI({ accessPolicy: POLICY });
 
     const userId = env.USER.newUniqueId();
     const userStub = env.USER.get(userId);
