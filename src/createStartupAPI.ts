@@ -1,4 +1,4 @@
-import { handleAuth } from './auth/index';
+import { handleAuth, handleProviderExtraRoutes } from './auth/index';
 import { injectPowerStrip } from './PowerStrip';
 import { UserDO } from './storage/UserDO';
 import { AccountDO } from './storage/AccountDO';
@@ -182,6 +182,12 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
     const usersPath = env.USERS_PATH || DEFAULT_USERS_PATH;
 
     const cookieManager = new CookieManager(env.SESSION_SECRET);
+
+    // Provider auxiliary documents that may live outside USERS_PATH (e.g. the atproto client-metadata
+    // document at the conventional /oauth-client-metadata.json root path). Checked first so a provider
+    // can claim its exact path; everything else falls through unchanged.
+    const extraRouteRes = await handleProviderExtraRoutes(request, env, url, usersPath, cookieManager, providerConfigs, sessionTtlMs);
+    if (extraRouteRes) return extraRouteRes;
 
     // SSR Routes
     const usersPathNormalized = usersPath.endsWith('/') ? usersPath : usersPath + '/';

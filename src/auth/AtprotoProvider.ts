@@ -55,11 +55,18 @@ export function isAtprotoEnabled(options?: ProviderOptions, env?: Pick<StartupAP
  * Unlike the classic OAuth2 providers, atproto requires PKCE, DPoP-bound tokens, Pushed Authorization
  * Requests (PAR), and per-user dynamic endpoints discovered from the identity (handle → DID → PDS →
  * authorization server). It is a "public" OAuth client identified by a hosted client-metadata document
- * (served at `…/auth/atproto/client-metadata.json`) rather than a client id/secret.
+ * rather than a client id/secret. By default the document is served at the conventional domain root
+ * (`/oauth-client-metadata.json`) so consent screens show just the hostname; it can instead live under
+ * the auth path (`…/auth/atproto/client-metadata.json`) or be replaced by one the app owner hosts.
  */
 export class AtprotoProvider extends OAuthProvider {
+  /** Conventional root path for an atproto client-metadata document (auth servers show just the host). */
+  static readonly ROOT_METADATA_PATH = '/oauth-client-metadata.json';
+
   /** The public client id, i.e. the URL of this client's metadata document. */
   private clientMetadataUrl = '';
+  /** Path (on the auth origin) at which this worker serves the client-metadata document. */
+  private metadataPath = '';
   private clientUri = '';
   private clientName = 'StartupAPI';
   private resolverOptions: ResolverOptions = {};
@@ -67,8 +74,15 @@ export class AtprotoProvider extends OAuthProvider {
   static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
     if (!isAtprotoEnabled(options, env)) return null;
     const provider = new AtprotoProvider('', '', redirectBase + '/atproto/callback', 'atproto', options?.scopes);
-    provider.clientMetadataUrl = redirectBase + '/atproto/client-metadata.json';
-    provider.clientUri = new URL(redirectBase).origin;
+    const base = new URL(redirectBase);
+    // Where we serve the document: the conventional domain root (default) or under the auth path.
+    const useRoot = options?.useRootOAuthClientMetadata !== false;
+    provider.metadataPath = useRoot ? AtprotoProvider.ROOT_METADATA_PATH : `${base.pathname}/atproto/client-metadata.json`;
+    // The client id is the URL the authorization server fetches the document from: ours, or one the app
+    // owner hosts themselves (our copy under the auth path is then a reference for them to mirror).
+    const custom = options?.customOAuthClientMetadataURL?.trim();
+    provider.clientMetadataUrl = new URL(custom || provider.metadataPath, base.origin).toString();
+    provider.clientUri = new URL(provider.clientMetadataUrl).origin;
     provider.clientName = options?.clientName?.trim() || 'StartupAPI';
     provider.resolverOptions = {
       plcUrl: options?.plcUrl?.trim() || undefined,
@@ -102,7 +116,7 @@ export class AtprotoProvider extends OAuthProvider {
   }
 
   async handleExtraRoute(ctx: AuthContext): Promise<Response | null> {
-    if (ctx.url.pathname === `${ctx.authPath}/atproto/client-metadata.json`) {
+    if (ctx.url.pathname === this.metadataPath) {
       return Response.json(this.getClientMetadata());
     }
     return null;

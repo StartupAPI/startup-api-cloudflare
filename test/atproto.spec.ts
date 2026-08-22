@@ -74,20 +74,109 @@ function installAtprotoMocks(opts: { onPar?: (init: RequestInit) => void; onToke
   }) as typeof fetch;
 }
 
-describe('atproto provider', () => {
-  it('serves the OAuth client-metadata document', async () => {
-    const api = createStartupAPI(atprotoConfig);
-    const ctx = createExecutionContext();
-    const res = await api.fetch(new Request('http://example.com/users/auth/atproto/client-metadata.json'), env, ctx);
-    await waitOnExecutionContext(ctx);
+/** Fetch a URL through a configured instance and return the response. */
+async function get(config: Parameters<typeof createStartupAPI>[0], url: string): Promise<Response> {
+  const api = createStartupAPI(config);
+  const ctx = createExecutionContext();
+  const res = await api.fetch(new Request(url), env, ctx);
+  await waitOnExecutionContext(ctx);
+  return res;
+}
 
-    expect(res.status).toBe(200);
-    const meta = (await res.json()) as Record<string, any>;
-    expect(meta.client_id).toBe('http://example.com/users/auth/atproto/client-metadata.json');
-    expect(meta.redirect_uris).toEqual(['http://example.com/users/auth/atproto/callback']);
-    expect(meta.token_endpoint_auth_method).toBe('none');
-    expect(meta.dpop_bound_access_tokens).toBe(true);
-    expect(meta.scope).toContain('atproto');
+describe('atproto provider', () => {
+  describe('client-metadata document', () => {
+    it('is served at the conventional domain root by default, which is also the client_id', async () => {
+      const res = await get(atprotoConfig, 'http://example.com/oauth-client-metadata.json');
+
+      expect(res.status).toBe(200);
+      const meta = (await res.json()) as Record<string, any>;
+      expect(meta.client_id).toBe('http://example.com/oauth-client-metadata.json');
+      expect(meta.client_uri).toBe('http://example.com');
+      expect(meta.redirect_uris).toEqual(['http://example.com/users/auth/atproto/callback']);
+      expect(meta.token_endpoint_auth_method).toBe('none');
+      expect(meta.dpop_bound_access_tokens).toBe(true);
+      expect(meta.scope).toContain('atproto');
+
+      // Only one URL can be the client id (the document must be fetched from it), so no alias is kept
+      // under the auth path in root mode.
+      const old = await get(atprotoConfig, 'http://example.com/users/auth/atproto/client-metadata.json');
+      expect(old.status).toBe(404);
+    });
+
+    it('is not served at the root when atproto is disabled', async () => {
+      // Without the provider, the root path falls through to the regular (asset/origin) handling.
+      const res = await get({}, 'http://example.com/oauth-client-metadata.json');
+      expect(res.status).not.toBe(200);
+    });
+
+    it('stays under USERS_PATH with useRootOAuthClientMetadata: false', async () => {
+      const config = { providers: { atproto: { useRootOAuthClientMetadata: false } } };
+      const res = await get(config, 'http://example.com/users/auth/atproto/client-metadata.json');
+
+      expect(res.status).toBe(200);
+      const meta = (await res.json()) as Record<string, any>;
+      expect(meta.client_id).toBe('http://example.com/users/auth/atproto/client-metadata.json');
+      expect(meta.redirect_uris).toEqual(['http://example.com/users/auth/atproto/callback']);
+
+      const root = await get(config, 'http://example.com/oauth-client-metadata.json');
+      expect(root.status).not.toBe(200);
+    });
+
+    it('uses a self-hosted document as client_id and serves a reference copy under USERS_PATH', async () => {
+      const config = {
+        providers: { atproto: { useRootOAuthClientMetadata: false, customOAuthClientMetadataURL: '/oauth-client-metadata.json' } },
+      };
+      // StartupAPI does not claim the root path — the app owner serves their own file there.
+      const root = await get(config, 'http://example.com/oauth-client-metadata.json');
+      expect(root.status).not.toBe(200);
+
+      // The reference copy advertises the owner's URL as client_id so it can be mirrored verbatim.
+      const ref = await get(config, 'http://example.com/users/auth/atproto/client-metadata.json');
+      expect(ref.status).toBe(200);
+      const meta = (await ref.json()) as Record<string, any>;
+      expect(meta.client_id).toBe('http://example.com/oauth-client-metadata.json');
+      expect(meta.redirect_uris).toEqual(['http://example.com/users/auth/atproto/callback']);
+
+      // The custom client_id is what the authorization server is told (PAR + authorize redirect).
+      let parBody: URLSearchParams | undefined;
+      installAtprotoMocks({ onPar: (init) => (parBody = new URLSearchParams((init.body as string) ?? '')) });
+      const res = await get(config, 'http://example.com/users/auth/atproto?handle=alice.test');
+      expect(res.status).toBe(302);
+      expect(new URL(res.headers.get('Location')!).searchParams.get('client_id')).toBe('http://example.com/oauth-client-metadata.json');
+      expect(parBody!.get('client_id')).toBe('http://example.com/oauth-client-metadata.json');
+    });
+
+    it('accepts an absolute https:// self-hosted document URL', async () => {
+      const config = {
+        providers: {
+          atproto: {
+            useRootOAuthClientMetadata: false,
+            customOAuthClientMetadataURL: 'https://www.example.com/oauth-client-metadata.json',
+          },
+        },
+      };
+      const ref = await get(config, 'http://example.com/users/auth/atproto/client-metadata.json');
+      const meta = (await ref.json()) as Record<string, any>;
+      expect(meta.client_id).toBe('https://www.example.com/oauth-client-metadata.json');
+      expect(meta.client_uri).toBe('https://www.example.com');
+    });
+
+    it('rejects customOAuthClientMetadataURL unless useRootOAuthClientMetadata is false', () => {
+      expect(() => createStartupAPI({ providers: { atproto: { customOAuthClientMetadataURL: '/oauth-client-metadata.json' } } })).toThrow(
+        /useRootOAuthClientMetadata: false/,
+      );
+      expect(() =>
+        createStartupAPI({ providers: { atproto: { useRootOAuthClientMetadata: true, customOAuthClientMetadataURL: '/x.json' } } }),
+      ).toThrow(/useRootOAuthClientMetadata: false/);
+    });
+
+    it('rejects a customOAuthClientMetadataURL that is neither root-relative nor https://', () => {
+      for (const bad of ['oauth-client-metadata.json', '//cdn.example.com/x.json', 'http://example.com/x.json']) {
+        expect(() =>
+          createStartupAPI({ providers: { atproto: { useRootOAuthClientMetadata: false, customOAuthClientMetadataURL: bad } } }),
+        ).toThrow(/root-relative path/);
+      }
+    });
   });
 
   it('shows a handle-entry form when no identifier is provided', async () => {
@@ -138,7 +227,7 @@ describe('atproto provider', () => {
     const location = new URL(res.headers.get('Location')!);
     expect(location.origin + location.pathname).toBe('https://auth.test/authorize');
     expect(location.searchParams.get('request_uri')).toBe('urn:ietf:params:oauth:request_uri:abc');
-    expect(location.searchParams.get('client_id')).toBe('http://example.com/users/auth/atproto/client-metadata.json');
+    expect(location.searchParams.get('client_id')).toBe('http://example.com/oauth-client-metadata.json');
 
     // PAR carried a DPoP proof on each attempt and the PKCE challenge.
     expect(parDpopProofs).toBe(2);
