@@ -39,7 +39,7 @@ export function durationToMs(d: Duration): number {
 /** Periodic re-sync of entitlements via a scheduled() handler. `true`/`{ schedule }` on, off by default. */
 const EntitlementCronSchema = z.union([z.boolean(), z.object({ schedule: z.string().optional() })]);
 
-export const ProviderOptionsSchema = z.object({
+export const ProviderOptionsObjectSchema = z.object({
   /** Force-enable/disable the provider. Default: enabled iff its credentials are present in env. */
   enabled: z.boolean().optional(),
   /** Extra OAuth scopes to request, on top of the provider's required base scopes. */
@@ -53,6 +53,21 @@ export const ProviderOptionsSchema = z.object({
   /** atproto only: override the DNS-over-HTTPS resolver used for handle resolution. */
   dohUrl: z.string().optional(),
   /**
+   * atproto only: serve the OAuth client-metadata document at the domain root
+   * (`/oauth-client-metadata.json`) and use that URL as the `client_id`. ON by default — atproto
+   * authorization servers recognize this conventional path and show just your hostname on the consent
+   * screen instead of the full metadata URL. Set `false` to keep the document (and the `client_id`)
+   * under `USERS_PATH`, at `…/auth/atproto/client-metadata.json`.
+   */
+  useRootOAuthClientMetadata: z.boolean().optional(),
+  /**
+   * atproto only: use a client-metadata document you host yourself as the `client_id`, instead of the
+   * one StartupAPI serves. A root-relative path (`/oauth-client-metadata.json`, resolved against the
+   * auth origin) or an absolute `https://` URL. Requires `useRootOAuthClientMetadata: false`; StartupAPI
+   * then keeps serving a reference copy under `USERS_PATH` for you to mirror at this URL.
+   */
+  customOAuthClientMetadataURL: z.string().min(1).optional(),
+  /**
    * Lazily re-check entitlements on the request hot path when the cache is older than this duration.
    * ON by default for entitlement providers — default 1 day for Patreon, 15 min otherwise. Pass a
    * Duration to tune the interval, or `false` to disable (e.g. rely on the webhook only).
@@ -62,6 +77,29 @@ export const ProviderOptionsSchema = z.object({
   entitlementWebhook: z.boolean().optional(),
   /** Periodically re-sync all of this provider's entitlements via a scheduled() handler. Off by default. */
   entitlementCron: EntitlementCronSchema.optional(),
+});
+
+/** Provider options with the cross-field checks the object schema cannot express. */
+export const ProviderOptionsSchema = ProviderOptionsObjectSchema.superRefine((options, ctx) => {
+  const custom = options.customOAuthClientMetadataURL?.trim();
+  if (custom === undefined) return;
+  // A self-hosted document and the root document would compete for the same URL; make the choice explicit.
+  if (options.useRootOAuthClientMetadata !== false) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['customOAuthClientMetadataURL'],
+      message: 'customOAuthClientMetadataURL requires useRootOAuthClientMetadata: false',
+    });
+  }
+  // atproto client ids must be https:// URLs (http://localhost is the spec's dev-only exception).
+  const isRootRelative = custom.startsWith('/') && !custom.startsWith('//');
+  if (!isRootRelative && !custom.startsWith('https://') && !custom.startsWith('http://localhost')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['customOAuthClientMetadataURL'],
+      message: 'customOAuthClientMetadataURL must be a root-relative path (e.g. "/oauth-client-metadata.json") or an https:// URL',
+    });
+  }
 });
 
 export const SessionConfigSchema = z.object({

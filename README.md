@@ -121,10 +121,12 @@ const api = createStartupAPI({
     atproto: {}, // including the key enables it — no client id/secret needed
     // All fields below are optional:
     // atproto: {
-    //   clientName: 'My App',           // shown on the consent screen (default "StartupAPI")
+    //   clientName: 'My App',           // advertised in the client-metadata document (default "StartupAPI")
     //   plcUrl: 'https://plc.directory', // override the PLC directory for did:plc
     //   dohUrl: 'https://cloudflare-dns.com/dns-query', // override the DoH resolver
     //   scopes: 'transition:generic',    // extra scopes on top of the base `atproto`
+    //   useRootOAuthClientMetadata: false, // keep the client-metadata document under USERS_PATH (default: true, served at /oauth-client-metadata.json)
+    //   customOAuthClientMetadataURL: '/oauth-client-metadata.json', // use your own self-hosted document as client_id (requires useRootOAuthClientMetadata: false)
     //   enabled: false,                  // explicit opt-out (e.g. for dynamically-built config)
     // },
   },
@@ -135,7 +137,7 @@ export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
 ```
 
 1. Enable it — set `ATPROTO_ENABLED` truthy, or include `atproto: {}` in the factory `providers` config (no client id/secret needed either way). A factory `enabled: false` forces it off.
-2. Deploy over **HTTPS** with a stable hostname. The worker automatically serves its client metadata at `https://<your-worker-url>/users/auth/atproto/client-metadata.json` (this URL is the OAuth `client_id`) and registers the redirect URI `https://<your-worker-url>/users/auth/atproto/callback`.
+2. Deploy over **HTTPS** with a stable hostname. The worker automatically serves its client metadata at `https://<your-worker-url>/oauth-client-metadata.json` (this URL is the OAuth `client_id`) and registers the redirect URI `https://<your-worker-url>/users/auth/atproto/callback`. See [Where the client-metadata document lives](#where-the-client-metadata-document-lives) if you'd rather not expose a root-level path.
 3. That's it. When a visitor clicks **Login with your Atmosphere account**, they're asked for their handle (e.g. `alice.bsky.social`) or DID; the worker then resolves it through the full atproto discovery chain and redirects them to _their own_ server to sign in:
 
    ```
@@ -146,6 +148,22 @@ export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
    ```
 
 The flow uses PKCE, DPoP-bound (sender-constrained) tokens, and Pushed Authorization Requests (PAR) as required by the atproto OAuth profile. The PLC directory and DNS-over-HTTPS resolver are generic infrastructure and can be overridden via the `plcUrl` / `dohUrl` factory options.
+
+##### Where the client-metadata document lives
+
+The [atproto OAuth spec](https://atproto.com/specs/oauth) lets the client-metadata document live at any `https://` URL, but `/oauth-client-metadata.json` at the domain root is the recognized convention: the reference PDS consent screen shows **just your hostname** (`example.com`) for a `client_id` at that path, and the **full metadata URL** for any other path. That is why StartupAPI serves it at the root by default — the only route it claims outside `USERS_PATH`. Three modes:
+
+| Mode                             | Config                                                                                                        | Document served by StartupAPI at                            | `client_id`                                              |
+| :------------------------------- | :------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------- | :------------------------------------------------------- |
+| Root (default)                   | `atproto: {}`                                                                                                 | `/oauth-client-metadata.json`                               | `https://<host>/oauth-client-metadata.json`              |
+| Under `USERS_PATH`               | `atproto: { useRootOAuthClientMetadata: false }`                                                              | `/users/auth/atproto/client-metadata.json`                  | `https://<host>/users/auth/atproto/client-metadata.json` |
+| Self-hosted (you serve the file) | `atproto: { useRootOAuthClientMetadata: false, customOAuthClientMetadataURL: '/oauth-client-metadata.json' }` | `/users/auth/atproto/client-metadata.json` (reference copy) | your URL (root-relative, or absolute `https://`)         |
+
+In self-hosted mode StartupAPI does not claim the root path; copy the reference document it serves under `USERS_PATH` to your URL verbatim (it already carries your `client_id`, `redirect_uris` and `scope`) and keep them in sync when you change scopes. Setting `customOAuthClientMetadataURL` without `useRootOAuthClientMetadata: false` is a configuration error.
+
+> **What the consent screen shows.** Authorization servers deliberately do **not** display `client_name` or a logo for clients they don't know — those fields are unverified and could impersonate another app — so Bluesky-hosted PDSes show your hostname only. A self-hosted PDS can opt in to showing your name by allowlisting your `client_id` in its `PDS_OAUTH_TRUSTED_CLIENTS` setting.
+>
+> **Changing the `client_id`** (switching modes, or upgrading from a version that served the document under `USERS_PATH`) invalidates existing atproto authorizations; users simply log in again.
 
 #### Requesting additional scopes
 

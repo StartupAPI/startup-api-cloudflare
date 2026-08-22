@@ -9,6 +9,44 @@ import { computeRedirectBase, createProviders } from './providers';
 import type { ProviderConfigs } from './providers';
 import type { AuthContext, ExchangeResult, OAuthProvider } from './OAuthProvider';
 
+/** Build the per-request auth context shared by the auth router and provider auxiliary routes. */
+function createAuthContext(
+  request: Request,
+  env: StartupAPIEnv,
+  url: URL,
+  usersPath: string,
+  cookieManager: CookieManager,
+  sessionTtlMs: number,
+): AuthContext {
+  const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
+  // Standardize redirectBase; authPath is its path, used for internal route matching.
+  const redirectBase = computeRedirectBase(env, origin, usersPath);
+  const authPath = new URL(redirectBase).pathname;
+  return { request, env, url, redirectBase, authPath, usersPath, origin, cookieManager, sessionTtlMs };
+}
+
+/**
+ * Provider-specific auxiliary routes that are not part of the start/callback flow and may live outside
+ * `usersPath` — e.g. the atproto client-metadata document at the conventional `/oauth-client-metadata.json`.
+ * Returns null when no active provider claims the request.
+ */
+export async function handleProviderExtraRoutes(
+  request: Request,
+  env: StartupAPIEnv,
+  url: URL,
+  usersPath: string,
+  cookieManager: CookieManager,
+  providerConfigs: ProviderConfigs = {},
+  sessionTtlMs: number = DEFAULT_SESSION_TTL_MS,
+): Promise<Response | null> {
+  const ctx = createAuthContext(request, env, url, usersPath, cookieManager, sessionTtlMs);
+  for (const provider of createProviders(env, ctx.redirectBase, providerConfigs)) {
+    const res = await provider.handleExtraRoute(ctx);
+    if (res) return res;
+  }
+  return null;
+}
+
 export async function handleAuth(
   request: Request,
   env: StartupAPIEnv,
@@ -19,24 +57,11 @@ export async function handleAuth(
   sessionTtlMs: number = DEFAULT_SESSION_TTL_MS,
 ): Promise<Response> {
   const path = url.pathname;
-  const origin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
-
-  // Standardize redirectBase
-  const redirectBase = computeRedirectBase(env, origin, usersPath);
-
-  // For internal matching, we still need authPath
-  const authPath = new URL(redirectBase).pathname;
+  const ctx = createAuthContext(request, env, url, usersPath, cookieManager, sessionTtlMs);
+  const { authPath } = ctx;
 
   // Instantiate active providers
-  const activeProviders = createProviders(env, redirectBase, providerConfigs);
-
-  const ctx: AuthContext = { request, env, url, redirectBase, authPath, usersPath, origin, cookieManager, sessionTtlMs };
-
-  // Provider-specific auxiliary routes (e.g. the atproto client-metadata document).
-  for (const provider of activeProviders) {
-    const res = await provider.handleExtraRoute(ctx);
-    if (res) return res;
-  }
+  const activeProviders = createProviders(env, ctx.redirectBase, providerConfigs);
 
   // Handle Auth Start
   for (const provider of activeProviders) {
