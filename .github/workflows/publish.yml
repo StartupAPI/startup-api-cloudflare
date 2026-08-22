@@ -26,11 +26,11 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20.x'
+          node-version: '22.x'
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
-      # Trusted Publishing (OIDC) requires npm >= 11.5.1; Node 20 ships npm 10.
+      # Trusted Publishing (OIDC) requires npm >= 11.5.1, and npm@latest (12+) needs Node 22+.
       - name: Update npm
         run: npm install -g npm@latest
 
