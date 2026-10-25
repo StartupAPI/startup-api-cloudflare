@@ -317,7 +317,7 @@ const accessPolicy = {
 };
 ```
 
-Admin users (those listed in `ADMIN_IDS`) bypass every `authenticated`/`entitlement` requirement and can reach any gated path. Their identity is still resolved and the usual identity/entitlement headers are forwarded to the origin — only the gate itself is skipped. (`bypass` paths remain a raw pass-through for everyone, with no identity resolution.)
+Admin users (those listed in `ADMIN_IDS`) bypass every `authenticated`/`entitlement` requirement and can reach those gated paths. `feature` requirements apply to admins like everyone else, so the gate always matches `X-StartupAPI-Features`; to try a feature as an admin, enable it for yourself in the admin dashboard. Their identity is still resolved and the usual identity/entitlement headers are forwarded to the origin — only the gate itself is skipped. (`bypass` paths remain a raw pass-through for everyone, with no identity resolution.)
 
 The policy is passed to the factory as `accessPolicy` (see below). Example:
 

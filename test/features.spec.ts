@@ -225,8 +225,14 @@ describe('Access policy feature mode', () => {
     });
   });
 
-  it('lets admins bypass', () => {
-    expect(evaluateAccess(rule('beta'), { authenticated: true, entitlements: null, isAdmin: true, features: new Set() }).allow).toBe(true);
+  it('applies to admins too (no admin bypass for features)', () => {
+    expect(evaluateAccess(rule('beta'), { authenticated: true, entitlements: null, isAdmin: true, features: new Set() })).toMatchObject({
+      allow: false,
+      reason: 'not_entitled',
+    });
+    expect(
+      evaluateAccess(rule('beta'), { authenticated: true, entitlements: null, isAdmin: true, features: new Set(['beta']) }).allow,
+    ).toBe(true);
   });
 
   it('rejects an unknown feature at init', () => {
@@ -303,6 +309,19 @@ describe('Features over HTTP', () => {
     expect((await proxy(api, '/beta/page', { Cookie: cookie })).res.status).toBe(403);
     await Feature.require('beta').enableForUser(env, userId);
     expect((await proxy(api, '/beta/page', { Cookie: cookie })).res.status).toBe(200);
+  });
+
+  it('gates admins on a feature like everyone else', async () => {
+    const api = createStartupAPI(config);
+    // ADMIN_IDS=admin; in the test environment the admin's DO id is derived from that name.
+    const adminId = env.USER.idFromName('admin').toString();
+    await Feature.require('beta').removeForUser(env, adminId);
+    const cookie = await sessionCookie(adminId);
+
+    expect((await proxy(api, '/beta/page', { Cookie: cookie })).res.status).toBe(403);
+    await Feature.require('beta').enableForUser(env, adminId);
+    expect((await proxy(api, '/beta/page', { Cookie: cookie })).res.status).toBe(200);
+    await Feature.require('beta').removeForUser(env, adminId);
   });
 
   it('rejects a plan that references an unknown feature', async () => {

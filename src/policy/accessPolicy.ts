@@ -33,15 +33,18 @@ function deny(reason: 'unauthenticated' | 'not_entitled', rule: AccessRule): Pol
  * condition through the provider checker registry; `feature` needs the feature in `ctx.features` (the
  * features resolved for the visitor — for anonymous visitors, only the rolled-out ones).
  *
- * Admin users (`ctx.isAdmin`) bypass every requirement: identity has already been resolved and headers
- * forwarded by the time we get here, but the gate itself is skipped so admins can reach any gated path.
+ * Admin users (`ctx.isAdmin`) bypass the `authenticated` and `entitlement` requirements: identity has
+ * already been resolved and headers forwarded by the time we get here, but the gate itself is skipped
+ * so admins can reach those paths. `feature` requirements apply to admins too: a feature decides which
+ * version of the app someone gets, and admins get features like everyone else (an admin can enable one
+ * for themselves in the admin dashboard), so the gate stays consistent with `X-StartupAPI-Features`.
  */
 export function evaluateAccess(
   rule: AccessRule,
   ctx: { authenticated: boolean; entitlements: Entitlements | null; isAdmin?: boolean; features?: ReadonlySet<string> },
 ): PolicyDecision {
-  if (ctx.isAdmin) return { allow: true };
   const req = rule.requirement;
+  if (ctx.isAdmin && req.mode !== 'feature') return { allow: true };
   switch (req.mode) {
     case 'bypass':
     case 'public':
