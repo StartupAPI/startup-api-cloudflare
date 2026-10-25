@@ -52,7 +52,8 @@ export type FeatureSource = 'static' | 'plan' | 'override' | 'account' | null;
  *  - `'none'`: no header.
  *
  * `html`: when true, HTML pages from the origin get the delta as `<html data-startupapi-features>`
- * (space-separated) and elements tagged `data-startupapi-feature="<id>"` get `hidden` set or removed.
+ * (space-separated) and elements tagged `data-startupapi-feature="<id>"` get `data-startupapi-feature-off`
+ * set when the feature is off and removed when it's on.
  */
 export const FeatureDeliverySchema = z.object({
   header: z.enum(['delta', 'enabled', 'none']).default('delta'),

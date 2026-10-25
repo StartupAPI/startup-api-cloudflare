@@ -469,15 +469,14 @@ With `header: 'delta'` the header is comma-separated (`new_dashboard,-reports`) 
 A static page can't read request headers, so with `featureDelivery: { html: true }` the proxy writes the visitor's features into HTML responses from the origin, so the page knows its flags at first paint, before any script runs:
 
 - `<html data-startupapi-features="new_dashboard -reports">`: the same delta, space-separated, so CSS can match a token with `~=`. The attribute is always written, empty when nothing differs, so a script can tell "the proxy ran" from "no proxy" (local development, preview deployments).
-- Any element tagged `data-startupapi-feature="<id>"` gets `hidden` when that feature is off for the visitor and loses `hidden` when it's on. Elements with ids the proxy doesn't know are left as the origin sent them, so ship them in their default state.
+- Any element tagged `data-startupapi-feature="<id>"` gets `data-startupapi-feature-off` when that feature is off for the visitor and loses it when it's on. Elements with ids the proxy doesn't know are left as the origin sent them, so ship them in their default state (with `data-startupapi-feature-off` when the feature is off by default). It's a dedicated attribute rather than `hidden`, so it never clashes with your own scripts toggling `hidden` on the same element.
 
 ```html
-<button data-startupapi-feature="new_dashboard" hidden>Try the new dashboard</button>
+<button data-startupapi-feature="new_dashboard" data-startupapi-feature-off>Try the new dashboard</button>
 ```
 
 ```css
-/* `hidden` loses to any rule that sets `display`; keep gated elements hidden. */
-[data-startupapi-feature][hidden] {
+[data-startupapi-feature-off] {
   display: none !important;
 }
 ```

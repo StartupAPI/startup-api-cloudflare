@@ -173,12 +173,12 @@ describe('injectPowerStrip', () => {
 describe('injectPowerStrip features', () => {
   const PAGE =
     '<html><body>' +
-    '<p data-startupapi-feature="beta" hidden>Beta</p>' +
+    '<p data-startupapi-feature="beta" data-startupapi-feature-off>Beta</p>' +
     '<p data-startupapi-feature="reports">Reports</p>' +
     '<p data-startupapi-feature="other">Other</p>' +
     '</body></html>';
 
-  it('writes the delta on <html> and sets or removes hidden on tagged elements', async () => {
+  it('writes the delta on <html> and sets or removes the off attribute on tagged elements', async () => {
     const res = await injectPowerStrip(
       new Response(PAGE, { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'public, max-age=60' } }),
       USERS_PATH,
@@ -197,7 +197,7 @@ describe('injectPowerStrip features', () => {
 
     expect(html).toContain('<html data-startupapi-features="beta -reports">');
     expect(html).toContain('<p data-startupapi-feature="beta">Beta</p>');
-    expect(html).toContain('<p data-startupapi-feature="reports" hidden="">Reports</p>');
+    expect(html).toContain('<p data-startupapi-feature="reports" data-startupapi-feature-off="">Reports</p>');
     expect(html).toContain('<p data-startupapi-feature="other">Other</p>');
     expect(html).not.toContain('auth-state');
     expect(res.headers.get('Cache-Control')).toBe('private, max-age=60');
@@ -208,7 +208,7 @@ describe('injectPowerStrip features', () => {
     const html = await res.text();
 
     expect(html).not.toContain('data-startupapi-features');
-    expect(html).toContain('<p data-startupapi-feature="beta" hidden>Beta</p>');
+    expect(html).toContain('<p data-startupapi-feature="beta" data-startupapi-feature-off>Beta</p>');
     expect(html).toContain('<p data-startupapi-feature="reports">Reports</p>');
   });
 });

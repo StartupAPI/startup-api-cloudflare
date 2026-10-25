@@ -363,10 +363,10 @@ describe('Features over HTTP', () => {
   describe('in HTML', () => {
     const PAGE =
       '<!doctype html><html lang="en"><head></head><body>' +
-      '<button data-startupapi-feature="beta" hidden>Beta</button>' +
+      '<button data-startupapi-feature="beta" data-startupapi-feature-off>Beta</button>' +
       '<button data-startupapi-feature="rolled_out">Rolled out</button>' +
       '<button data-startupapi-feature="shutdown">Shut down</button>' +
-      '<button data-startupapi-feature="unknown" hidden>Unknown</button>' +
+      '<button data-startupapi-feature="unknown" data-startupapi-feature-off>Unknown</button>' +
       '</body></html>';
     const html = () =>
       new Response(PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' } });
@@ -376,7 +376,7 @@ describe('Features over HTTP', () => {
       const { res } = await proxy(api, '/page', {}, html);
       const body = await res.text();
       expect(body).not.toContain('data-startupapi-features=');
-      expect(body).toContain('<button data-startupapi-feature="beta" hidden>');
+      expect(body).toContain('<button data-startupapi-feature="beta" data-startupapi-feature-off>');
       expect(body).toContain('<button data-startupapi-feature="shutdown">');
     });
 
@@ -391,11 +391,11 @@ describe('Features over HTTP', () => {
       const { res } = await proxy(api, '/page', {}, html);
       const body = await res.text();
       expect(body).toContain('<html lang="en" data-startupapi-features="-shutdown">');
-      expect(body).toContain('<button data-startupapi-feature="beta" hidden>');
+      expect(body).toContain('<button data-startupapi-feature="beta" data-startupapi-feature-off>');
       expect(body).toContain('<button data-startupapi-feature="rolled_out">');
-      expect(body).toContain('<button data-startupapi-feature="shutdown" hidden="">');
+      expect(body).toContain('<button data-startupapi-feature="shutdown" data-startupapi-feature-off="">');
       // Ids the proxy doesn't know are left as the origin sent them.
-      expect(body).toContain('<button data-startupapi-feature="unknown" hidden>');
+      expect(body).toContain('<button data-startupapi-feature="unknown" data-startupapi-feature-off>');
       expect(res.headers.get('Cache-Control')).toBe('private, max-age=60');
     });
 

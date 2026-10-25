@@ -1,3 +1,6 @@
+/** Set by the proxy on a `data-startupapi-feature` element whose feature is off for the visitor. */
+export const FEATURE_OFF_ATTRIBUTE = 'data-startupapi-feature-off';
+
 export interface InjectPowerStripOptions {
   /**
    * Whether the request has a valid session. When given, the proxy writes it
@@ -12,7 +15,9 @@ export interface InjectPowerStripOptions {
    * `tokens` (the delta from each feature's baseline, see `deltaTokens`) onto `<html>` as
    * `data-startupapi-features`, always, even when empty: that tells the page the proxy ran and
    * nothing differs. Elements tagged `data-startupapi-feature="<id>"` with an id in `states` get
-   * `hidden` when the feature is off and lose it when it's on; other ids are left as they are.
+   * `data-startupapi-feature-off` when the feature is off and lose it when it's on; other ids are
+   * left as they are. It's a dedicated attribute rather than `hidden` so it never fights the app's
+   * own use of `hidden` on the same element; the page hides it with one CSS rule.
    * The page then differs per visitor, so the response is marked `private` for caches.
    */
   features?: { tokens: string[]; states: Map<string, boolean> };
@@ -66,8 +71,8 @@ export async function injectPowerStrip(
         .on('[data-startupapi-feature]', {
           element(element) {
             const on = features.states.get(element.getAttribute('data-startupapi-feature') ?? '');
-            if (on === true) element.removeAttribute('hidden');
-            else if (on === false && !element.hasAttribute('hidden')) element.setAttribute('hidden', '');
+            if (on === true) element.removeAttribute(FEATURE_OFF_ATTRIBUTE);
+            else if (on === false && !element.hasAttribute(FEATURE_OFF_ATTRIBUTE)) element.setAttribute(FEATURE_OFF_ATTRIBUTE, '');
           },
         });
     }
