@@ -17,13 +17,28 @@ cd startup-api-cloudflare
 npm install
 ```
 
-## Local development
+## Trying your changes in a browser
+
+Use the [StartupAPI playground](https://github.com/StartupAPI/startup-api-playground): a local test site that runs your checkout of this package through `npm link`, the way an app created with `npm create startup-api` uses it. It includes sample config for the framework's features and an origin app that shows the `X-StartupAPI-*` headers the worker forwards. Clone it next to this repository:
 
 ```bash
-npm run dev      # start the worker locally (uses wrangler.local.jsonc)
+# in this repository
+npm link
+
+# next to it
+git clone https://github.com/StartupAPI/startup-api-playground.git
+cd startup-api-playground
+npm install
+npm run link
+cp .dev.vars.example .dev.vars   # then set SESSION_SECRET
+npm run dev                      # http://localhost:8787
 ```
 
-This serves the worker at `http://localhost:8787`. Local configuration and secrets live in `wrangler.local.jsonc` and `.dev.vars` — never commit changes to `.env` or `.dev.vars`.
+Code changes here reload automatically. See the playground's README for logging in locally, admin access and what to try. When you add a feature, consider adding sample config and an origin page for it to the playground too.
+
+### Running this repository directly
+
+`npm run dev` here runs the package's default instance with `wrangler.local.jsonc`, which is gitignored: create your own from `wrangler.template.jsonc`. Local secrets live in `wrangler.local.jsonc` and `.dev.vars` — never commit changes to `.env` or `.dev.vars`.
 
 To deploy your own test worker to Cloudflare:
 
