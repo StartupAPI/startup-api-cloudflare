@@ -13,6 +13,8 @@
  * discover dynamically here.
  */
 
+import { dpopFetch } from './crypto';
+
 const DID_PREFIX = /^did:(plc|web):/;
 
 export interface AuthServerMetadata {
@@ -178,5 +180,27 @@ export async function fetchProfile(pds: string, did: string, handle?: string): P
     return { name: value.displayName || handle, picture };
   } catch {
     return { name: handle };
+  }
+}
+
+/**
+ * Fetch the authenticated session info (`com.atproto.server.getSession`) from the user's PDS with the
+ * DPoP-bound access token. The PDS includes `email`/`emailConfirmed` only when the token was granted
+ * the `account:email` permission — without it they are silently omitted (not an error), so every field
+ * is optional. Best-effort like fetchProfile: any failure yields `{}` rather than failing the login.
+ */
+export async function fetchSession(
+  pds: string,
+  accessToken: string,
+  dpopKey: JsonWebKey,
+): Promise<{ email?: string; emailConfirmed?: boolean; handle?: string }> {
+  try {
+    const url = new URL('/xrpc/com.atproto.server.getSession', pds);
+    const { res } = await dpopFetch(url.toString(), { method: 'GET' }, dpopKey, undefined, accessToken);
+    if (!res.ok) return {};
+    const data = (await res.json()) as { handle?: string; email?: string; emailConfirmed?: boolean };
+    return { email: data.email, emailConfirmed: data.emailConfirmed, handle: data.handle };
+  } catch {
+    return {};
   }
 }

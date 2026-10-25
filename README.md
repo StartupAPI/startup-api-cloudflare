@@ -124,7 +124,7 @@ const api = createStartupAPI({
     //   clientName: 'My App',           // advertised in the client-metadata document (default "StartupAPI")
     //   plcUrl: 'https://plc.directory', // override the PLC directory for did:plc
     //   dohUrl: 'https://cloudflare-dns.com/dns-query', // override the DoH resolver
-    //   scopes: 'transition:generic',    // extra scopes on top of the base `atproto`
+    //   scopes: 'account:email',         // extra permissions on top of the base `atproto` (this one adds the account email)
     //   useRootOAuthClientMetadata: false, // keep the client-metadata document under USERS_PATH (default: true, served at /oauth-client-metadata.json)
     //   customOAuthClientMetadataURL: '/oauth-client-metadata.json', // use your own self-hosted document as client_id (requires useRootOAuthClientMetadata: false)
     //   enabled: false,                  // explicit opt-out (e.g. for dynamically-built config)
@@ -179,6 +179,14 @@ const api = createStartupAPI({
   },
 });
 ```
+
+**atproto and email.** The base `atproto` scope carries no email — accounts are identified by their DID. Add the [`account:email` permission](https://atproto.com/specs/permission) to also read the account email (and its verification status) from the user's PDS at login, via an authenticated `com.atproto.server.getSession` call:
+
+```ts
+atproto: { scopes: 'account:email' },
+```
+
+The consent screen then additionally asks for email access, and the email is stored on the user's profile and credential like for the other providers. Without the scope — or if the PDS declines to share it — login still works and the email is simply absent.
 
 ### Example `wrangler.jsonc` snippet:
 

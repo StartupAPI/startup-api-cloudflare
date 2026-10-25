@@ -54,9 +54,17 @@ function publicJwk(jwk: JsonWebKey): JsonWebKey {
 
 /**
  * Build a DPoP proof JWT bound to the given HTTP method and URL (htu is normalized to origin+path, per
- * RFC 9449). When the server has issued a nonce it must be echoed back in the proof.
+ * RFC 9449). When the server has issued a nonce it must be echoed back in the proof. When presenting a
+ * DPoP-bound access token to a resource server (e.g. the user's PDS), pass it as `accessToken` so the
+ * proof carries the required `ath` claim (base64url SHA-256 of the token, RFC 9449 §4.2).
  */
-export async function createDpopProof(privateJwk: JsonWebKey, htm: string, htu: string, nonce?: string): Promise<string> {
+export async function createDpopProof(
+  privateJwk: JsonWebKey,
+  htm: string,
+  htu: string,
+  nonce?: string,
+  accessToken?: string,
+): Promise<string> {
   const key = await crypto.subtle.importKey('jwk', privateJwk, ES256_PARAMS, false, ['sign']);
   const target = new URL(htu);
   const header = { typ: 'dpop+jwt', alg: 'ES256', jwk: publicJwk(privateJwk) };
@@ -67,6 +75,9 @@ export async function createDpopProof(privateJwk: JsonWebKey, htm: string, htu: 
     iat: Math.floor(Date.now() / 1000),
   };
   if (nonce) payload.nonce = nonce;
+  if (accessToken) {
+    payload.ath = base64urlEncode(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(accessToken)));
+  }
 
   const signingInput = `${base64urlEncodeString(JSON.stringify(header))}.${base64urlEncodeString(JSON.stringify(payload))}`;
   const signature = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(signingInput));
@@ -81,19 +92,28 @@ export interface DpopResult {
 }
 
 /**
- * POST to a DPoP-protected endpoint, transparently handling the `use_dpop_nonce` challenge: the first
+ * Call a DPoP-protected endpoint, transparently handling the `use_dpop_nonce` challenge: the first
  * request is sent without (or with the cached) nonce; if the server demands a fresh nonce we retry once
  * with it. Returns the final response and the latest nonce so the caller can chain requests (PAR →
- * token) without re-fetching one.
+ * token) without re-fetching one. For authorization-server calls (PAR, token) omit `accessToken`; for
+ * resource-server calls (the PDS) pass it — the request then carries `Authorization: DPoP <token>` and
+ * the proof's `ath` claim binds it (RFC 9449 §4.2).
  */
-export async function dpopFetch(url: string, init: RequestInit, privateJwk: JsonWebKey, nonce?: string): Promise<DpopResult> {
+export async function dpopFetch(
+  url: string,
+  init: RequestInit,
+  privateJwk: JsonWebKey,
+  nonce?: string,
+  accessToken?: string,
+): Promise<DpopResult> {
   let currentNonce = nonce;
   const method = (init.method || 'POST').toUpperCase();
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    const proof = await createDpopProof(privateJwk, method, url, currentNonce);
+    const proof = await createDpopProof(privateJwk, method, url, currentNonce, accessToken);
     const headers = new Headers(init.headers);
     headers.set('DPoP', proof);
+    if (accessToken) headers.set('Authorization', `DPoP ${accessToken}`);
     const res = await fetch(url, { ...init, headers });
     const serverNonce = res.headers.get('DPoP-Nonce') ?? undefined;
 

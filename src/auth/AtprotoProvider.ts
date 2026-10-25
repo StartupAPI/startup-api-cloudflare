@@ -6,7 +6,7 @@ import type { ProviderOptions } from '../schemas/config';
 
 import { OAuthProvider, type AuthContext, type ExchangeResult, type OAuthTokenResponse, type UserProfile } from './OAuthProvider';
 import { dpopFetch, generateDpopKey, generatePkce, randomToken } from './atproto/crypto';
-import { fetchProfile, resolveIdentity, type ResolverOptions } from './atproto/identity';
+import { fetchProfile, fetchSession, resolveIdentity, type ResolverOptions } from './atproto/identity';
 
 const FLOW_COOKIE = 'atproto_flow';
 // Transient flow state lives only for the duration of the redirect round-trip.
@@ -251,9 +251,22 @@ export class AtprotoProvider extends OAuthProvider {
 
     const tokenData = (await res.json()) as OAuthTokenResponse & { sub?: string };
     const did = tokenData.sub || flow.did;
-    const { name, picture } = await fetchProfile(flow.pds, did, flow.handle);
+    // Public profile (display name/avatar) and authenticated session info in parallel. The session
+    // carries the account email only when the `account:email` permission was granted; both calls are
+    // best-effort and never fail the login.
+    const [{ name, picture }, session] = await Promise.all([
+      fetchProfile(flow.pds, did, flow.handle),
+      fetchSession(flow.pds, tokenData.access_token, flow.dpopKey),
+    ]);
 
-    const profile: UserProfile = { id: did, name: name || flow.handle || did, picture, handle: flow.handle };
+    const profile: UserProfile = {
+      id: did,
+      email: session.email,
+      verified_email: session.emailConfirmed,
+      name: name || flow.handle || did,
+      picture,
+      handle: session.handle ?? flow.handle,
+    };
     const token: OAuthTokenResponse = {
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token,

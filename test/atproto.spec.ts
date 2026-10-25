@@ -17,7 +17,17 @@ afterEach(() => {
  * assert DPoP/PKCE behavior. The PAR endpoint deliberately demands a DPoP nonce on the first hit to
  * exercise the `use_dpop_nonce` retry.
  */
-function installAtprotoMocks(opts: { onPar?: (init: RequestInit) => void; onToken?: (init: RequestInit) => void } = {}) {
+function installAtprotoMocks(
+  opts: {
+    onPar?: (init: RequestInit) => void;
+    onToken?: (init: RequestInit) => void;
+    onSession?: (init: RequestInit) => void;
+    /** false → getSession responds without email fields, emulating a token lacking `account:email`. */
+    sessionEmail?: boolean;
+    /** Non-2xx status for the getSession endpoint, to exercise the best-effort path. */
+    sessionStatus?: number;
+  } = {},
+) {
   let parHits = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
@@ -67,6 +77,16 @@ function installAtprotoMocks(opts: { onPar?: (init: RequestInit) => void; onToke
         sub: 'did:plc:alicedid',
       });
     }
+    if (url === 'https://pds.test/xrpc/com.atproto.server.getSession') {
+      opts.onSession?.({ ...init, headers });
+      if (opts.sessionStatus) return new Response('session unavailable', { status: opts.sessionStatus });
+      // The real PDS omits the email fields when the token lacks the `account:email` permission.
+      return Response.json({
+        did: 'did:plc:alicedid',
+        handle: 'alice.test',
+        ...(opts.sessionEmail === false ? {} : { email: 'alice@example.com', emailConfirmed: true }),
+      });
+    }
     if (url.startsWith('https://pds.test/xrpc/com.atproto.repo.getRecord')) {
       return Response.json({ value: { displayName: 'Alice in AT' } });
     }
@@ -81,6 +101,42 @@ async function get(config: Parameters<typeof createStartupAPI>[0], url: string):
   const res = await api.fetch(new Request(url), env, ctx);
   await waitOnExecutionContext(ctx);
   return res;
+}
+
+/** base64url(SHA-256(token)) — the expected `ath` claim of a DPoP proof bound to `token` (RFC 9449 §4.2). */
+async function athOf(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/** Decode the payload of an (unverified) JWT/DPoP proof. */
+function jwtPayload(jwt: string): Record<string, any> {
+  return JSON.parse(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+}
+
+/** Run the full start → callback dance for alice.test against mocked endpoints; returns the callback response. */
+async function completeLogin(api: ReturnType<typeof createStartupAPI>): Promise<Response> {
+  const cm = new CookieManager('dev-secret');
+  const startCtx = createExecutionContext();
+  const startRes = await api.fetch(new Request('http://example.com/users/auth/atproto?handle=alice.test'), env, startCtx);
+  await waitOnExecutionContext(startCtx);
+  const flowCookie = (startRes.headers.get('Set-Cookie') ?? '').split('atproto_flow=')[1].split(';')[0];
+  const flow = JSON.parse((await cm.decrypt(flowCookie))!);
+
+  const cbCtx = createExecutionContext();
+  const cbRes = await api.fetch(
+    new Request(`http://example.com/users/auth/atproto/callback?code=authcode&state=${flow.state}&iss=https://auth.test`, {
+      headers: { Cookie: `atproto_flow=${flowCookie}` },
+      redirect: 'manual',
+    }),
+    env,
+    cbCtx,
+  );
+  await waitOnExecutionContext(cbCtx);
+  return cbRes;
 }
 
 describe('atproto provider', () => {
@@ -250,10 +306,17 @@ describe('atproto provider', () => {
   it('completes the callback: DPoP token exchange, profile, session, and credential', async () => {
     let tokenDpop: string | null = null;
     let tokenBody: URLSearchParams | undefined;
+    let sessionAuth: string | null = null;
+    let sessionDpop: string | null = null;
     installAtprotoMocks({
       onToken: (init) => {
         tokenDpop = new Headers(init.headers).get('DPoP');
         tokenBody = new URLSearchParams((init.body as string) ?? '');
+      },
+      onSession: (init) => {
+        const headers = new Headers(init.headers);
+        sessionAuth = headers.get('Authorization');
+        sessionDpop = headers.get('DPoP');
       },
     });
 
@@ -287,6 +350,14 @@ describe('atproto provider', () => {
     expect(tokenBody!.get('grant_type')).toBe('authorization_code');
     expect(tokenBody!.get('code_verifier')).toBe(flow.verifier);
 
+    // getSession presented the DPoP-bound access token: Authorization header plus a proof whose `ath`
+    // claim binds it to this very token (RFC 9449 §4.2).
+    expect(sessionAuth).toBe('DPoP atproto-access-token');
+    const sessionProof = jwtPayload(sessionDpop!);
+    expect(sessionProof.htm).toBe('GET');
+    expect(sessionProof.htu).toBe('https://pds.test/xrpc/com.atproto.server.getSession');
+    expect(sessionProof.ath).toBe(await athOf('atproto-access-token'));
+
     // Session cookie set; transient flow cookie cleared.
     const cookies = cbRes.headers.getSetCookie();
     expect(cookies.some((c) => c.startsWith('session_id='))).toBe(true);
@@ -300,6 +371,49 @@ describe('atproto provider', () => {
     expect(cred.profile_data.name).toBe('Alice in AT');
     // The handle is stored alongside the DID so the credentials UI can show "handle (did)".
     expect(cred.profile_data.handle).toBe('alice.test');
+    // The `account:email` grant: the PDS returned the email via getSession and it is stored like for
+    // the classic OAuth providers.
+    expect(cred.profile_data.email).toBe('alice@example.com');
+    expect(cred.profile_data.verified_email).toBe(true);
+  });
+
+  it('logs in without an email when the PDS omits it (no account:email grant)', async () => {
+    installAtprotoMocks({ sessionEmail: false });
+    const cbRes = await completeLogin(createStartupAPI(atprotoConfig));
+
+    expect(cbRes.status).toBe(302);
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('atproto'));
+    const cred = await credentialStub.get('did:plc:alicedid');
+    expect(cred).not.toBeNull();
+    expect(cred.profile_data.email).toBeUndefined();
+    expect(cred.profile_data.verified_email).toBeUndefined();
+  });
+
+  it('still logs in when getSession fails entirely', async () => {
+    installAtprotoMocks({ sessionStatus: 500 });
+    const cbRes = await completeLogin(createStartupAPI(atprotoConfig));
+
+    expect(cbRes.status).toBe(302);
+    const credentialStub = env.CREDENTIAL.get(env.CREDENTIAL.idFromName('atproto'));
+    const cred = await credentialStub.get('did:plc:alicedid');
+    expect(cred).not.toBeNull();
+    expect(cred.profile_data.email).toBeUndefined();
+    // The public profile fetch is independent of the session call and still succeeded.
+    expect(cred.profile_data.name).toBe('Alice in AT');
+  });
+
+  it('binds DPoP proofs to an access token via ath only when one is given', async () => {
+    const { createDpopProof, generateDpopKey } = await import('../src/auth/atproto/crypto');
+    const key = await generateDpopKey();
+
+    // Authorization-server proofs (PAR, token) carry no ath — unchanged behavior.
+    const plain = jwtPayload(await createDpopProof(key, 'POST', 'https://auth.test/par'));
+    expect(plain.ath).toBeUndefined();
+
+    // Resource-server proofs hash the presented access token into ath.
+    const bound = jwtPayload(await createDpopProof(key, 'GET', 'https://pds.test/xrpc/com.atproto.server.getSession', undefined, 'tok'));
+    expect(bound.ath).toBe(await athOf('tok'));
+    expect(bound.htu).toBe('https://pds.test/xrpc/com.atproto.server.getSession');
   });
 
   it('rejects a callback whose state does not match the flow cookie', async () => {
