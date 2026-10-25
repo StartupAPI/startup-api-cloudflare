@@ -272,11 +272,7 @@ describe('atproto provider', () => {
 
     const api = createStartupAPI(atprotoConfig);
     const ctx = createExecutionContext();
-    const res = await api.fetch(
-      new Request('http://example.com/users/auth/atproto?handle=alice.test&return_url=/dashboard'),
-      env,
-      ctx,
-    );
+    const res = await api.fetch(new Request('http://example.com/users/auth/atproto?handle=alice.test&return_url=/dashboard'), env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(res.status).toBe(302);
@@ -493,5 +489,89 @@ describe('atproto provider', () => {
     }
     // Explicit factory opt-out overrides a truthy env flag.
     expect(getActiveProviders({ ...env, ATPROTO_ENABLED: 'true' }, { atproto: { enabled: false } })).not.toContain('atproto');
+  });
+
+  // Runs last: its callback test logs alice in, and the main callback test expects a first login.
+  describe('loopback client (local development)', () => {
+    const LOOPBACK_CLIENT_ID = `http://localhost?${new URLSearchParams({
+      redirect_uri: 'http://127.0.0.1:8273/users/auth/atproto/callback',
+      scope: 'atproto',
+    })}`;
+
+    it('moves a flow started on localhost to 127.0.0.1, keeping the path and query', async () => {
+      const res = await get(atprotoConfig, 'http://localhost:8273/users/auth/atproto?handle=alice.test&return_url=/app/');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('Location')).toBe('http://127.0.0.1:8273/users/auth/atproto?handle=alice.test&return_url=/app/');
+      expect(res.headers.get('Set-Cookie')).toBeNull();
+    });
+
+    it('uses http://localhost with the redirect URI and scope as the client_id', async () => {
+      let parBody: URLSearchParams | undefined;
+      installAtprotoMocks({ onPar: (init) => (parBody = new URLSearchParams((init.body as string) ?? '')) });
+      const res = await get(atprotoConfig, 'http://127.0.0.1:8273/users/auth/atproto?handle=alice.test');
+
+      expect(res.status).toBe(302);
+      const location = new URL(res.headers.get('Location')!);
+      expect(location.origin + location.pathname).toBe('https://auth.test/authorize');
+      expect(location.searchParams.get('client_id')).toBe(LOOPBACK_CLIENT_ID);
+      expect(parBody!.get('client_id')).toBe(LOOPBACK_CLIENT_ID);
+      expect(parBody!.get('redirect_uri')).toBe('http://127.0.0.1:8273/users/auth/atproto/callback');
+    });
+
+    it('puts extra scopes in the client_id', async () => {
+      let parBody: URLSearchParams | undefined;
+      installAtprotoMocks({ onPar: (init) => (parBody = new URLSearchParams((init.body as string) ?? '')) });
+      await get({ providers: { atproto: { scopes: 'account:email' } } }, 'http://127.0.0.1:8273/users/auth/atproto?handle=alice.test');
+
+      const clientId = new URL(parBody!.get('client_id')!);
+      expect(clientId.searchParams.get('scope')).toBe('atproto account:email');
+      expect(parBody!.get('scope')).toBe('atproto account:email');
+    });
+
+    it('completes the callback with the same client_id and redirect URI', async () => {
+      let tokenBody: URLSearchParams | undefined;
+      installAtprotoMocks({ onToken: (init) => (tokenBody = new URLSearchParams((init.body as string) ?? '')) });
+      const api = createStartupAPI(atprotoConfig);
+      const cm = new CookieManager('dev-secret');
+
+      const startCtx = createExecutionContext();
+      const startRes = await api.fetch(new Request('http://127.0.0.1:8273/users/auth/atproto?handle=alice.test'), env, startCtx);
+      await waitOnExecutionContext(startCtx);
+      const flowCookie = (startRes.headers.get('Set-Cookie') ?? '').split('atproto_flow=')[1].split(';')[0];
+      const flow = JSON.parse((await cm.decrypt(flowCookie))!);
+
+      const cbCtx = createExecutionContext();
+      const cbRes = await api.fetch(
+        new Request(`http://127.0.0.1:8273/users/auth/atproto/callback?code=authcode&state=${flow.state}&iss=https://auth.test`, {
+          headers: { Cookie: `atproto_flow=${flowCookie}` },
+          redirect: 'manual',
+        }),
+        env,
+        cbCtx,
+      );
+      await waitOnExecutionContext(cbCtx);
+
+      expect(cbRes.status).toBe(302);
+      expect(tokenBody!.get('client_id')).toBe(LOOPBACK_CLIENT_ID);
+      expect(tokenBody!.get('redirect_uri')).toBe('http://127.0.0.1:8273/users/auth/atproto/callback');
+      expect(cbRes.headers.getSetCookie().some((c) => c.startsWith('session_id='))).toBe(true);
+    });
+
+    it('keeps an [::1] redirect URI as is', async () => {
+      let parBody: URLSearchParams | undefined;
+      installAtprotoMocks({ onPar: (init) => (parBody = new URLSearchParams((init.body as string) ?? '')) });
+      const res = await get(atprotoConfig, 'http://[::1]:8273/users/auth/atproto?handle=alice.test');
+
+      expect(res.status).toBe(302);
+      expect(parBody!.get('redirect_uri')).toBe('http://[::1]:8273/users/auth/atproto/callback');
+      expect(new URL(parBody!.get('client_id')!).searchParams.get('redirect_uri')).toBe('http://[::1]:8273/users/auth/atproto/callback');
+    });
+
+    it('is not used over https, even on localhost', async () => {
+      let parBody: URLSearchParams | undefined;
+      installAtprotoMocks({ onPar: (init) => (parBody = new URLSearchParams((init.body as string) ?? '')) });
+      await get(atprotoConfig, 'https://localhost:8273/users/auth/atproto?handle=alice.test');
+      expect(parBody!.get('client_id')).toBe('https://localhost:8273/oauth-client-metadata.json');
+    });
   });
 });

@@ -149,6 +149,8 @@ export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
 
 The flow uses PKCE, DPoP-bound (sender-constrained) tokens, and Pushed Authorization Requests (PAR) as required by the atproto OAuth profile. The PLC directory and DNS-over-HTTPS resolver are generic infrastructure and can be overridden via the `plcUrl` / `dohUrl` factory options.
 
+**Local development.** On `http://localhost`, `127.0.0.1` or `[::1]` no authorization server can fetch the client-metadata document, so the worker uses the atproto [localhost client](https://atproto.com/specs/oauth#localhost-client-development) mode instead: the `client_id` is `http://localhost` with the redirect URI and scope in its query string, and nothing has to be served or registered. The spec requires an IP address in the redirect URI, so a login started on `http://localhost:8787` moves to `http://127.0.0.1:8787` and the session cookie is set there; open the site at `127.0.0.1` to stay logged in. The atproto spec defines this mode for development only.
+
 ##### Where the client-metadata document lives
 
 The [atproto OAuth spec](https://atproto.com/specs/oauth) lets the client-metadata document live at any `https://` URL, but `/oauth-client-metadata.json` at the domain root is the recognized convention: the reference PDS consent screen shows **just your hostname** (`example.com`) for a `client_id` at that path, and the **full metadata URL** for any other path. That is why StartupAPI serves it at the root by default — the only route it claims outside `USERS_PATH`. Three modes:
