@@ -7,6 +7,15 @@ export interface InjectPowerStripOptions {
    * is marked `private` for caches. Omit it to leave both untouched.
    */
   authenticated?: boolean;
+  /**
+   * The visitor's features, for apps that opted in with `featureDelivery.html`. The proxy writes
+   * `tokens` (the delta from each feature's baseline, see `deltaTokens`) onto `<html>` as
+   * `data-startupapi-features`, always, even when empty: that tells the page the proxy ran and
+   * nothing differs. Elements tagged `data-startupapi-feature="<id>"` with an id in `states` get
+   * `hidden` when the feature is off and lose it when it's on; other ids are left as they are.
+   * The page then differs per visitor, so the response is marked `private` for caches.
+   */
+  features?: { tokens: string[]; states: Map<string, boolean> };
 }
 
 /**
@@ -38,7 +47,7 @@ export async function injectPowerStrip(
 
   if (contentType && contentType.includes('text/html')) {
     const providersAttr = providers.join(',');
-    const { authenticated } = options;
+    const { authenticated, features } = options;
     const authState = authenticated === undefined ? null : authenticated ? 'signed-in' : 'signed-out';
     const authStateAttr = authState ? ` auth-state="${authState}"` : '';
 
@@ -46,7 +55,24 @@ export async function injectPowerStrip(
     // If they did, we respect their placement/styling and only load the script.
     let hasUserPowerStrip = false;
 
-    const transformed = new HTMLRewriter()
+    let rewriter = new HTMLRewriter();
+    if (features) {
+      rewriter = rewriter
+        .on('html', {
+          element(element) {
+            element.setAttribute('data-startupapi-features', features.tokens.join(' '));
+          },
+        })
+        .on('[data-startupapi-feature]', {
+          element(element) {
+            const on = features.states.get(element.getAttribute('data-startupapi-feature') ?? '');
+            if (on === true) element.removeAttribute('hidden');
+            else if (on === false && !element.hasAttribute('hidden')) element.setAttribute('hidden', '');
+          },
+        });
+    }
+
+    const transformed = rewriter
       .on('power-strip', {
         element(element) {
           hasUserPowerStrip = true;
@@ -85,7 +111,7 @@ export async function injectPowerStrip(
       })
       .transform(response);
 
-    if (!authState) {
+    if (!authState && !features) {
       return transformed;
     }
     const headers = new Headers(transformed.headers);

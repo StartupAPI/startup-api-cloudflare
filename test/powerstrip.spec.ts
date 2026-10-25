@@ -170,6 +170,49 @@ describe('injectPowerStrip', () => {
   });
 });
 
+describe('injectPowerStrip features', () => {
+  const PAGE =
+    '<html><body>' +
+    '<p data-startupapi-feature="beta" hidden>Beta</p>' +
+    '<p data-startupapi-feature="reports">Reports</p>' +
+    '<p data-startupapi-feature="other">Other</p>' +
+    '</body></html>';
+
+  it('writes the delta on <html> and sets or removes hidden on tagged elements', async () => {
+    const res = await injectPowerStrip(
+      new Response(PAGE, { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'public, max-age=60' } }),
+      USERS_PATH,
+      PROVIDERS,
+      {
+        features: {
+          tokens: ['beta', '-reports'],
+          states: new Map([
+            ['beta', true],
+            ['reports', false],
+          ]),
+        },
+      },
+    );
+    const html = await res.text();
+
+    expect(html).toContain('<html data-startupapi-features="beta -reports">');
+    expect(html).toContain('<p data-startupapi-feature="beta">Beta</p>');
+    expect(html).toContain('<p data-startupapi-feature="reports" hidden="">Reports</p>');
+    expect(html).toContain('<p data-startupapi-feature="other">Other</p>');
+    expect(html).not.toContain('auth-state');
+    expect(res.headers.get('Cache-Control')).toBe('private, max-age=60');
+  });
+
+  it('leaves tagged elements alone when features are not given', async () => {
+    const res = await injectPowerStrip(htmlResponse(PAGE), USERS_PATH, PROVIDERS, { authenticated: false });
+    const html = await res.text();
+
+    expect(html).not.toContain('data-startupapi-features');
+    expect(html).toContain('<p data-startupapi-feature="beta" hidden>Beta</p>');
+    expect(html).toContain('<p data-startupapi-feature="reports">Reports</p>');
+  });
+});
+
 describe('privateCacheControl', () => {
   it('adds private, dropping public and s-maxage', () => {
     expect(privateCacheControl(null)).toBe('private, no-cache');

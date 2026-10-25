@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AccessPolicySchema } from './policy';
-import { FeaturesConfigSchema } from './feature';
+import { FeatureDeliverySchema, FeaturesConfigSchema } from './feature';
 
 /**
  * Zod schema + types for the StartupAPI configuration factory (see src/createStartupAPI.ts).
@@ -119,6 +119,8 @@ export const StartupAPIConfigSchema = z.object({
   plans: z.array(z.any()).optional(),
   /** Feature flags (specs/features.md). Plans grant them through their `features` list. */
   features: FeaturesConfigSchema.optional(),
+  /** How resolved features reach the origin: the request header and, optionally, the HTML page. */
+  featureDelivery: FeatureDeliverySchema.optional(),
 });
 
 export type ProviderOptions = z.infer<typeof ProviderOptionsSchema>;

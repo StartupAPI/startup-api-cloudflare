@@ -235,6 +235,11 @@
         opacity: 0.7;
         font-size: 0.85rem;
       }
+      .feature-description {
+        display: block;
+        opacity: 0.7;
+        font-size: 0.85rem;
+      }
     </style>
   </head>
   <body data-ssr-plans="{{ssr:plans_json}}">
@@ -931,7 +936,7 @@
             return `
                 <tr class="${f.enabled ? 'feature-enabled' : 'feature-disabled'}">
                     <td>${featureStatusLabel(f)}</td>
-                    <td>${escapeHtml(f.name)}</td>
+                    <td>${escapeHtml(f.name)}${featureDescriptionHtml(f)}</td>
                     <td ${allUsers ? 'colspan="2"' : ''}>
                       <label><input type="checkbox" ${allUsers ? 'checked' : ''} disabled /> All users</label>
                     </td>
@@ -951,6 +956,10 @@
             `;
           })
           .join('');
+      }
+
+      function featureDescriptionHtml(f) {
+        return f.description ? `<span class="feature-description">${escapeHtml(f.description)}</span>` : '';
       }
 
       async function openEntityFeatures(kind, id) {
@@ -1011,7 +1020,7 @@
             <div class="feature-item ${itemClass}" title="${title}">
               <label>
                 <input type="checkbox" data-feature-id="${escapeHtml(f.id)}" ${checked ? 'checked' : ''} ${isFeatureEditable(f) ? '' : 'disabled'} />
-                <span>${escapeHtml(f.name)} <span class="muted">${note}</span></span>
+                <span>${escapeHtml(f.name)} <span class="muted">${note}</span>${featureDescriptionHtml(f)}</span>
               </label>
             </div>
           `;

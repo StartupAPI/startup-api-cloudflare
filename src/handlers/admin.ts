@@ -15,6 +15,7 @@ function featureDefinition(feature: Feature) {
   return {
     id: feature.id,
     name: feature.name,
+    description: feature.description,
     enabled: feature.enabled,
     rolled_out_to_all_users: feature.rolled_out_to_all_users,
     emergency_shutdown: feature.emergency_shutdown,

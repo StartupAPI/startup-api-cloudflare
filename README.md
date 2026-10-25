@@ -7,7 +7,7 @@ This application uses the Cloudflare Developer Platform, including Workers and D
 ## Features
 
 - **Transparent Proxying:** Forwards requests to your origin application
-- **HTML Injection:** Uses `HTMLRewriter` to inject scripts and custom elements (like `<power-strip>`) into your HTML pages
+- **HTML Injection:** Uses `HTMLRewriter` to inject scripts and custom elements (like `<power-strip>`) into your HTML pages, and, when you opt in, the visitor's feature flags
 - **Path Interception:** Intercepts requests to a configurable path to serve internal assets
 
 ## Installation
@@ -414,7 +414,7 @@ Feature flags decouple deploying code from releasing it (see [specs/features.md]
 ```ts
 const api = createStartupAPI({
   features: [
-    { id: 'new_dashboard', name: 'New Dashboard' }, // off until granted by a plan or override
+    { id: 'new_dashboard', name: 'New Dashboard', description: 'The redesigned home page.' }, // off until granted by a plan or override
     { id: 'reports', name: 'Reports', rolled_out_to_all_users: true }, // on for everyone
     { id: 'legacy_export', name: 'Legacy export', emergency_shutdown: true }, // off everywhere
   ],
@@ -435,12 +435,61 @@ Steps 1–2 come from code config and need no storage reads, so rolled-out and d
 
 How your app sees them:
 
-- **Origin requests:** the `X-StartupAPI-Features` header (e.g. `reports,new_dashboard`). A client-sent value is always replaced.
-- **Browser:** `features` in the `/users/api/me` response.
+- **Origin requests:** the `X-StartupAPI-Features` header. A client-sent value is always replaced.
+- **HTML pages**, when you opt in with `featureDelivery.html` (below).
+- **Browser:** `features` in the `/users/api/me` response, the full list of enabled ids.
 - **Access policy:** the `feature` requirement mode.
 - **Worker code:** `import { Feature, hasFeature } from '@startup-api/cloudflare'`, then `await hasFeature(env, userId, 'new_dashboard')` or `await Feature.require('new_dashboard').isEnabledForAccount(env, accountId)`.
 
-Manage overrides in the admin dashboard (`/users/admin/`): the **Features** section lists each feature's status and how many users and accounts have overrides, and the **Features** button on a user or account opens its checkboxes. Features that are shut down, disabled, rolled out to everyone, or (for accounts) granted by the plan can't be overridden there. In code, use `Feature.require(id).enableForAccount` / `removeForAccount` / `enableForUser` / `removeForUser` and `getAccountCount` / `getUserCount`. The dashboard uses this admin API:
+### Only the difference travels
+
+An app can define hundreds of features, and most of them are the same for everyone: rolled out, or not released yet. Sending all of them with every request and page would be mostly noise. So by default StartupAPI sends only what differs from each feature's **baseline**, its release state `rolled_out_to_all_users`:
+
+- `new_dashboard`: on for this visitor, although not rolled out (an override, or granted by the plan);
+- `-reports`: rolled out, but off right now (`emergency_shutdown` or `enabled: false`).
+
+Every other feature is at its baseline. Your origin knows the baselines because it ships the same feature definitions, so it rebuilds the full state from the delta: a feature is on if it's listed, off if it's listed with `-`, and otherwise at its baseline. Most visitors get an empty delta, or a few beta features. A feature your origin knows but the proxy doesn't (deployed to the origin first) is never in the delta, so the origin's own default applies.
+
+```ts
+createStartupAPI({
+  features: [...],
+  featureDelivery: {
+    header: 'delta', // default. 'enabled': every enabled id (for origins that don't know the baselines). 'none': no header.
+    html: false, // default. true: write the visitor's features into HTML pages.
+  },
+});
+```
+
+With `header: 'delta'` the header is comma-separated (`new_dashboard,-reports`) and is empty when nothing differs.
+
+> **Changed in 0.9:** the header used to list every enabled id. Set `featureDelivery: { header: 'enabled' }` to keep that.
+
+### Feature flags in HTML pages
+
+A static page can't read request headers, so with `featureDelivery: { html: true }` the proxy writes the visitor's features into HTML responses from the origin, so the page knows its flags at first paint, before any script runs:
+
+- `<html data-startupapi-features="new_dashboard -reports">`: the same delta, space-separated, so CSS can match a token with `~=`. The attribute is always written, empty when nothing differs, so a script can tell "the proxy ran" from "no proxy" (local development, preview deployments).
+- Any element tagged `data-startupapi-feature="<id>"` gets `hidden` when that feature is off for the visitor and loses `hidden` when it's on. Elements with ids the proxy doesn't know are left as the origin sent them, so ship them in their default state.
+
+```html
+<button data-startupapi-feature="new_dashboard" hidden>Try the new dashboard</button>
+```
+
+```css
+/* `hidden` loses to any rule that sets `display`; keep gated elements hidden. */
+[data-startupapi-feature][hidden] {
+  display: none !important;
+}
+```
+
+```js
+const tokens = new Set((document.documentElement.dataset.startupapiFeatures ?? '').split(' ').filter(Boolean));
+const isOn = (id, baseline) => (tokens.has(id) ? true : tokens.has(`-${id}`) ? false : baseline);
+```
+
+These pages differ per visitor, so they are sent with `Cache-Control: private`. Non-HTML responses are never touched.
+
+Manage overrides in the admin dashboard (`/users/admin/`): the **Features** section lists each feature's status, with its `description` when it has one, and how many users and accounts have overrides, and the **Features** button on a user or account opens its checkboxes. Features that are shut down, disabled, rolled out to everyone, or (for accounts) granted by the plan can't be overridden there. In code, use `Feature.require(id).enableForAccount` / `removeForAccount` / `enableForUser` / `removeForUser` and `getAccountCount` / `getUserCount`. The dashboard uses this admin API:
 
 | Method           | Path (under `/users/admin/api/`)                                    | Returns / does                                                                                                    |
 | ---------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |

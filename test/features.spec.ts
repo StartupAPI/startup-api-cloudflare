@@ -1,8 +1,15 @@
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { Feature, hasFeature } from '../src/features/Feature';
-import { resolveUserFeatures, resolveAccountFeatures, staticallyEnabledFeatureIds, enabledIds } from '../src/features/resolve';
-import { FeaturesConfigSchema } from '../src/schemas/feature';
+import {
+  resolveUserFeatures,
+  resolveAccountFeatures,
+  resolveAnonymousFeatures,
+  staticallyEnabledFeatureIds,
+  enabledIds,
+  deltaTokens,
+} from '../src/features/resolve';
+import { FeatureDeliverySchema, FeaturesConfigSchema } from '../src/schemas/feature';
 import { Plan } from '../src/billing/Plan';
 import { AccessPolicy, evaluateAccess } from '../src/policy/accessPolicy';
 import { createStartupAPI } from '../src/createStartupAPI';
@@ -65,6 +72,20 @@ describe('Feature config', () => {
     ).toThrow(/Duplicate feature id 'x'/);
   });
 
+  it('keeps an optional description', () => {
+    const [f] = FeaturesConfigSchema.parse([{ id: 'x', name: 'X', description: 'Does X.' }]);
+    expect(f.description).toBe('Does X.');
+    Feature.reset();
+    Feature.init([{ id: 'x', name: 'X', description: 'Does X.' }]);
+    expect(Feature.require('x').description).toBe('Does X.');
+    Feature.reset();
+  });
+
+  it('defaults feature delivery to a delta header and no HTML changes', () => {
+    expect(FeatureDeliverySchema.parse({})).toEqual({ header: 'delta', html: false });
+    expect(() => FeatureDeliverySchema.parse({ header: 'all' })).toThrow();
+  });
+
   it('rejects invalid ids', () => {
     expect(() => FeaturesConfigSchema.parse([{ id: 'New Dashboard', name: 'X' }])).toThrow(/Feature id/);
   });
@@ -88,6 +109,33 @@ describe('Feature config', () => {
     expect(Feature.require('beta').staticState()).toBe('contextual');
     expect(staticallyEnabledFeatureIds(Feature.getAll())).toEqual(['rolled_out']);
     expect(() => Feature.require('nope')).toThrow(/Unknown feature 'nope'/);
+  });
+});
+
+describe('Feature delta', () => {
+  beforeEach(initRegistries);
+
+  it('sends only kill switches for anonymous visitors', () => {
+    const all = Feature.getAll();
+    expect(deltaTokens(all, resolveAnonymousFeatures(all))).toEqual(['-disabled', '-shutdown']);
+  });
+
+  it('adds contextual features that are on, and nothing for rolled-out features that are on', () => {
+    const all = Feature.getAll();
+    const resolutions = resolveAnonymousFeatures(all).map((r) =>
+      r.id === 'beta' ? { ...r, enabled: true, source: 'override' as const } : r,
+    );
+    expect(deltaTokens(all, resolutions)).toEqual(['-disabled', '-shutdown', 'beta']);
+  });
+
+  it('is empty when every feature is at its baseline', () => {
+    Feature.reset();
+    Feature.init([
+      { id: 'on', name: 'On', rolled_out_to_all_users: true },
+      { id: 'off', name: 'Off' },
+    ]);
+    const all = Feature.getAll();
+    expect(deltaTokens(all, resolveAnonymousFeatures(all))).toEqual([]);
   });
 });
 
@@ -265,11 +313,16 @@ describe('Features over HTTP', () => {
   }
 
   // Run a request through a configured instance; return the response and the request the origin got.
-  async function proxy(api: ReturnType<typeof createStartupAPI>, path: string, headers: Record<string, string> = {}) {
+  async function proxy(
+    api: ReturnType<typeof createStartupAPI>,
+    path: string,
+    headers: Record<string, string> = {},
+    origin: () => Response = () => new Response('OK', { status: 200 }),
+  ) {
     let originRequest: Request | undefined;
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       originRequest = new Request(input as RequestInfo, init);
-      return new Response('OK', { status: 200 });
+      return origin();
     });
     try {
       const ctx = createExecutionContext();
@@ -281,17 +334,102 @@ describe('Features over HTTP', () => {
     }
   }
 
-  it('forwards the enabled features to the origin and strips a spoofed header', async () => {
+  it('forwards the delta from the baselines to the origin and strips a spoofed header', async () => {
     const api = createStartupAPI(config);
     const userId = await newUserInAccount(await newAccount('pro'));
     const { originRequest } = await proxy(api, '/page', { Cookie: await sessionCookie(userId), 'X-StartupAPI-Features': 'beta' });
+    expect(originRequest?.headers.get('X-StartupAPI-Features')).toBe('-disabled,-shutdown,pro_reports');
+  });
+
+  it('forwards only kill switches for anonymous visitors', async () => {
+    const api = createStartupAPI(config);
+    const { originRequest } = await proxy(api, '/page', { 'X-StartupAPI-Features': 'beta' });
+    expect(originRequest?.headers.get('X-StartupAPI-Features')).toBe('-disabled,-shutdown');
+  });
+
+  it("forwards every enabled feature with header: 'enabled'", async () => {
+    const api = createStartupAPI({ ...config, featureDelivery: { header: 'enabled' } });
+    const userId = await newUserInAccount(await newAccount('pro'));
+    const { originRequest } = await proxy(api, '/page', { Cookie: await sessionCookie(userId) });
     expect(originRequest?.headers.get('X-StartupAPI-Features')).toBe('rolled_out,pro_reports');
   });
 
-  it('forwards only rolled-out features for anonymous visitors', async () => {
-    const api = createStartupAPI(config);
+  it("sends no features header with header: 'none'", async () => {
+    const api = createStartupAPI({ ...config, featureDelivery: { header: 'none' } });
     const { originRequest } = await proxy(api, '/page', { 'X-StartupAPI-Features': 'beta' });
-    expect(originRequest?.headers.get('X-StartupAPI-Features')).toBe('rolled_out');
+    expect(originRequest?.headers.has('X-StartupAPI-Features')).toBe(false);
+  });
+
+  describe('in HTML', () => {
+    const PAGE =
+      '<!doctype html><html lang="en"><head></head><body>' +
+      '<button data-startupapi-feature="beta" hidden>Beta</button>' +
+      '<button data-startupapi-feature="rolled_out">Rolled out</button>' +
+      '<button data-startupapi-feature="shutdown">Shut down</button>' +
+      '<button data-startupapi-feature="unknown" hidden>Unknown</button>' +
+      '</body></html>';
+    const html = () =>
+      new Response(PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' } });
+
+    it('leaves the page alone by default', async () => {
+      const api = createStartupAPI(config);
+      const { res } = await proxy(api, '/page', {}, html);
+      const body = await res.text();
+      expect(body).not.toContain('data-startupapi-features=');
+      expect(body).toContain('<button data-startupapi-feature="beta" hidden>');
+      expect(body).toContain('<button data-startupapi-feature="shutdown">');
+    });
+
+    it('writes an empty delta and gates elements for anonymous visitors', async () => {
+      Feature.reset();
+      Feature.init([
+        { id: 'rolled_out', name: 'Rolled out', rolled_out_to_all_users: true },
+        { id: 'shutdown', name: 'Shut down', rolled_out_to_all_users: true, emergency_shutdown: true },
+        { id: 'beta', name: 'Beta' },
+      ]);
+      const api = createStartupAPI({ ...config, features: undefined, plans: undefined, featureDelivery: { html: true } });
+      const { res } = await proxy(api, '/page', {}, html);
+      const body = await res.text();
+      expect(body).toContain('<html lang="en" data-startupapi-features="-shutdown">');
+      expect(body).toContain('<button data-startupapi-feature="beta" hidden>');
+      expect(body).toContain('<button data-startupapi-feature="rolled_out">');
+      expect(body).toContain('<button data-startupapi-feature="shutdown" hidden="">');
+      // Ids the proxy doesn't know are left as the origin sent them.
+      expect(body).toContain('<button data-startupapi-feature="unknown" hidden>');
+      expect(res.headers.get('Cache-Control')).toBe('private, max-age=60');
+    });
+
+    it('writes an empty attribute when nothing differs', async () => {
+      Feature.reset();
+      Feature.init([
+        { id: 'rolled_out', name: 'Rolled out', rolled_out_to_all_users: true },
+        { id: 'beta', name: 'Beta' },
+      ]);
+      const api = createStartupAPI({ ...config, features: undefined, plans: undefined, featureDelivery: { html: true } });
+      const { res } = await proxy(api, '/page', {}, html);
+      expect(await res.text()).toContain('<html lang="en" data-startupapi-features="">');
+    });
+
+    it("adds the visitor's own features and shows their elements", async () => {
+      const api = createStartupAPI({ ...config, featureDelivery: { html: true } });
+      const userId = await newUserInAccount(await newAccount());
+      await Feature.require('beta').enableForUser(env, userId);
+      const { res } = await proxy(api, '/page', { Cookie: await sessionCookie(userId) }, html);
+      const body = await res.text();
+      expect(body).toContain('data-startupapi-features="-disabled -shutdown beta"');
+      expect(body).toContain('<button data-startupapi-feature="beta">');
+    });
+
+    it('never touches a response that is not HTML', async () => {
+      const api = createStartupAPI({ ...config, featureDelivery: { html: true } });
+      const { res } = await proxy(
+        api,
+        '/data.json',
+        {},
+        () => new Response('{"a":1}', { headers: { 'Content-Type': 'application/json' } }),
+      );
+      expect(await res.text()).toBe('{"a":1}');
+    });
   });
 
   it('sends no features header when no features are configured', async () => {

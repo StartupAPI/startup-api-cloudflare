@@ -33,7 +33,8 @@ import { computeRedirectBase, getProvider } from './auth/providers';
 import { runEntitlementResync } from './entitlements/cron';
 import { handlePatreonWebhook } from './webhooks/patreon';
 import { Feature } from './features/Feature';
-import { resolveUserFeatures, staticallyEnabledFeatureIds, enabledIds } from './features/resolve';
+import { resolveUserFeatures, resolveAnonymousFeatures, enabledIds, deltaTokens } from './features/resolve';
+import { FeatureDeliverySchema } from './schemas/feature';
 
 const DEFAULT_USERS_PATH = '/users/';
 const DEFAULT_CRON_SCHEDULE = '0 */6 * * *';
@@ -108,13 +109,7 @@ function resolveAccessPolicy(configPolicy: AccessPolicyConfig | undefined): Acce
  * or a path proxied from ORIGIN_URL. The configured status is re-stamped onto the response so e.g. a
  * 200 asset can be served as a 403 gate.
  */
-async function serveGatePage(
-  source: PageSource,
-  status: number,
-  request: Request,
-  env: StartupAPIEnv,
-  reqUrl: URL,
-): Promise<Response> {
+async function serveGatePage(source: PageSource, status: number, request: Request, env: StartupAPIEnv, reqUrl: URL): Promise<Response> {
   let res: Response;
   if ('asset' in source) {
     // Serve a local file from ASSETS, mirroring the existing user-asset path.
@@ -135,7 +130,15 @@ async function serveGatePage(
 /** Build a deny response (login redirect / 403 / upgrade redirect / in-place gate page) for an unmet access requirement. */
 function denyResponse(
   decision: Extract<PolicyDecision, { allow: false }>,
-  ctx: { usersPath: string; returnUrl: string; activeProviders: string[]; authenticated: boolean; request: Request; env: StartupAPIEnv; url: URL },
+  ctx: {
+    usersPath: string;
+    returnUrl: string;
+    activeProviders: string[];
+    authenticated: boolean;
+    request: Request;
+    env: StartupAPIEnv;
+    url: URL;
+  },
 ): Response | Promise<Response> {
   if (decision.action === 'gate' && decision.gate) {
     // Serve an explainer page in place: anonymous variant for logged-out visitors, unentitled variant
@@ -167,6 +170,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
   const parsed = StartupAPIConfigSchema.parse(config);
   const providerConfigs = parsed.providers ?? {};
   const sessionTtlMs = resolveSessionTtlMs(parsed.session);
+  const featureDelivery = FeatureDeliverySchema.parse(parsed.featureDelivery ?? {});
   const cronProviders = Object.entries(providerConfigs)
     .filter(([, options]) => isCronEnabled(options))
     .map(([name]) => name);
@@ -384,13 +388,22 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
 
       // Feature flags. Rolled-out/disabled features resolve from config; DOs are only read for the rest.
       let features: Set<string> | undefined;
+      let htmlFeatures: { tokens: string[]; states: Map<string, boolean> } | undefined;
       const allFeatures = Feature.getAll();
       if (allFeatures.length > 0) {
-        const featureIds = user
-          ? enabledIds(await resolveUserFeatures(env, user.id, allFeatures, currentAccount?.account_id ?? null))
-          : staticallyEnabledFeatureIds(allFeatures);
-        features = new Set(featureIds);
-        newRequest.headers.set('X-StartupAPI-Features', featureIds.join(','));
+        const resolutions = user
+          ? await resolveUserFeatures(env, user.id, allFeatures, currentAccount?.account_id ?? null)
+          : resolveAnonymousFeatures(allFeatures);
+        features = new Set(enabledIds(resolutions));
+        const tokens = deltaTokens(allFeatures, resolutions);
+        if (featureDelivery.header === 'delta') {
+          newRequest.headers.set('X-StartupAPI-Features', tokens.join(','));
+        } else if (featureDelivery.header === 'enabled') {
+          newRequest.headers.set('X-StartupAPI-Features', [...features].join(','));
+        }
+        if (featureDelivery.html) {
+          htmlFeatures = { tokens, states: new Map(resolutions.map((r) => [r.id, r.enabled])) };
+        }
       }
 
       // Enforce the requirement. Admins bypass the gate (identity/headers above still apply).
@@ -410,7 +423,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       const response = await originFetch(newRequest);
       const providers = getActiveProviders(env, providerConfigs);
       // Refresh the persistent session cookie's Max-Age when the DO extended the session (sliding renewal).
-      const decorated = await injectPowerStrip(response, usersPath, providers, { authenticated });
+      const decorated = await injectPowerStrip(response, usersPath, providers, { authenticated, features: htmlFeatures });
       return applySessionRenewal(decorated, user?.renew);
     }
 

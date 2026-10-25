@@ -13,6 +13,7 @@ The Feature Framework allows developers to decouple code deployment from feature
 - **Attributes**:
   - `id`: Unique string key (lowercase letters, digits, `_`, `-`), like plan slugs.
   - `name`: Human-readable display name.
+  - `description`: Optional longer explanation, shown in the admin dashboard.
   - `enabled`: Global master switch (must be true for feature to work anywhere). Default `true`.
   - `rolled_out_to_all_users`: If true, enables the feature globally (overrides specific settings). Default `false`.
   - `emergency_shutdown`: Temporary kill switch to disable the feature strictly. Default `false`.
@@ -61,7 +62,7 @@ const api = createStartupAPI({
 
 ### Checking Availability
 
-The origin app receives the enabled feature ids in the `X-StartupAPI-Features` header. The browser gets them as `features` in `/api/me`. Paths can be gated with the access policy requirement `{ mode: 'feature', feature: 'new_dashboard' }`.
+The origin app receives the `X-StartupAPI-Features` header. By default (`featureDelivery.header: 'delta'`) it carries only what differs from each feature's baseline (`rolled_out_to_all_users`): `id` for a feature that is on although not rolled out, `-id` for a rolled-out feature that is off (`deltaTokens` in `src/features/resolve.ts`). `'enabled'` sends every enabled id instead, and `'none'` no header. With `featureDelivery.html: true`, HTML responses also get the delta as `<html data-startupapi-features>` (space-separated, always written), and elements tagged `data-startupapi-feature="<id>"` get `hidden` set or removed from the full resolution (`src/PowerStrip.ts`). The browser also gets the full list of enabled ids as `features` in `/api/me`. Paths can be gated with the access policy requirement `{ mode: 'feature', feature: 'new_dashboard' }`.
 
 In worker code:
 

@@ -14,6 +14,7 @@ export type FeatureStaticState = 'off' | 'on' | 'contextual';
 export class Feature {
   id: string;
   name: string;
+  description?: string;
   enabled: boolean;
   rolled_out_to_all_users: boolean;
   emergency_shutdown: boolean;
@@ -21,6 +22,7 @@ export class Feature {
   constructor(config: FeatureConfigResolved) {
     this.id = config.id;
     this.name = config.name;
+    this.description = config.description;
     this.enabled = config.enabled;
     this.rolled_out_to_all_users = config.rolled_out_to_all_users;
     this.emergency_shutdown = config.emergency_shutdown;

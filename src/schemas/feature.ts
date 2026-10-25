@@ -14,6 +14,8 @@ export const FeatureConfigSchema = z.object({
   id: FeatureIdSchema,
   /** Human-readable display name. */
   name: z.string().min(1),
+  /** Optional longer explanation, shown under the name in the admin dashboard. */
+  description: z.string().optional(),
   /** Global master switch: must be true for the feature to work anywhere. */
   enabled: z.boolean().default(true),
   /** Enables the feature for everyone, without reading any account or user data. */
@@ -37,3 +39,25 @@ export type FeatureConfigResolved = z.output<typeof FeatureConfigSchema>;
 
 /** Where a feature's enabled state for an account or user came from (admin API). */
 export type FeatureSource = 'static' | 'plan' | 'override' | 'account' | null;
+
+/**
+ * How the resolved features reach the origin (README "Feature flags").
+ *
+ * `header`: what `X-StartupAPI-Features` carries.
+ *  - `'delta'` (default): only what differs from each feature's baseline (`rolled_out_to_all_users`):
+ *    `id` for a feature that is on although not rolled out, `-id` for a rolled-out feature that is off.
+ *    The origin knows the baselines (it ships the same definitions), so features rolled out to
+ *    everyone, or off for everyone, cost nothing per request.
+ *  - `'enabled'`: every enabled id, for origins that don't know the baselines.
+ *  - `'none'`: no header.
+ *
+ * `html`: when true, HTML pages from the origin get the delta as `<html data-startupapi-features>`
+ * (space-separated) and elements tagged `data-startupapi-feature="<id>"` get `hidden` set or removed.
+ */
+export const FeatureDeliverySchema = z.object({
+  header: z.enum(['delta', 'enabled', 'none']).default('delta'),
+  html: z.boolean().default(false),
+});
+
+export type FeatureDelivery = z.input<typeof FeatureDeliverySchema>;
+export type FeatureDeliveryResolved = z.output<typeof FeatureDeliverySchema>;

@@ -40,6 +40,14 @@ function inConfigOrder(features: Feature[], resolutions: FeatureResolution[]): F
   return features.map((f) => byId.get(f.id)!);
 }
 
+/** Resolve steps 1–2 only (no I/O): contextual features are off. Used for anonymous visitors. */
+export function resolveAnonymousFeatures(features: Feature[]): FeatureResolution[] {
+  return features.map((f) => {
+    const state = f.staticState();
+    return { id: f.id, enabled: state === 'on', source: state === 'contextual' ? null : 'static' };
+  });
+}
+
 /** Ids of features that are on for everyone (no I/O). Used for anonymous visitors. */
 export function staticallyEnabledFeatureIds(features: Feature[]): string[] {
   return features.filter((f) => f.staticState() === 'on').map((f) => f.id);
@@ -99,4 +107,23 @@ export async function resolveUserFeatures(
 
 export function enabledIds(resolutions: FeatureResolution[]): string[] {
   return resolutions.filter((r) => r.enabled).map((r) => r.id);
+}
+
+/**
+ * What differs from each feature's baseline, its release state `rolled_out_to_all_users`: `id` for a
+ * feature that is on although not rolled out (an override or the plan), `-id` for a rolled-out
+ * feature that is off (emergency shutdown or `enabled: false`). In config order.
+ *
+ * A client that knows the baselines rebuilds the full state from this, and it stays short however
+ * many features are defined: most visitors get nothing, or a few beta features.
+ */
+export function deltaTokens(features: Feature[], resolutions: FeatureResolution[]): string[] {
+  const enabled = new Map(resolutions.map((r) => [r.id, r.enabled]));
+  const tokens: string[] = [];
+  for (const feature of features) {
+    const on = enabled.get(feature.id) ?? false;
+    if (on && !feature.rolled_out_to_all_users) tokens.push(feature.id);
+    else if (!on && feature.rolled_out_to_all_users) tokens.push(`-${feature.id}`);
+  }
+  return tokens;
 }
