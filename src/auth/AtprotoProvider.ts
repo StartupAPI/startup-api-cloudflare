@@ -30,6 +30,9 @@ interface AtprotoFlowState {
   returnUrl: string | null;
 }
 
+/** Hostnames that make the auth origin a local development machine (atproto loopback client mode). */
+const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];
+
 /** A string env flag is truthy when it reads as "true"/"1"/"yes"/"on" (case-insensitive). */
 function isEnvFlagTruthy(value: string | undefined): boolean {
   return value !== undefined && ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
@@ -58,6 +61,11 @@ export function isAtprotoEnabled(options?: ProviderOptions, env?: Pick<StartupAP
  * rather than a client id/secret. By default the document is served at the conventional domain root
  * (`/oauth-client-metadata.json`) so consent screens show just the hostname; it can instead live under
  * the auth path (`…/auth/atproto/client-metadata.json`) or be replaced by one the app owner hosts.
+ *
+ * On a local machine (an `http://localhost`, `127.0.0.1` or `[::1]` auth origin) no authorization
+ * server can fetch that document, so the provider switches to the spec's loopback client mode: the
+ * client id is `http://localhost` with the redirect URI and scope in its query string, and the
+ * redirect URI uses `127.0.0.1` because the spec doesn't allow the `localhost` hostname there.
  */
 export class AtprotoProvider extends OAuthProvider {
   /** Conventional root path for an atproto client-metadata document (auth servers show just the host). */
@@ -70,6 +78,8 @@ export class AtprotoProvider extends OAuthProvider {
   private clientUri = '';
   private clientName = 'StartupAPI';
   private resolverOptions: ResolverOptions = {};
+  /** Loopback client mode only: the `127.0.0.1` origin the whole login flow must run on. */
+  private loopbackOrigin: string | null = null;
 
   static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
     if (!isAtprotoEnabled(options, env)) return null;
@@ -84,11 +94,29 @@ export class AtprotoProvider extends OAuthProvider {
     provider.clientMetadataUrl = new URL(custom || provider.metadataPath, base.origin).toString();
     provider.clientUri = new URL(provider.clientMetadataUrl).origin;
     provider.clientName = options?.clientName?.trim() || 'StartupAPI';
+    if (!custom && base.protocol === 'http:' && LOOPBACK_HOSTNAMES.includes(base.hostname)) {
+      provider.useLoopbackClient(base);
+    }
     provider.resolverOptions = {
       plcUrl: options?.plcUrl?.trim() || undefined,
       dohUrl: options?.dohUrl?.trim() || undefined,
     };
     return provider;
+  }
+
+  /**
+   * Loopback client mode (local development): no client-metadata document is fetched. The client id
+   * is `http://localhost` (no port or path) carrying the redirect URI and scope, and the redirect URI
+   * must use an IP literal, so `localhost` becomes `127.0.0.1` while keeping the port.
+   */
+  private useLoopbackClient(base: URL): void {
+    const redirect = new URL(this.redirectUri);
+    if (redirect.hostname === 'localhost') redirect.hostname = '127.0.0.1';
+    this.redirectUri = redirect.toString();
+    this.loopbackOrigin = redirect.origin;
+    const query = new URLSearchParams({ redirect_uri: this.redirectUri, scope: this.buildScope(['atproto']) });
+    this.clientMetadataUrl = `http://localhost?${query}`;
+    this.clientUri = base.origin;
   }
 
   getIcon(): string {
@@ -129,6 +157,13 @@ export class AtprotoProvider extends OAuthProvider {
    * redirect to the discovered authorization endpoint.
    */
   async authorize(ctx: AuthContext): Promise<Response> {
+    // Loopback client mode: the callback arrives on 127.0.0.1, so start there too. Otherwise the flow
+    // cookie (and later the session cookie) would belong to `localhost` and be missing on return.
+    if (this.loopbackOrigin && ctx.url.origin !== this.loopbackOrigin) {
+      const target = new URL(ctx.url.pathname + ctx.url.search, this.loopbackOrigin);
+      return new Response(null, { status: 302, headers: { Location: target.toString() } });
+    }
+
     const identifier = ctx.url.searchParams.get('handle');
     const returnUrl = ctx.url.searchParams.get('return_url');
     if (!identifier || !identifier.trim()) {
@@ -284,11 +319,7 @@ export class AtprotoProvider extends OAuthProvider {
    * supplied handle fails to authorize — in which case `options.error` renders an inline banner and
    * `options.handle` pre-fills the input so the user can correct and retry without leaving the page.
    */
-  private renderHandleForm(
-    ctx: AuthContext,
-    returnUrl: string | null,
-    options: { error?: string; handle?: string } = {},
-  ): Response {
+  private renderHandleForm(ctx: AuthContext, returnUrl: string | null, options: { error?: string; handle?: string } = {}): Response {
     const action = `${ctx.authPath}/atproto`;
     const returnField = returnUrl ? `<input type="hidden" name="return_url" value="${escapeHtml(returnUrl)}" />` : '';
     const errorBanner = options.error ? `<div class="error" role="alert">${escapeHtml(options.error)}</div>` : '';
