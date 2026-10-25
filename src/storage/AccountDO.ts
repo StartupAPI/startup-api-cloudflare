@@ -44,6 +44,11 @@ export class AccountDO extends DurableObject {
         role INTEGER,
         joined_at INTEGER
       );
+
+      CREATE TABLE IF NOT EXISTS account_features (
+        feature_id TEXT PRIMARY KEY,
+        enabled_at INTEGER
+      );
     `);
 
     // Ensure the single row exists
@@ -226,6 +231,33 @@ export class AccountDO extends DurableObject {
     }
   }
 
+  // Feature flags: this DO stores account overrides; resolution runs in the worker (src/features/resolve.ts).
+
+  /** The account's plan slug and feature overrides, in one call for feature resolution. */
+  async getFeatureContext(): Promise<{ plan: string | null; features: string[] }> {
+    const row = this.sql.exec('SELECT plan FROM account_info WHERE id = 1').next().value as any;
+    const features = Array.from(this.sql.exec('SELECT feature_id FROM account_features')).map((r: any) => r.feature_id as string);
+    return { plan: row?.plan ?? null, features };
+  }
+
+  async setFeatureOverride(featureId: string, enabled: boolean): Promise<{ success: boolean }> {
+    if (enabled) {
+      this.sql.exec('INSERT OR IGNORE INTO account_features (feature_id, enabled_at) VALUES (?, ?)', featureId, Date.now());
+    } else {
+      this.sql.exec('DELETE FROM account_features WHERE feature_id = ?', featureId);
+    }
+
+    // Update SystemDO index (usage counts)
+    try {
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.setFeatureIndex('account', this.ctx.id.toString(), featureId, enabled);
+    } catch (_e) {
+      console.error('Failed to update feature index in SystemDO', _e);
+    }
+
+    return { success: true };
+  }
+
   async delete(): Promise<{ success: boolean }> {
     // Get all members to notify their UserDOs
     const members = Array.from(this.sql.exec('SELECT user_id FROM members'));
@@ -286,6 +318,7 @@ export class AccountDO extends DurableObject {
           slug: plan.slug,
           name: plan.name,
           capabilities: plan.capabilities,
+          features: plan.features,
           downgrade_to_slug: plan.downgrade_to_slug,
           grace_period: plan.grace_period,
           schedules: plan.schedules.map((s) => ({

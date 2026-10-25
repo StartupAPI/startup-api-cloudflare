@@ -175,6 +175,66 @@
         gap: 0.5rem;
         margin-top: 1.5rem;
       }
+      /* Feature flags (same treatment as the PHP StartupAPI admin) */
+      .label {
+        display: inline-block;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        white-space: nowrap;
+        background: #999;
+        color: #fff;
+      }
+      .label-down {
+        background: #d93025;
+      }
+      .label-all-users {
+        background: #1a73e8;
+      }
+      .label-on {
+        background: #1e8e3e;
+      }
+      tr.feature-disabled td {
+        color: silver;
+      }
+      .rollout {
+        display: grid;
+        grid-template-columns: 100px auto;
+        gap: 0.25rem 0.5rem;
+        align-items: center;
+        font-size: 0.85rem;
+      }
+      .progress {
+        height: 0.6rem;
+        background: var(--surface-muted);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .progress > div {
+        height: 100%;
+        background: #1a73e8;
+      }
+      .feature-item {
+        margin-bottom: 0.5rem;
+      }
+      .feature-item label {
+        display: flex;
+        gap: 0.5rem;
+        align-items: baseline;
+      }
+      .feature-item.shut-down {
+        color: #d93025;
+        text-decoration: line-through;
+      }
+      .feature-item.disabled {
+        color: grey;
+        text-decoration: line-through;
+      }
+      .muted {
+        opacity: 0.7;
+        font-size: 0.85rem;
+      }
     </style>
   </head>
   <body data-ssr-plans="{{ssr:plans_json}}">
@@ -247,6 +307,22 @@
       </table>
     </section>
 
+    <section id="features-section" hidden>
+      <h2>Features</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Enabled</th>
+            <th>Feature</th>
+            <th colspan="2">Rolled-out to</th>
+          </tr>
+        </thead>
+        <tbody id="features-table">
+          <!-- Features -->
+        </tbody>
+      </table>
+    </section>
+
     <div id="toast"></div>
 
     <!-- Edit User Modal -->
@@ -286,6 +362,19 @@
       </table>
       <div class="modal-actions">
         <button class="secondary-btn" onclick="closeModal('user-memberships-modal')">Close</button>
+      </div>
+    </dialog>
+
+    <!-- Entity Features Modal (user or account) -->
+    <dialog id="entity-features-modal" style="width: 500px">
+      <h3 id="entity-features-title">Features</h3>
+      <div id="entity-features-help" class="muted"></div>
+      <div id="entity-features-list">
+        <!-- Features -->
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-btn" onclick="closeModal('entity-features-modal')">Close</button>
+        <button id="save-entity-features" onclick="saveEntityFeatures()">Update features</button>
       </div>
     </dialog>
 
@@ -387,6 +476,13 @@
       let currentUsers = [];
       let currentAccounts = [];
       let availablePlans = [];
+      let availableFeatures = [];
+      // The user or account whose features are shown in the features dialog
+      let featuresEntity = null;
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      }
 
       function getPlans() {
         if (availablePlans.length > 0) return availablePlans;
@@ -470,6 +566,7 @@
                     <td class="actions">
                         <button class="secondary-btn" onclick="openEditUser('${u.id}')">Edit</button>
                         <button class="secondary-btn" onclick="openUserMemberships('${u.id}')">Memberships</button>
+                        ${availableFeatures.length ? `<button class="secondary-btn" onclick="openEntityFeatures('user', '${u.id}')">Features</button>` : ''}
                         <button onclick="impersonate('${u.id}')">Impersonate</button>
                         <button style="background: #d93025; color: #fff;" onclick="deleteUser('${u.id}')">Delete</button>
                     </td>
@@ -497,6 +594,7 @@
                     <td class="actions">
                          <button class="secondary-btn" onclick="openEditAccount('${a.id}')">Edit</button>
                          <button class="secondary-btn" onclick="openMembers('${a.id}')">Members</button>
+                         ${availableFeatures.length ? `<button class="secondary-btn" onclick="openEntityFeatures('account', '${a.id}')">Features</button>` : ''}
                          <button style="background: #d93025; color: #fff;" onclick="deleteAccount('${a.id}')">Delete</button>
                     </td>
                 </tr>
@@ -804,6 +902,140 @@
         }
       }
 
+      // Status label for a feature: shut down, rolled out to all users, on, or off.
+      function featureStatusLabel(f) {
+        if (f.emergency_shutdown) return '<span class="label label-down">down</span>';
+        if (f.rolled_out_to_all_users) return '<span class="label label-all-users">all users</span>';
+        if (f.enabled) return '<span class="label label-on">on</span>';
+        return '<span class="label">off</span>';
+      }
+
+      function percentOf(count, total) {
+        return total ? Math.floor((count * 10000) / total) / 100 : 0;
+      }
+
+      async function loadFeatures() {
+        const data = await fetchAPI('/features');
+        if (!data) return;
+        availableFeatures = data.features;
+        document.getElementById('features-section').hidden = data.features.length === 0;
+        renderFeatures(data);
+      }
+
+      function renderFeatures({ features, total_users, total_accounts }) {
+        document.getElementById('features-table').innerHTML = features
+          .map((f) => {
+            const allUsers = f.rolled_out_to_all_users;
+            const userPercent = percentOf(f.user_count, total_users);
+            const accountPercent = percentOf(f.account_count, total_accounts);
+            return `
+                <tr class="${f.enabled ? 'feature-enabled' : 'feature-disabled'}">
+                    <td>${featureStatusLabel(f)}</td>
+                    <td>${escapeHtml(f.name)}</td>
+                    <td ${allUsers ? 'colspan="2"' : ''}>
+                      <label><input type="checkbox" ${allUsers ? 'checked' : ''} disabled /> All users</label>
+                    </td>
+                    ${
+                      allUsers
+                        ? ''
+                        : `<td>
+                      <div class="rollout">
+                        <div class="progress"><div style="width: ${userPercent}%"></div></div>
+                        <span>${f.user_count} users (${userPercent}%)</span>
+                        <div class="progress"><div style="width: ${accountPercent}%"></div></div>
+                        <span>${f.account_count} accounts (${accountPercent}%)</span>
+                      </div>
+                    </td>`
+                    }
+                </tr>
+            `;
+          })
+          .join('');
+      }
+
+      async function openEntityFeatures(kind, id) {
+        featuresEntity = { kind, id, features: [] };
+        const entity = kind === 'user' ? currentUsers.find((u) => u.id === id) : currentAccounts.find((a) => a.id === id);
+        const label = entity ? entity.name || entity.email || id : id;
+        document.getElementById('entity-features-title').textContent = `Features: ${label}`;
+        document.getElementById('entity-features-help').innerHTML =
+          kind === 'user'
+            ? `<p>You can enable or remove particular features for this user.</p>
+               <p>Keep in mind that if set for a user, it overrides account feature settings, so most of the time you might want to control features on the account level instead.</p>`
+            : '';
+        if (await refreshEntityFeatures()) {
+          document.getElementById('entity-features-modal').showModal();
+        }
+      }
+
+      async function refreshEntityFeatures() {
+        const { kind, id } = featuresEntity;
+        const features = await fetchAPI(`/${kind}s/${id}/features`);
+        if (!features) return false;
+        featuresEntity.features = features;
+        renderEntityFeatures();
+        return true;
+      }
+
+      // An override can't change a feature that is shut down, disabled or rolled out, or (for accounts) one the plan grants.
+      function isFeatureEditable(f) {
+        if (f.emergency_shutdown || !f.enabled || f.rolled_out_to_all_users) return false;
+        return !(featuresEntity.kind === 'account' && f.plan);
+      }
+
+      function renderEntityFeatures() {
+        const { kind, features } = featuresEntity;
+        document.getElementById('entity-features-list').innerHTML = features
+          .map((f) => {
+            const checked = f.rolled_out_to_all_users || f.override || (kind === 'account' && !!f.plan);
+            let itemClass = '';
+            let title = '';
+            if (f.emergency_shutdown) {
+              itemClass = 'shut-down';
+              title = 'Feature is shut down due to emergency';
+            } else if (!f.enabled) {
+              itemClass = 'disabled';
+              title = 'Feature is disabled';
+            }
+
+            let note = '';
+            if (f.enabled && f.rolled_out_to_all_users) {
+              note = '(Rolled out to all users)';
+            } else if (f.enabled && kind === 'account' && f.plan) {
+              note = `(Enabled by subscription plan: ${escapeHtml(f.plan.name)})`;
+            } else if (f.enabled && kind === 'user' && f.accounts.length > 0) {
+              note = `(Enabled in accounts: ${f.accounts.map((a) => escapeHtml(a.name || a.id)).join(', ')})`;
+            }
+
+            return `
+            <div class="feature-item ${itemClass}" title="${title}">
+              <label>
+                <input type="checkbox" data-feature-id="${escapeHtml(f.id)}" ${checked ? 'checked' : ''} ${isFeatureEditable(f) ? '' : 'disabled'} />
+                <span>${escapeHtml(f.name)} <span class="muted">${note}</span></span>
+              </label>
+            </div>
+          `;
+          })
+          .join('');
+        document.getElementById('save-entity-features').disabled = !features.some(isFeatureEditable);
+      }
+
+      async function saveEntityFeatures() {
+        const { kind, id, features } = featuresEntity;
+        const changes = features
+          .filter(isFeatureEditable)
+          .map((f) => ({ id: f.id, override: f.override, checked: document.querySelector(`[data-feature-id="${f.id}"]`).checked }))
+          .filter((c) => c.checked !== c.override);
+
+        const results = await Promise.all(
+          changes.map((c) => fetch(`${API_BASE}/${kind}s/${id}/features/${c.id}`, { method: c.checked ? 'PUT' : 'DELETE' })),
+        );
+
+        showToast(results.every((r) => r.ok) ? 'Features updated' : 'Failed to update some features');
+        await refreshEntityFeatures();
+        loadFeatures();
+      }
+
       function showToast(msg) {
         const toast = document.getElementById('toast');
         toast.innerText = msg;
@@ -811,9 +1043,11 @@
         setTimeout(() => (toast.style.opacity = 0), 3000);
       }
 
-      // Initial load
-      searchUsers();
-      searchAccounts();
+      // Initial load (features first, so the user and account rows know whether to show the Features button)
+      loadFeatures().then(() => {
+        searchUsers();
+        searchAccounts();
+      });
     </script>
   </body>
 </html>

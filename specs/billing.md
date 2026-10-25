@@ -13,7 +13,7 @@ The Subscription & Billing engine provides a flexible system for monetizing the 
 - **Attributes**:
   - `slug`: Unique identifier.
   - `name`: Display name.
-  - `capabilities`: Feature flags enabled for this plan.
+  - `capabilities`: Plan settings the application reads to adjust behavior, e.g. a boolean (`individual: true` limits the account to one member) or a numeric limit (`howto-limit: 10`). Feature flags granted by a plan are configured separately (see [features.md](features.md)).
   - `downgrade_to_slug`: Fallback plan upon cancellation.
   - `grace_period`: Days to wait for payment before downgrading.
 - **Hooks**: `account_activate_hook` and `account_deactivate_hook` for custom logic during plan changes.

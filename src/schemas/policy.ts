@@ -32,6 +32,8 @@ export const RequirementSchema = z.discriminatedUnion('mode', [
     provider: z.string(),
     condition: EntitlementConditionSchema,
   }),
+  // A feature flag enabled for the user (rolled-out features also allow anonymous visitors).
+  z.object({ mode: z.literal('feature'), feature: z.string() }),
 ]);
 
 /** Where a gate page body comes from. Exactly one of asset/origin. */

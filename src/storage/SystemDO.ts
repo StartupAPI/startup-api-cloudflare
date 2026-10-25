@@ -29,6 +29,18 @@ export class SystemDO extends DurableObject {
         member_count INTEGER DEFAULT 0,
         created_at INTEGER
       );
+
+      CREATE TABLE IF NOT EXISTS account_features (
+        account_id TEXT NOT NULL,
+        feature_id TEXT NOT NULL,
+        PRIMARY KEY (account_id, feature_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS user_features (
+        user_id TEXT NOT NULL,
+        feature_id TEXT NOT NULL,
+        PRIMARY KEY (user_id, feature_id)
+      );
     `);
   }
 
@@ -99,6 +111,7 @@ export class SystemDO extends DurableObject {
   async deleteUser(userId: string): Promise<{ success: boolean }> {
     // Delete from index
     this.sql.exec('DELETE FROM users WHERE id = ?', userId);
+    this.sql.exec('DELETE FROM user_features WHERE user_id = ?', userId);
 
     // Call UserDO to delete its data
     try {
@@ -209,6 +222,7 @@ export class SystemDO extends DurableObject {
   async deleteAccount(accountId: string): Promise<{ success: boolean }> {
     // Delete from index
     this.sql.exec('DELETE FROM accounts WHERE id = ?', accountId);
+    this.sql.exec('DELETE FROM account_features WHERE account_id = ?', accountId);
 
     // Call AccountDO to delete its data
     try {
@@ -260,5 +274,33 @@ export class SystemDO extends DurableObject {
     }
 
     return { success: true };
+  }
+
+  /** Mirror of account/user feature overrides, kept for usage counts (the source of truth is in each DO). */
+  async setFeatureIndex(kind: 'account' | 'user', entityId: string, featureId: string, enabled: boolean): Promise<void> {
+    const [table, column] = kind === 'account' ? ['account_features', 'account_id'] : ['user_features', 'user_id'];
+    if (enabled) {
+      this.sql.exec(`INSERT OR IGNORE INTO ${table} (${column}, feature_id) VALUES (?, ?)`, entityId, featureId);
+    } else {
+      this.sql.exec(`DELETE FROM ${table} WHERE ${column} = ? AND feature_id = ?`, entityId, featureId);
+    }
+  }
+
+  async getTotals(): Promise<{ users: number; accounts: number }> {
+    const users = this.sql.exec('SELECT COUNT(*) AS count FROM users').one().count as number;
+    const accounts = this.sql.exec('SELECT COUNT(*) AS count FROM accounts').one().count as number;
+    return { users, accounts };
+  }
+
+  async getFeatureCounts(): Promise<Record<string, { users: number; accounts: number }>> {
+    const counts: Record<string, { users: number; accounts: number }> = {};
+    for (const row of this.sql.exec('SELECT feature_id, COUNT(*) AS count FROM user_features GROUP BY feature_id')) {
+      counts[row.feature_id as string] = { users: row.count as number, accounts: 0 };
+    }
+    for (const row of this.sql.exec('SELECT feature_id, COUNT(*) AS count FROM account_features GROUP BY feature_id')) {
+      const id = row.feature_id as string;
+      counts[id] = { users: counts[id]?.users ?? 0, accounts: row.count as number };
+    }
+    return counts;
   }
 }

@@ -32,6 +32,8 @@ import type { Entitlements } from './entitlements/types';
 import { computeRedirectBase, getProvider } from './auth/providers';
 import { runEntitlementResync } from './entitlements/cron';
 import { handlePatreonWebhook } from './webhooks/patreon';
+import { Feature } from './features/Feature';
+import { resolveUserFeatures, staticallyEnabledFeatureIds, enabledIds } from './features/resolve';
 
 const DEFAULT_USERS_PATH = '/users/';
 const DEFAULT_CRON_SCHEDULE = '0 */6 * * *';
@@ -82,6 +84,17 @@ function resolveSessionTtlMs(session: StartupAPIConfig['session']): number {
     if (ms > 0) return ms;
   }
   return DEFAULT_SESSION_TTL_MS;
+}
+
+/** Fail fast when a plan grants a feature that is not defined (e.g. a typo in a plan's `features`). */
+function validatePlanFeatures(): void {
+  for (const plan of Plan.getAll()) {
+    for (const featureId of plan.features) {
+      if (!Feature.get(featureId)) {
+        throw new Error(`Plan '${plan.slug}' references unknown feature '${featureId}'`);
+      }
+    }
+  }
 }
 
 /** Resolve the access policy from factory config, else a backward-compatible all-public default. */
@@ -161,9 +174,14 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
   const patreonWebhookEnabled = providerConfigs.patreon?.entitlementWebhook === true;
 
   const fetch = async (request: Request, env: StartupAPIEnv, ctx: ExecutionContext): Promise<Response> => {
+    // Features first: plans and the access policy are validated against them.
+    if (!Feature.isInitialized()) {
+      Feature.init(parsed.features ?? []);
+    }
     if (!Plan.isInitialized()) {
       if (parsed.plans) Plan.init(parsed.plans as any);
       else initPlans();
+      validatePlanFeatures();
     }
     if (!AccessPolicy.isInitialized()) {
       AccessPolicy.init(resolveAccessPolicy(parsed.accessPolicy));
@@ -322,16 +340,20 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
         return originFetch(newRequest);
       }
 
+      // Never forward a client-supplied feature list; it is set below from the resolved features.
+      newRequest.headers.delete('X-StartupAPI-Features');
+
       const user = await getUserFromSession(request, env, cookieManager, sessionTtlMs);
       const authenticated = !!user;
       const userIsAdmin = user ? isAdmin(user, env) : false;
       let entitlements: Entitlements | null = null;
       let loginProvider: string | undefined;
+      let currentAccount: { account_id: string; role: number } | null = null;
 
       if (user) {
         newRequest.headers.set('X-StartupAPI-User-Id', user.id);
         const userStub = env.USER.get(env.USER.idFromString(user.id));
-        const currentAccount = await userStub.getCurrentAccount();
+        currentAccount = await userStub.getCurrentAccount();
         if (currentAccount) {
           newRequest.headers.set('X-StartupAPI-Account-Id', currentAccount.account_id);
         }
@@ -360,8 +382,19 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
         newRequest.headers.set(key, value);
       }
 
+      // Feature flags. Rolled-out/disabled features resolve from config; DOs are only read for the rest.
+      let features: Set<string> | undefined;
+      const allFeatures = Feature.getAll();
+      if (allFeatures.length > 0) {
+        const featureIds = user
+          ? enabledIds(await resolveUserFeatures(env, user.id, allFeatures, currentAccount?.account_id ?? null))
+          : staticallyEnabledFeatureIds(allFeatures);
+        features = new Set(featureIds);
+        newRequest.headers.set('X-StartupAPI-Features', featureIds.join(','));
+      }
+
       // Enforce the requirement. Admins bypass the gate (identity/headers above still apply).
-      const decision = evaluateAccess(rule, { authenticated, entitlements, isAdmin: userIsAdmin });
+      const decision = evaluateAccess(rule, { authenticated, entitlements, isAdmin: userIsAdmin, features });
       if (!decision.allow) {
         return denyResponse(decision, {
           usersPath,

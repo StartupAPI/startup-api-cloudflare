@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { AccessPolicySchema } from './policy';
+import { FeaturesConfigSchema } from './feature';
 
 /**
  * Zod schema + types for the StartupAPI configuration factory (see src/createStartupAPI.ts).
  *
  * Only non-secret behavior lives here — provider enablement, entitlement freshness, session lifetime,
- * access policy and plans. Credentials/secrets stay in env. Every field is optional and falls back to
+ * access policy, plans and feature flags. Credentials/secrets stay in env. Every field is optional and falls back to
  * env-derived defaults, so `createStartupAPI()` with no config behaves like the previous package.
  */
 
@@ -116,6 +117,8 @@ export const StartupAPIConfigSchema = z.object({
   session: SessionConfigSchema.optional(),
   // Plans are validated by the billing layer; accept an array passthrough here.
   plans: z.array(z.any()).optional(),
+  /** Feature flags (specs/features.md). Plans grant them through their `features` list. */
+  features: FeaturesConfigSchema.optional(),
 });
 
 export type ProviderOptions = z.infer<typeof ProviderOptionsSchema>;

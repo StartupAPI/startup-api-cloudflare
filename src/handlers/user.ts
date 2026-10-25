@@ -4,6 +4,8 @@ import { getUserFromSession, checkAndClearStaleSession, parseCookies, isAdmin } 
 import { Plan } from '../billing/Plan';
 import { UserProfileSchema } from '../schemas/user';
 import { DeleteCredentialSchema } from '../schemas/credential';
+import { Feature } from '../features/Feature';
+import { resolveUserFeatures, enabledIds } from '../features/resolve';
 
 const DEFAULT_USERS_PATH = '/users/';
 
@@ -46,6 +48,9 @@ export async function handleMe(request: Request, env: StartupAPIEnv, cookieManag
     // Fetch memberships to find current account
     const memberships = await userStub.getMemberships();
     const currentMembership = memberships.find((m: any) => m.is_current) || memberships[0];
+
+    // Feature flags enabled for this user (only contextual features read DO data)
+    data.features = enabledIds(await resolveUserFeatures(env, doId, Feature.getAll(), currentMembership?.account_id ?? null));
 
     if (currentMembership) {
       const accountId = env.ACCOUNT.idFromString(currentMembership.account_id);

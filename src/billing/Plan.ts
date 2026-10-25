@@ -20,6 +20,8 @@ export interface PlanConfig {
   slug: string;
   name: string;
   capabilities?: Record<string, boolean>;
+  /** Ids of feature flags this plan grants (see specs/features.md). Kept separate from capabilities. */
+  features?: string[];
   downgrade_to_slug?: string;
   grace_period?: number;
   schedules?: PaymentScheduleConfig[];
@@ -31,6 +33,7 @@ export class Plan {
   slug: string;
   name: string;
   capabilities: Record<string, boolean>;
+  features: string[];
   downgrade_to_slug?: string;
   grace_period: number;
   schedules: PaymentSchedule[];
@@ -41,6 +44,7 @@ export class Plan {
     this.slug = config.slug;
     this.name = config.name;
     this.capabilities = config.capabilities || {};
+    this.features = config.features || [];
     this.downgrade_to_slug = config.downgrade_to_slug;
     this.grace_period = config.grace_period || 0;
     this.schedules = (config.schedules || []).map((s) => new PaymentSchedule(s));
@@ -72,6 +76,10 @@ export class Plan {
 
   static getAll(): Plan[] {
     return Array.from(Plan.plans.values());
+  }
+
+  hasFeatureEnabled(featureId: string): boolean {
+    return this.features.includes(featureId);
   }
 
   getDefaultSchedule(): PaymentSchedule | undefined {

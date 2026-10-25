@@ -64,6 +64,11 @@ export class UserDO extends DurableObject {
         checked_at INTEGER,
         PRIMARY KEY (provider, subject_id)
       );
+
+      CREATE TABLE IF NOT EXISTS user_features (
+        feature_id TEXT PRIMARY KEY,
+        enabled_at INTEGER
+      );
     `);
 
     // Ensure the single row exists
@@ -379,6 +384,29 @@ export class UserDO extends DurableObject {
     }
 
     return membership;
+  }
+
+  /** Feature ids explicitly enabled for this user (overrides). Resolution runs in the worker. */
+  async getFeatureOverrides(): Promise<string[]> {
+    return Array.from(this.sql.exec('SELECT feature_id FROM user_features')).map((r: any) => r.feature_id as string);
+  }
+
+  async setFeatureOverride(featureId: string, enabled: boolean): Promise<{ success: boolean }> {
+    if (enabled) {
+      this.sql.exec('INSERT OR IGNORE INTO user_features (feature_id, enabled_at) VALUES (?, ?)', featureId, Date.now());
+    } else {
+      this.sql.exec('DELETE FROM user_features WHERE feature_id = ?', featureId);
+    }
+
+    // Update SystemDO index (usage counts)
+    try {
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.setFeatureIndex('user', this.ctx.id.toString(), featureId, enabled);
+    } catch (_e) {
+      console.error('Failed to update feature index in SystemDO', _e);
+    }
+
+    return { success: true };
   }
 
   async getImage(key: string): Promise<{ value: ArrayBuffer; mime_type: string } | null> {

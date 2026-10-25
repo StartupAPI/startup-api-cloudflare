@@ -286,6 +286,7 @@ Configure an ordered list of rules (first match wins) mapping a path pattern to 
 - **`public`** — anyone; the session is resolved and identity/entitlement headers are forwarded when present.
 - **`authenticated`** — any logged-in user.
 - **`entitlement`** — a provider condition: Patreon `active_patron`, a specific `benefit` (perk) ID, or a `tier` ID.
+- **`feature`** — a [feature flag](#feature-flags) enabled for the visitor (`{ mode: 'feature', feature: 'new_dashboard' }`). Anonymous visitors pass only for features rolled out to everyone.
 
 Patterns are exact (`/special`), prefix (`/app/*`), or `/` (homepage only). Each rule's `on_unauthorized` is `login` (redirect to sign in), `forbidden` (403), `upgrade` (redirect to `upgrade_url`, e.g. a Patreon join page), or `gate` (serve an explainer page **in place**, with no redirect — see below). When no policy is configured at all, every path is treated as `public` (backward compatible).
 
@@ -337,7 +338,7 @@ const accessPolicy = {
 
 ### Headers forwarded to the origin
 
-For non-`bypass` paths the worker forwards `X-StartupAPI-Authenticated`, `X-StartupAPI-Login-Provider`, a compact `X-StartupAPI-Entitlements` JSON, and (for Patreon) `X-StartupAPI-Patreon-Active` / `-Tiers` / `-Benefits` alongside the existing `X-StartupAPI-User-Id` / `-Account-Id`.
+For non-`bypass` paths the worker forwards `X-StartupAPI-Authenticated`, `X-StartupAPI-Login-Provider`, a compact `X-StartupAPI-Entitlements` JSON, and (for Patreon) `X-StartupAPI-Patreon-Active` / `-Tiers` / `-Benefits` alongside the existing `X-StartupAPI-User-Id` / `-Account-Id`. When [feature flags](#feature-flags) are configured, `X-StartupAPI-Features` lists the ids of the features enabled for the visitor (comma-separated).
 
 ### Keeping entitlements fresh
 
@@ -367,7 +368,7 @@ const api = createStartupAPI({
 
 ### Configuring via the factory
 
-Environment variables hold only credentials/secrets and the per-deployment values (`ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, `ENVIRONMENT`). Everything else — provider scopes, Patreon campaign id, the access policy, and entitlement freshness — is passed to `createStartupAPI(config)`. The plain re-export still works with defaults:
+Environment variables hold only credentials/secrets and the per-deployment values (`ORIGIN_URL`, `AUTH_ORIGIN`, `USERS_PATH`, `ADMIN_IDS`, `ENVIRONMENT`). Everything else — provider scopes, Patreon campaign id, the access policy, entitlement freshness, plans and feature flags — is passed to `createStartupAPI(config)`. The plain re-export still works with defaults:
 
 ```ts
 // Defaults — unchanged:
@@ -403,6 +404,48 @@ export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
 ```
 
 (Remember to add `triggers.crons` to your wrangler config when enabling cron.)
+
+## Feature flags
+
+Feature flags decouple deploying code from releasing it (see [specs/features.md](./specs/features.md)). Define features in code and grant them through plans:
+
+```ts
+const api = createStartupAPI({
+  features: [
+    { id: 'new_dashboard', name: 'New Dashboard' }, // off until granted by a plan or override
+    { id: 'reports', name: 'Reports', rolled_out_to_all_users: true }, // on for everyone
+    { id: 'legacy_export', name: 'Legacy export', emergency_shutdown: true }, // off everywhere
+  ],
+  plans: [
+    { slug: 'free', name: 'Free' },
+    { slug: 'pro', name: 'Pro', features: ['new_dashboard'] }, // unknown ids fail at startup
+  ],
+});
+```
+
+A feature is resolved in this order:
+
+1. `emergency_shutdown: true` or `enabled: false` → **off**.
+2. `rolled_out_to_all_users: true` → **on**.
+3. Otherwise it depends on the context: an account has it when its plan lists it or an admin enabled it for the account; a user has it when an admin enabled it for the user or when their current account has it.
+
+Steps 1–2 come from code config and need no storage reads, so rolled-out and disabled features are free. Account and user data is only read when at least one feature needs step 3. The global switches change with a deploy; per-account and per-user overrides are stored in the Durable Objects.
+
+How your app sees them:
+
+- **Origin requests:** the `X-StartupAPI-Features` header (e.g. `reports,new_dashboard`). A client-sent value is always replaced.
+- **Browser:** `features` in the `/users/api/me` response.
+- **Access policy:** the `feature` requirement mode.
+- **Worker code:** `import { Feature, hasFeature } from '@startup-api/cloudflare'`, then `await hasFeature(env, userId, 'new_dashboard')` or `await Feature.require('new_dashboard').isEnabledForAccount(env, accountId)`.
+
+Manage overrides in the admin dashboard (`/users/admin/`): the **Features** section lists each feature's status and how many users and accounts have overrides, and the **Features** button on a user or account opens its checkboxes. Features that are shut down, disabled, rolled out to everyone, or (for accounts) granted by the plan can't be overridden there. In code, use `Feature.require(id).enableForAccount` / `removeForAccount` / `enableForUser` / `removeForUser` and `getAccountCount` / `getUserCount`. The dashboard uses this admin API:
+
+| Method           | Path (under `/users/admin/api/`)                                    | Returns / does                                                                                                    |
+| ---------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `GET`            | `features`                                                          | `{ total_users, total_accounts, features }`: definitions, state (`on` / `off` / `contextual`) and override counts |
+| `GET`            | `accounts/:id/features`                                             | Each feature with `active`, `override`, and `plan` when the account's plan grants it                              |
+| `GET`            | `users/:id/features`                                                | Each feature with `active` (through the current account), `override`, and the user's `accounts` that have it      |
+| `PUT` / `DELETE` | `accounts/:id/features/:featureId`, `users/:id/features/:featureId` | Enable or remove an override                                                                                      |
 
 ## Contributing
 

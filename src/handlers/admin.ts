@@ -7,6 +7,97 @@ import { Plan } from '../billing/Plan';
 import { UserProfileSchema } from '../schemas/user';
 import { SystemAccountSchema, MemberSchema } from '../schemas/account';
 import { ImpersonateSchema } from '../schemas/admin';
+import { Feature } from '../features/Feature';
+import { resolveAccountFeatures, resolveUserFeatures } from '../features/resolve';
+
+/** Feature definition fields shared by the admin feature responses. */
+function featureDefinition(feature: Feature) {
+  return {
+    id: feature.id,
+    name: feature.name,
+    enabled: feature.enabled,
+    rolled_out_to_all_users: feature.rolled_out_to_all_users,
+    emergency_shutdown: feature.emergency_shutdown,
+    state: feature.staticState(),
+  };
+}
+
+/**
+ * Admin view of an account's features: `active` is the resolved state, `override` whether the account
+ * has an override, and `plan` the account's plan when that plan grants the feature.
+ */
+async function accountFeatures(env: StartupAPIEnv, accountId: string) {
+  const features = Feature.getAll();
+  const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
+  const [resolutions, context] = await Promise.all([resolveAccountFeatures(env, accountId, features), accountStub.getFeatureContext()]);
+  const plan = context.plan ? Plan.get(context.plan) : undefined;
+  return features.map((feature, i) => ({
+    ...featureDefinition(feature),
+    active: resolutions[i].enabled,
+    override: context.features.includes(feature.id),
+    plan: resolutions[i].source === 'plan' && plan ? { slug: plan.slug, name: plan.name } : null,
+  }));
+}
+
+/**
+ * Admin view of a user's features: `active` is the resolved state (through the current account),
+ * `override` whether the user has an override, and `accounts` the user's accounts that have the
+ * feature (any membership, not only the current account).
+ */
+async function userFeatures(env: StartupAPIEnv, userId: string) {
+  const features = Feature.getAll();
+  const userStub = env.USER.get(env.USER.idFromString(userId));
+  const [resolutions, overrides, memberships] = await Promise.all([
+    resolveUserFeatures(env, userId, features),
+    userStub.getFeatureOverrides(),
+    userStub.getMemberships(),
+  ]);
+  const contextual = features.filter((f) => f.staticState() === 'contextual');
+  const accounts: { id: string; name: string | null; features: string[] }[] = await Promise.all(
+    memberships.map(async (m: any) => {
+      const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(m.account_id));
+      const info = await accountStub.getInfo();
+      const resolved = await resolveAccountFeatures(env, m.account_id, contextual);
+      return { id: m.account_id as string, name: info.name ?? null, features: resolved.filter((r) => r.enabled).map((r) => r.id) };
+    }),
+  );
+  return features.map((feature, i) => ({
+    ...featureDefinition(feature),
+    active: resolutions[i].enabled,
+    override: overrides.includes(feature.id),
+    accounts: accounts.filter((a) => a.features.includes(feature.id)).map(({ id, name }) => ({ id, name })),
+  }));
+}
+
+/**
+ * Admin feature routes for one account or user: `GET .../features` lists features with their state
+ * for that account or user, `PUT|DELETE .../features/:featureId` enables or removes an override.
+ * `rest` is the path after the id.
+ */
+async function handleEntityFeatures(
+  request: Request,
+  env: StartupAPIEnv,
+  kind: 'account' | 'user',
+  entityId: string,
+  rest: string[],
+): Promise<Response | null> {
+  if (rest[0] !== 'features') return null;
+  if (rest.length === 1 && request.method === 'GET') {
+    return Response.json(kind === 'account' ? await accountFeatures(env, entityId) : await userFeatures(env, entityId));
+  }
+  if (rest.length === 2 && (request.method === 'PUT' || request.method === 'DELETE')) {
+    const feature = Feature.get(rest[1]);
+    if (!feature) return new Response('Unknown feature', { status: 404 });
+    const enable = request.method === 'PUT';
+    if (kind === 'account') {
+      await (enable ? feature.enableForAccount(env, entityId) : feature.removeForAccount(env, entityId));
+    } else {
+      await (enable ? feature.enableForUser(env, entityId) : feature.removeForUser(env, entityId));
+    }
+    return Response.json({ success: true });
+  }
+  return null;
+}
 
 export async function handleAdmin(
   request: Request,
@@ -51,6 +142,24 @@ export async function handleAdmin(
     try {
       const apiPath = path.replace('/api/', '');
       const parts = apiPath.split('/');
+
+      if (parts[0] === 'features' && parts.length === 1 && request.method === 'GET') {
+        const [counts, totals] = await Promise.all([systemStub.getFeatureCounts(), systemStub.getTotals()]);
+        return Response.json({
+          total_users: totals.users,
+          total_accounts: totals.accounts,
+          features: Feature.getAll().map((f) => ({
+            ...featureDefinition(f),
+            user_count: counts[f.id]?.users ?? 0,
+            account_count: counts[f.id]?.accounts ?? 0,
+          })),
+        });
+      }
+
+      if ((parts[0] === 'users' || parts[0] === 'accounts') && parts.length >= 3) {
+        const featuresRes = await handleEntityFeatures(request, env, parts[0] === 'users' ? 'user' : 'account', parts[1], parts.slice(2));
+        if (featuresRes) return featuresRes;
+      }
 
       if (parts[0] === 'users') {
         if (parts.length === 1 && request.method === 'GET') {
