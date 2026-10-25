@@ -30,8 +30,7 @@ git clone https://github.com/StartupAPI/startup-api-playground.git
 cd startup-api-playground
 npm install
 npm run link
-cp .dev.vars.example .dev.vars   # then set SESSION_SECRET
-npm run dev                      # http://localhost:8273
+npm run dev   # http://localhost:8273; creates .dev.vars on the first run
 ```
 
 Code changes here reload automatically. See the playground's README for logging in locally, admin access and what to try. When you add a feature, consider adding sample config and an origin page for it to the playground too.
