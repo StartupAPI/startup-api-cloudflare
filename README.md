@@ -220,6 +220,60 @@ By default the worker injects its own `<power-strip>` pinned to the top-right co
 - **Prefer an explicit closing tag.** `<power-strip></power-strip>` and `<power-strip/>` are both detected, but per the HTML spec `<power-strip/>` is _not_ truly self-closing — the browser treats it as an open tag and nests the following content inside it. Use a closing tag (or place the element last in its container) to avoid surprises.
 - **Script-only opt-out.** Use `<power-strip hidden>` to load `power-strip.js` (and its JS API) without rendering a visible strip.
 
+### Compact account control for your own header
+
+For apps with their own header or top bar, `variant="compact"` turns the power strip into a single account control sized for it: a **"Log in" pill** when signed out (a person icon and the words), and a **round avatar** when signed in that opens an **account menu** — name and email, account switching (when the user has more than one account), Account settings, Profile, Admin and Stop impersonating (when they apply), and Log out.
+
+```html
+<header>
+  …
+  <power-strip variant="compact"></power-strip>
+</header>
+```
+
+- **One provider, one click.** With a single provider, "Log in" links straight to it; with several it opens the provider dialog. Both log-in and log-out return to the page they were clicked on.
+- **Right on the first paint.** The worker writes `auth-state="signed-in|signed-out"` onto the element from the request's session, and the component remembers the last profile it showed (name and picture only, in `localStorage`), so a returning visitor's control appears in its final shape before `/api/me` answers. Pages that carry `auth-state` are sent with `Cache-Control: private`, since they now differ per visitor.
+- **No request while hidden.** A compact control that is hidden (`display: none`) waits to call `/api/me` until it is shown.
+
+**Theming.** Set the `--ps-*` custom properties on the element; declarations from your page win over the component's own light and dark defaults, so mapping them to your own variables makes it follow your themes:
+
+| Property                                                                                                          | Used for                                                  |
+| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `--ps-control-height`                                                                                             | The pill's height and the avatar's diameter (`2rem`)      |
+| `--ps-font`, `--ps-font-size`                                                                                     | Text in the pill and the menu                             |
+| `--ps-text`                                                                                                       | Pill text                                                 |
+| `--ps-control-bg`, `--ps-control-border`, `--ps-control-hover-bg`                                                 | The pill                                                  |
+| `--ps-accent`, `--ps-accent-contrast`                                                                             | The initials avatar (background and letters), checkmarks  |
+| `--ps-avatar-bg`, `--ps-avatar-fg`                                                                                | The avatar before a name is known                         |
+| `--ps-focus-ring`                                                                                                 | Keyboard focus outline                                    |
+| `--ps-menu-bg`, `--ps-menu-text`, `--ps-menu-muted`, `--ps-menu-border`, `--ps-menu-shadow`, `--ps-menu-hover-bg` | The account menu (default to the `--ps-dialog-*` colors)  |
+| `--ps-danger`, `--ps-warning`                                                                                     | Admin item; Stop impersonating and the impersonation ring |
+
+**Parts** for anything the properties don't cover: `login`, `login-icon`, `login-label`, `avatar-button`, `avatar`, `avatar-image`, `badge`, `menu`, `menu-header`, `menu-item`, `account-item`, `menu-pending`. Hiding the label leaves a circle exactly the size of the avatar, for narrow headers:
+
+```css
+@container header (max-width: 30rem) {
+  power-strip::part(login-label) {
+    display: none;
+  }
+}
+```
+
+**Reserving its space.** The element is empty until `power-strip.js` loads. Reserve its box so nothing in your header shifts when it appears — the avatar's size, or the pill's when the worker says the visitor is signed out:
+
+```css
+power-strip[variant='compact']:not(:defined) {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+}
+power-strip[variant='compact'][auth-state='signed-out']:not(:defined) {
+  width: 5.25rem; /* measure your pill */
+}
+```
+
+**JavaScript.** The element exposes `state` (`'signed-in'`, `'signed-out'` or `'unknown'`), `user`, `account`, a `ready` promise (the first server answer) and `refresh()`, and fires a bubbling, composed `power-strip:change` event whenever the sign-in state changes, with `{ state, source, user, account }` in `detail` (`source` is `server`, `hint`, `cache` or `fallback`). The full strip fires it too.
+
 ## Access policy & provider entitlements
 
 StartupAPI can gate access to paths and forward the visitor's login/entitlement status to your origin so it can render gated UI. This is **provider-agnostic infrastructure**; only Patreon currently implements perk-level (benefit/tier) checks — Google and Twitch participate at the login levels only.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { injectPowerStrip } from '../src/PowerStrip';
+import { injectPowerStrip, privateCacheControl } from '../src/PowerStrip';
 
 const USERS_PATH = '/users/';
 const PROVIDERS = ['google', 'twitch', 'patreon'];
@@ -43,11 +43,7 @@ describe('injectPowerStrip', () => {
   });
 
   it('auto-fills the providers attribute on a bare author element', async () => {
-    const res = await injectPowerStrip(
-      htmlResponse('<html><body><power-strip></power-strip></body></html>'),
-      USERS_PATH,
-      PROVIDERS,
-    );
+    const res = await injectPowerStrip(htmlResponse('<html><body><power-strip></power-strip></body></html>'), USERS_PATH, PROVIDERS);
     const html = await res.text();
 
     expect(html).toContain('providers="google,twitch,patreon"');
@@ -67,11 +63,7 @@ describe('injectPowerStrip', () => {
   });
 
   it('detects the self-closing-style <power-strip/> the same way', async () => {
-    const res = await injectPowerStrip(
-      htmlResponse('<html><body><power-strip/></body></html>'),
-      USERS_PATH,
-      PROVIDERS,
-    );
+    const res = await injectPowerStrip(htmlResponse('<html><body><power-strip/></body></html>'), USERS_PATH, PROVIDERS);
     const html = await res.text();
 
     expect(html).toContain(`<script type="module" src="${USERS_PATH}power-strip.js" async></script>`);
@@ -80,11 +72,7 @@ describe('injectPowerStrip', () => {
   });
 
   it('preserves the hidden attribute for the script-only opt-out', async () => {
-    const res = await injectPowerStrip(
-      htmlResponse('<html><body><power-strip hidden></power-strip></body></html>'),
-      USERS_PATH,
-      PROVIDERS,
-    );
+    const res = await injectPowerStrip(htmlResponse('<html><body><power-strip hidden></power-strip></body></html>'), USERS_PATH, PROVIDERS);
     const html = await res.text();
 
     expect(html).toContain('hidden');
@@ -98,5 +86,99 @@ describe('injectPowerStrip', () => {
 
     expect(res).toBe(original);
     expect(await res.text()).toBe('{"ok":true}');
+  });
+
+  it('keeps an author-set variant, filling in providers', async () => {
+    const res = await injectPowerStrip(
+      htmlResponse('<html><body><header><power-strip variant="compact"></power-strip></header></body></html>'),
+      USERS_PATH,
+      PROVIDERS,
+    );
+    const html = await res.text();
+
+    expect(html).toContain('variant="compact"');
+    expect(html).toContain('providers="google,twitch,patreon"');
+    expect(html).not.toContain(DEFAULT_STRIP_STYLE);
+    expect(countPowerStrips(html)).toBe(1);
+  });
+
+  it('writes auth-state on the author element from the session', async () => {
+    const signedIn = await injectPowerStrip(
+      htmlResponse('<html><body><power-strip variant="compact"></power-strip></body></html>'),
+      USERS_PATH,
+      PROVIDERS,
+      { authenticated: true },
+    );
+    expect(await signedIn.text()).toContain('auth-state="signed-in"');
+
+    const signedOut = await injectPowerStrip(
+      htmlResponse('<html><body><power-strip variant="compact"></power-strip></body></html>'),
+      USERS_PATH,
+      PROVIDERS,
+      { authenticated: false },
+    );
+    expect(await signedOut.text()).toContain('auth-state="signed-out"');
+  });
+
+  it("doesn't overwrite an author-set auth-state", async () => {
+    const res = await injectPowerStrip(
+      htmlResponse('<html><body><power-strip auth-state="signed-out"></power-strip></body></html>'),
+      USERS_PATH,
+      PROVIDERS,
+      { authenticated: true },
+    );
+    const html = await res.text();
+
+    expect(html).toContain('auth-state="signed-out"');
+    expect(html).not.toContain('auth-state="signed-in"');
+  });
+
+  it('writes auth-state on the default strip too', async () => {
+    const res = await injectPowerStrip(htmlResponse('<html><body><h1>Hi</h1></body></html>'), USERS_PATH, PROVIDERS, {
+      authenticated: false,
+    });
+    const html = await res.text();
+
+    expect(html).toContain(DEFAULT_STRIP_STYLE);
+    expect(html).toContain('auth-state="signed-out"');
+  });
+
+  it('leaves auth-state and caching alone when the session is not given', async () => {
+    const original = new Response('<html><body><power-strip></power-strip></body></html>', {
+      headers: { 'Content-Type': 'text/html', 'Cache-Control': 'public, max-age=60' },
+    });
+    const res = await injectPowerStrip(original, USERS_PATH, PROVIDERS);
+
+    expect(await res.text()).not.toContain('auth-state');
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=60');
+  });
+
+  it('marks a page that carries auth-state as private for caches', async () => {
+    const res = await injectPowerStrip(
+      new Response('<html><body><power-strip></power-strip></body></html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html', 'Cache-Control': 'public, max-age=60, s-maxage=600' },
+      }),
+      USERS_PATH,
+      PROVIDERS,
+      { authenticated: true },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('private, max-age=60');
+    expect(res.headers.get('Content-Type')).toBe('text/html');
+  });
+});
+
+describe('privateCacheControl', () => {
+  it('adds private, dropping public and s-maxage', () => {
+    expect(privateCacheControl(null)).toBe('private, no-cache');
+    expect(privateCacheControl('public, max-age=0, must-revalidate')).toBe('private, max-age=0, must-revalidate');
+    expect(privateCacheControl('s-maxage=300, max-age=10')).toBe('private, max-age=10');
+  });
+
+  it('keeps headers that already rule out shared caching', () => {
+    expect(privateCacheControl('private, max-age=60')).toBe('private, max-age=60');
+    expect(privateCacheControl('no-store')).toBe('no-store');
   });
 });

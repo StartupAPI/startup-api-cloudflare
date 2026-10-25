@@ -20,7 +20,10 @@
       }
       body {
         margin: 0;
-        font-family: system-ui, -apple-system, sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
         background: var(--page-bg);
         color: var(--page-fg);
         padding: 2rem;
@@ -78,15 +81,94 @@
         width: 1rem;
         height: 1rem;
       }
+      /* Compact variant: a host app's own 48px header with the control at the end. */
+      .bars {
+        display: grid;
+        gap: 1rem;
+        max-width: 44rem;
+        margin-top: 1rem;
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 48px;
+        padding: 0 12px;
+        border-radius: 0.5rem;
+        box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.4);
+      }
+      .bar .spacer {
+        flex: 1;
+      }
+      .bar.light {
+        background: #ffffff;
+        color: #222;
+      }
+      .bar.dark {
+        background: #15171a;
+        color: #e8eaed;
+      }
+      /* A host that maps the tokens to its own palette. */
+      .bar.themed {
+        background: #f4ede4;
+        color: #3b2a1a;
+      }
+      .bar.themed power-strip {
+        --ps-text: #3b2a1a;
+        --ps-control-bg: #ebe0d2;
+        --ps-control-border: #c9b49a;
+        --ps-control-hover-bg: #e0d1bd;
+        --ps-accent: #8a4b1f;
+        --ps-accent-contrast: #fff;
+        --ps-menu-bg: #fbf7f2;
+        --ps-menu-text: #3b2a1a;
+        --ps-menu-hover-bg: #efe4d6;
+      }
+      /* The icon-only look for narrow headers. */
+      .bar.narrow power-strip::part(login-label) {
+        display: none;
+      }
+      .states a {
+        margin-right: 0.75rem;
+      }
     </style>
+    <script>
+      // Stub the /users API for the compact demos, picked by ?state=: the page
+      // isn't behind the proxy, so there's no real session.
+      (() => {
+        const state = new URLSearchParams(location.search).get('state') || 'signed-out';
+        if (state === 'signed-out') return;
+        const me = {
+          valid: true,
+          profile: { name: 'Jane Doe', email: 'jane@example.test', picture: null, provider: 'patreon' },
+          credential: { provider: 'patreon' },
+          is_admin: state === 'admin',
+          is_impersonated: state === 'impersonated',
+        };
+        const accounts =
+          state === 'multi'
+            ? [
+                { account_id: 'a1', name: 'Personal', role: 1, is_current: 1 },
+                { account_id: 'a2', name: 'Workshop', role: 1, is_current: 0 },
+              ]
+            : [{ account_id: 'a1', name: 'Jane Doe', role: 1, is_current: 1 }];
+        const realFetch = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+          const url = String(input);
+          const json = (body) => Promise.resolve(new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }));
+          if (url.endsWith('/api/me')) return json(me);
+          if (url.endsWith('/api/me/accounts')) return json(accounts);
+          return realFetch(input, init);
+        };
+      })();
+    </script>
   </head>
   <body>
     <h1>Power Strip — color theme preview</h1>
     <p>
-      Each panel below is an independent "hosted page". The power strip measures the background it is
-      composited over and themes itself to match — while keeping a contrasting border and shadow so it
-      stays visible and distinguishable on every variation. Toggle your OS dark/light setting to watch
-      the preference-respecting panel (and this page) flip live.
+      Each panel below is an independent "hosted page". The power strip measures the background it is composited over and themes itself to
+      match — while keeping a contrasting border and shadow so it stays visible and distinguishable on every variation. Toggle your OS
+      dark/light setting to watch the preference-respecting panel (and this page) flip live.
     </p>
 
     <div class="panels">
@@ -109,6 +191,37 @@
           <svg class="bolt" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z" /></svg>
         </power-strip>
         <span class="label">Respects OS preference</span>
+      </div>
+    </div>
+
+    <h1>Compact variant — <code>variant="compact"</code></h1>
+    <p>
+      The account control a host places in its own header: a "Log in" pill when signed out, an avatar that opens the account menu when
+      signed in. Pick a state:
+    </p>
+    <p class="states">
+      <a href="?state=signed-out">Signed out</a>
+      <a href="?state=signed-in">Signed in</a>
+      <a href="?state=multi">Several accounts</a>
+      <a href="?state=admin">Admin</a>
+      <a href="?state=impersonated">Impersonating</a>
+    </p>
+    <div class="bars">
+      <div class="bar light">
+        <strong>Light header</strong><span class="spacer"></span>
+        <power-strip variant="compact" providers="patreon"></power-strip>
+      </div>
+      <div class="bar dark">
+        <strong>Dark header</strong><span class="spacer"></span>
+        <power-strip variant="compact" providers="patreon"></power-strip>
+      </div>
+      <div class="bar themed">
+        <strong>Host-themed header (--ps-* tokens)</strong><span class="spacer"></span>
+        <power-strip variant="compact" providers="google,patreon"></power-strip>
+      </div>
+      <div class="bar light narrow">
+        <strong>Narrow header (::part(login-label) hidden)</strong><span class="spacer"></span>
+        <power-strip variant="compact" providers="patreon"></power-strip>
       </div>
     </div>
 

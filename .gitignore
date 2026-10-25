@@ -171,3 +171,6 @@ wrangler.local.jsonc
 
 .DS_Store
 
+# Playwright (browser tests)
+test-results/
+playwright-report/

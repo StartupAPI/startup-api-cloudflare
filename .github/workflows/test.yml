@@ -19,3 +19,6 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm test
+      # Browser tests for the <power-strip> component; Firefox and WebKit run locally.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser -- --project=chromium

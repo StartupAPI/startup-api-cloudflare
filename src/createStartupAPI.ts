@@ -377,7 +377,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       const response = await originFetch(newRequest);
       const providers = getActiveProviders(env, providerConfigs);
       // Refresh the persistent session cookie's Max-Age when the DO extended the session (sliding renewal).
-      const decorated = await injectPowerStrip(response, usersPath, providers);
+      const decorated = await injectPowerStrip(response, usersPath, providers, { authenticated });
       return applySessionRenewal(decorated, user?.renew);
     }
 

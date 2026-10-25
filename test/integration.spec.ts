@@ -389,6 +389,23 @@ describe('Integration Tests', () => {
     expect(html).toContain('<power-strip providers="google,twitch,patreon"');
   });
 
+  it('should tell the power-strip who is signed in and keep the page out of shared caches', async () => {
+    const signedOut = await SELF.fetch('http://example.com/');
+    expect(await signedOut.text()).toContain('auth-state="signed-out"');
+    expect(signedOut.headers.get('Cache-Control')).toMatch(/\b(private|no-store)\b/);
+
+    const id = env.USER.newUniqueId();
+    const userStub = env.USER.get(id);
+    const { sessionId } = await userStub.createSession();
+    await userStub.updateProfile({ name: 'Power Strip Tester' });
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${id.toString()}`);
+    const signedIn = await SELF.fetch('http://example.com/', {
+      headers: { Cookie: `session_id=${encryptedCookie}` },
+    });
+    expect(await signedIn.text()).toContain('auth-state="signed-in"');
+    expect(signedIn.headers.get('Cache-Control')).toMatch(/\b(private|no-store)\b/);
+  });
+
   it('should append additional scopes configured via the factory to the OAuth auth URL', async () => {
     const api = createStartupAPI({ providers: { patreon: { scopes: 'identity.memberships' } } });
     const ctx = createExecutionContext();
