@@ -1,5 +1,8 @@
 export type StartupAPIEnv = {
   ORIGIN_URL: URL;
+  // Optional service binding to the origin Worker. When set, origin requests go through it instead of
+  // the public internet, so the origin can have no public URL at all. ORIGIN_URL becomes optional.
+  ORIGIN?: Fetcher;
   USERS_PATH: string;
   AUTH_ORIGIN: string;
   GOOGLE_CLIENT_ID: string;

@@ -50,9 +50,13 @@ function defaultEntitlementTtlMs(providerName?: string): number {
 }
 
 // The factory's request handler is a local `const fetch`, which would shadow the global fetch inside
-// its body. Use this alias to proxy to the origin via the *current* global fetch at call time (so test
-// spies on globalThis.fetch are honored).
-const originFetch = (...args: Parameters<typeof fetch>): Promise<Response> => globalThis.fetch(...args);
+// its body. Proxy to the origin through the ORIGIN service binding when one is configured, otherwise via
+// the *current* global fetch at call time (so test spies on globalThis.fetch are honored).
+const originFetch = (env: StartupAPIEnv, request: Request): Promise<Response> =>
+  env.ORIGIN ? env.ORIGIN.fetch(request) : globalThis.fetch(request);
+
+/** True when an origin is configured: a service binding, an ORIGIN_URL, or both. */
+const hasOrigin = (env: StartupAPIEnv): boolean => !!env.ORIGIN || !!env.ORIGIN_URL;
 
 /**
  * Remove every `X-StartupAPI-*` header the visitor sent. The origin trusts these headers for identity,
@@ -129,12 +133,13 @@ async function serveGatePage(source: PageSource, status: number, request: Reques
     assetReq.headers.set('x-skip-worker', 'true');
     res = await env.ASSETS.fetch(assetReq);
   } else {
-    // Proxy a path from ORIGIN_URL (swap host, set Host), like the main origin proxy.
-    const target = new URL(source.origin, new URL(env.ORIGIN_URL));
+    // Proxy a path from the origin (swap host, set Host), like the main origin proxy. With only a
+    // service binding and no ORIGIN_URL, the request keeps its own host.
+    const target = new URL(source.origin, env.ORIGIN_URL ? new URL(env.ORIGIN_URL) : reqUrl);
     const proxied = new Request(target.toString(), request);
     proxied.headers.set('Host', target.host);
     stripStartupAPIHeaders(proxied.headers);
-    res = await originFetch(proxied);
+    res = await originFetch(env, proxied);
   }
   // Re-stamp the status (e.g. a 200 asset can be served as the configured gate status).
   return new Response(res.body, { status, headers: res.headers });
@@ -209,7 +214,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       return env.ASSETS.fetch(request);
     }
 
-    if (!env.ORIGIN_URL || !env.SESSION_SECRET) {
+    if (!hasOrigin(env) || !env.SESSION_SECRET) {
       return env.ASSETS.fetch(request);
     }
 
@@ -338,16 +343,20 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       return env.ASSETS.fetch(newRequest);
     }
 
-    if (env.ORIGIN_URL) {
+    if (hasOrigin(env)) {
       // Evaluate the access policy BEFORE any identity work, so bypass paths are a raw proxy.
       const rule = AccessPolicy.evaluate(url.pathname);
       const requestOrigin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
       const returnUrl = url.pathname + url.search;
 
-      const originUrl = new URL(env.ORIGIN_URL);
-      url.protocol = originUrl.protocol;
-      url.host = originUrl.host;
-      url.port = originUrl.port;
+      // Point the request at ORIGIN_URL when one is set. With only a service binding, the origin
+      // receives the request at its public URL (the binding decides where it goes, not the host).
+      if (env.ORIGIN_URL) {
+        const originUrl = new URL(env.ORIGIN_URL);
+        url.protocol = originUrl.protocol;
+        url.host = originUrl.host;
+        url.port = originUrl.port;
+      }
 
       const newRequest = new Request(url.toString(), request);
       newRequest.headers.set('Host', url.host);
@@ -357,7 +366,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
 
       if (rule.requirement.mode === 'bypass') {
         // Pure pass-through: no identity resolution, no headers, no power-strip injection.
-        return originFetch(newRequest);
+        return originFetch(env, newRequest);
       }
 
       const user = await getUserFromSession(request, env, cookieManager, sessionTtlMs);
@@ -433,7 +442,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
         });
       }
 
-      const response = await originFetch(newRequest);
+      const response = await originFetch(env, newRequest);
       const providers = getActiveProviders(env, providerConfigs);
       // Refresh the persistent session cookie's Max-Age when the DO extended the session (sliding renewal).
       const decorated = await injectPowerStrip(response, usersPath, providers, { authenticated, features: htmlFeatures });
