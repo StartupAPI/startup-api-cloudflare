@@ -44,6 +44,8 @@ describe('Billing Logic in AccountDO', () => {
   it('should subscribe to a new plan', async () => {
     const id = env.ACCOUNT.newUniqueId();
     const stub = env.ACCOUNT.get(id);
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerAccount({ id: id.toString(), name: 'Subscription Test Account' });
 
     // Subscribe to Pro
     const result: any = await stub.subscribe('pro', 0);
@@ -59,6 +61,9 @@ describe('Billing Logic in AccountDO', () => {
     // Verify getInfo also has the correct plan
     const accountInfo: any = await stub.getInfo();
     expect(accountInfo.plan).toBe('pro');
+
+    const indexedAccount = (await systemStub.listAccounts()).find((account: any) => account.id === id.toString());
+    expect(indexedAccount).toMatchObject({ plan: 'pro', status: 'active' });
   });
 
   it('should fail to subscribe to invalid plan', async () => {
@@ -71,14 +76,22 @@ describe('Billing Logic in AccountDO', () => {
   it('should cancel subscription', async () => {
     const id = env.ACCOUNT.newUniqueId();
     const stub = env.ACCOUNT.get(id);
+    const systemStub = env.SYSTEM.get(env.SYSTEM.idFromName('global'));
+    await systemStub.registerAccount({ id: id.toString(), name: 'Cancellation Test Account' });
 
     // Subscribe first
     await stub.subscribe('pro');
+
+    const indexedAccountAfterSubscribe = (await systemStub.listAccounts()).find((account: any) => account.id === id.toString());
+    expect(indexedAccountAfterSubscribe).toMatchObject({ plan: 'pro', status: 'active' });
 
     // Cancel
     const result: any = await stub.cancelSubscription();
     expect(result.state.status).toBe('canceled');
     expect(result.state.next_plan_slug).toBe('free'); // Based on plansConfig.ts
+
+    const indexedAccountAfterCancel = (await systemStub.listAccounts()).find((account: any) => account.id === id.toString());
+    expect(indexedAccountAfterCancel).toMatchObject({ plan: 'pro', status: 'canceled' });
   });
 
   it('should support enterprise plan', async () => {

@@ -251,6 +251,33 @@ export class SystemDO extends DurableObject {
     this.sql.exec('UPDATE accounts SET member_count = ? WHERE id = ?', count, accountId);
   }
 
+  async updateAccountIndex(accountId: string, data: Partial<SystemAccount>): Promise<void> {
+    this.updateAccountIndexRows(accountId, SystemAccountSchema.partial().parse(data));
+  }
+
+  private updateAccountIndexRows(accountId: string, data: Partial<SystemAccount>): void {
+    const updates: string[] = [];
+    const args: any[] = [];
+
+    if (data.name !== undefined) {
+      updates.push('name = ?');
+      args.push(data.name);
+    }
+    if (data.status !== undefined) {
+      updates.push('status = ?');
+      args.push(data.status);
+    }
+    if (data.plan !== undefined) {
+      updates.push('plan = ?');
+      args.push(data.plan);
+    }
+
+    if (updates.length > 0) {
+      args.push(accountId);
+      this.sql.exec(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`, ...args);
+    }
+  }
+
   async updateAccount(accountId: string, data: Partial<SystemAccount>): Promise<{ success: boolean }> {
     const validatedData = SystemAccountSchema.partial().parse(data);
 
@@ -262,28 +289,8 @@ export class SystemDO extends DurableObject {
       console.error('Failed to update AccountDO', e);
     }
 
-    // Update Index
-    const updates: string[] = [];
-    const args: any[] = [];
-
-    if (validatedData.name !== undefined) {
-      updates.push('name = ?');
-      args.push(validatedData.name);
-    }
-    if (validatedData.status !== undefined) {
-      updates.push('status = ?');
-      args.push(validatedData.status);
-    }
-    // Plan update usually via billing, but if forced:
-    if (validatedData.plan !== undefined) {
-      updates.push('plan = ?');
-      args.push(validatedData.plan);
-    }
-
-    if (updates.length > 0) {
-      args.push(accountId);
-      this.sql.exec(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`, ...args);
-    }
+    // Keep the index update shared with billing-driven plan changes.
+    this.updateAccountIndexRows(accountId, validatedData);
 
     return { success: true };
   }
