@@ -100,6 +100,9 @@ async function handleEntityFeatures(
   return null;
 }
 
+/** Detail pages served by the dashboard page: /users/<id> and /accounts/<id>. */
+const ADMIN_PAGE_PATH = /^\/(users|accounts)\/[^/]+\/?$/;
+
 export async function handleAdmin(
   request: Request,
   env: StartupAPIEnv,
@@ -116,7 +119,9 @@ export async function handleAdmin(
   const url = new URL(request.url);
   const path = url.pathname.replace(usersPath + 'admin', '');
 
-  if (path === '/' || path === '') {
+  // The dashboard and the user / account pages share one page; its script picks the view from the
+  // path, so these URLs survive a reload and can be shared.
+  if (path === '/' || path === '' || ADMIN_PAGE_PATH.test(path)) {
     url.pathname = '/users/admin/';
     const newRequest = new Request(url.toString(), request);
     newRequest.headers.set('x-skip-worker', 'true');
@@ -168,7 +173,19 @@ export async function handleAdmin(
         }
         if (parts.length === 2) {
           const userId = parts[1];
-          if (request.method === 'GET') return Response.json(await systemStub.getUser(userId));
+          if (request.method === 'GET') {
+            // The index row (provider, created_at, is_admin), the profile, and the credentials.
+            const userStub = env.USER.get(env.USER.idFromString(userId));
+            const [[row], profile, credentials] = await Promise.all([
+              systemStub.getUsersByIds([userId]),
+              systemStub.getUser(userId),
+              userStub.listCredentials(),
+            ]);
+            if (!row) return new Response('Not Found', { status: 404 });
+            // The profile is the fresher source, but only for the fields it actually has.
+            const setFields = Object.fromEntries(Object.entries(profile ?? {}).filter(([, v]) => v !== null && v !== undefined));
+            return Response.json({ ...row, ...setFields, id: userId, credentials });
+          }
           if (request.method === 'DELETE') return Response.json(await systemStub.deleteUser(userId));
           if (request.method === 'PATCH' || request.method === 'PUT') {
             const data = await request.json();
@@ -178,7 +195,10 @@ export async function handleAdmin(
         }
         if (parts.length === 3 && parts[2] === 'memberships' && request.method === 'GET') {
           const userId = parts[1];
-          return Response.json(await systemStub.getUserMemberships(userId));
+          // Each membership with its account's name, status and plan, for the user page.
+          const memberships = await systemStub.getUserMemberships(userId);
+          const accounts = await systemStub.getAccountsByIds(memberships.map((m: any) => m.account_id));
+          return Response.json(memberships.map((m: any) => ({ ...m, account: accounts.find((a: any) => a.id === m.account_id) ?? null })));
         }
       } else if (parts[0] === 'accounts') {
         if (parts.length === 1) {
@@ -191,7 +211,11 @@ export async function handleAdmin(
         }
         if (parts.length === 2) {
           const accountId = parts[1];
-          if (request.method === 'GET') return Response.json(await systemStub.getAccount(accountId));
+          if (request.method === 'GET') {
+            const [[row], account] = await Promise.all([systemStub.getAccountsByIds([accountId]), systemStub.getAccount(accountId)]);
+            if (!row) return new Response('Not Found', { status: 404 });
+            return Response.json({ ...row, ...account, id: accountId });
+          }
           if (request.method === 'PUT') {
             const data = await request.json();
             const validatedData = SystemAccountSchema.partial().parse(data);
@@ -203,7 +227,12 @@ export async function handleAdmin(
           const accountId = parts[1];
           const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromString(accountId));
           if (parts.length === 3) {
-            if (request.method === 'GET') return Response.json(await accountStub.getMembers());
+            if (request.method === 'GET') {
+              // Each member with their name, email and picture, for the account page.
+              const members = await accountStub.getMembers();
+              const users = await systemStub.getUsersByIds(members.map((m: any) => m.user_id));
+              return Response.json(members.map((m: any) => ({ ...m, user: users.find((u: any) => u.id === m.user_id) ?? null })));
+            }
             if (request.method === 'POST') {
               const data = await request.json();
               const { user_id, role } = MemberSchema.parse(data);
@@ -211,6 +240,9 @@ export async function handleAdmin(
             }
           } else if (parts.length === 4 && request.method === 'DELETE') {
             return Response.json(await accountStub.removeMember(parts[3]));
+          } else if (parts.length === 4 && request.method === 'PATCH') {
+            const { role } = MemberSchema.pick({ role: true }).parse(await request.json());
+            return Response.json(await accountStub.updateMemberRole(parts[3], role));
           }
         }
       } else if (parts[0] === 'impersonate' && request.method === 'POST') {

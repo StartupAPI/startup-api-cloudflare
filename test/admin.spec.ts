@@ -658,4 +658,110 @@ describe('Admin Administration', () => {
     expect(res.status).toBe(400);
     expect(await res.text()).toBe('Cannot impersonate yourself');
   });
+
+  describe('user and account pages', () => {
+    async function adminCookie(): Promise<string> {
+      const adminId = env.USER.idFromName('admin');
+      const { sessionId } = await env.USER.get(adminId).createSession();
+      return `session_id=${await cookieManager.encrypt(`${sessionId}:${adminId.toString()}`)}`;
+    }
+
+    const api = (path: string, cookie: string, init: RequestInit = {}) =>
+      SELF.fetch(`http://example.com/users/admin/api${path}`, {
+        ...init,
+        headers: { Cookie: cookie, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+      });
+
+    /** A user in the system index, with a profile and a credential, who is a member of a new account. */
+    async function userInAccount(cookie: string) {
+      const userId = env.USER.newUniqueId();
+      const userIdStr = userId.toString();
+      const userStub = env.USER.get(userId);
+      await userStub.updateProfile({ name: 'Page User', email: 'page@example.com' });
+      await userStub.addCredential('test', `page-${userIdStr}`);
+      await env.CREDENTIAL.get(env.CREDENTIAL.idFromName('test')).put({
+        subject_id: `page-${userIdStr}`,
+        user_id: userIdStr,
+        profile_data: { email: 'page@example.com' },
+      });
+      await env.SYSTEM.get(env.SYSTEM.idFromName('global')).registerUser({
+        id: userIdStr,
+        name: 'Page User',
+        email: 'page@example.com',
+        provider: 'test',
+      });
+      const createRes = await api('/accounts', cookie, { method: 'POST', body: JSON.stringify({ name: 'Page Account', plan: 'pro' }) });
+      const { id: accountId } = (await createRes.json()) as any;
+      await api(`/accounts/${accountId}/members`, cookie, { method: 'POST', body: JSON.stringify({ user_id: userIdStr, role: 0 }) });
+      await userStub.switchAccount(accountId);
+      return { userIdStr, accountId, userStub };
+    }
+
+    it('serves the dashboard page at /users/admin/users/<id> and /users/admin/accounts/<id>', async () => {
+      const cookie = await adminCookie();
+      for (const path of ['/users/admin/users/abc', '/users/admin/accounts/abc/']) {
+        const res = await SELF.fetch(`http://example.com${path}`, { headers: { Cookie: cookie } });
+        expect(res.status, path).toBe(200);
+        const html = await res.text();
+        expect(html).toContain('<title>Admin Dashboard</title>');
+        expect(html).not.toContain('{{ssr:plans_json}}');
+      }
+    });
+
+    it('keeps the user and account pages admin-only', async () => {
+      const res = await SELF.fetch('http://example.com/users/admin/users/abc');
+      expect(res.status).toBe(403);
+    });
+
+    it('returns a user with their index row, profile and credentials', async () => {
+      const cookie = await adminCookie();
+      const { userIdStr } = await userInAccount(cookie);
+      const res = await api(`/users/${userIdStr}`, cookie);
+      expect(res.status).toBe(200);
+      const user = (await res.json()) as any;
+      expect(user).toMatchObject({ id: userIdStr, name: 'Page User', email: 'page@example.com', provider: 'test', is_admin: false });
+      expect(user.created_at).toBeGreaterThan(0);
+      expect(user.credentials).toEqual([expect.objectContaining({ provider: 'test', subject_id: `page-${userIdStr}` })]);
+    });
+
+    it('returns 404 for a user or account the system index does not know', async () => {
+      const cookie = await adminCookie();
+      expect((await api(`/users/${env.USER.newUniqueId().toString()}`, cookie)).status).toBe(404);
+      expect((await api(`/accounts/${env.ACCOUNT.newUniqueId().toString()}`, cookie)).status).toBe(404);
+    });
+
+    it("lists a user's memberships with each account's name and plan", async () => {
+      const cookie = await adminCookie();
+      const { userIdStr, accountId } = await userInAccount(cookie);
+      const memberships = (await (await api(`/users/${userIdStr}/memberships`, cookie)).json()) as any[];
+      expect(memberships).toEqual([
+        expect.objectContaining({
+          account_id: accountId,
+          role: 0,
+          account: expect.objectContaining({ name: 'Page Account', plan: 'pro' }),
+        }),
+      ]);
+    });
+
+    it("lists an account's members with each user's name and email", async () => {
+      const cookie = await adminCookie();
+      const { userIdStr, accountId } = await userInAccount(cookie);
+      const account = (await (await api(`/accounts/${accountId}`, cookie)).json()) as any;
+      expect(account).toMatchObject({ id: accountId, name: 'Page Account', member_count: 1 });
+      const members = (await (await api(`/accounts/${accountId}/members`, cookie)).json()) as any[];
+      expect(members).toEqual([
+        expect.objectContaining({ user_id: userIdStr, user: expect.objectContaining({ name: 'Page User', email: 'page@example.com' }) }),
+      ]);
+    });
+
+    it("changes a member's role and keeps it the user's current account", async () => {
+      const cookie = await adminCookie();
+      const { userIdStr, accountId, userStub } = await userInAccount(cookie);
+      const res = await api(`/accounts/${accountId}/members/${userIdStr}`, cookie, { method: 'PATCH', body: JSON.stringify({ role: 1 }) });
+      expect(res.status).toBe(200);
+      const members = (await (await api(`/accounts/${accountId}/members`, cookie)).json()) as any[];
+      expect(members.find((m) => m.user_id === userIdStr)?.role).toBe(1);
+      expect(await userStub.getMemberships()).toEqual([expect.objectContaining({ account_id: accountId, role: 1, is_current: 1 })]);
+    });
+  });
 });

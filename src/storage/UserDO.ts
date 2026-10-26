@@ -231,7 +231,12 @@ export class UserDO extends DurableObject {
   }
 
   /** Write-through update of the entitlements cache after a refresh (login / TTL / cron / webhook). */
-  async setEntitlements(provider: string, subject_id: string, data: Record<string, any>, checked_at: number): Promise<{ success: boolean }> {
+  async setEntitlements(
+    provider: string,
+    subject_id: string,
+    data: Record<string, any>,
+    checked_at: number,
+  ): Promise<{ success: boolean }> {
     this.sql.exec(
       'INSERT OR REPLACE INTO entitlements_cache (provider, subject_id, data, checked_at) VALUES (?, ?, ?, ?)',
       provider,
@@ -287,7 +292,10 @@ export class UserDO extends DurableObject {
    * @param ttlMs - Session lifetime in milliseconds. Defaults to a 24h safety fallback; callers pass the resolved value.
    * @returns A Promise resolving to a JSON response with the session ID and expiration time.
    */
-  async createSession(meta?: Record<string, any>, ttlMs: number = DEFAULT_SESSION_TTL_MS): Promise<{ sessionId: string; expiresAt: number }> {
+  async createSession(
+    meta?: Record<string, any>,
+    ttlMs: number = DEFAULT_SESSION_TTL_MS,
+  ): Promise<{ sessionId: string; expiresAt: number }> {
     // Basic session creation
     const sessionId = crypto.randomUUID();
     const now = Date.now();
@@ -339,6 +347,12 @@ export class UserDO extends DurableObject {
       role,
       is_current ? 1 : 0,
     );
+    return { success: true };
+  }
+
+  /** Change the role of an existing membership, keeping which account is current. */
+  async updateMembershipRole(account_id: string, role: number): Promise<{ success: boolean }> {
+    this.sql.exec('UPDATE memberships SET role = ? WHERE account_id = ?', role, account_id);
     return { success: true };
   }
 

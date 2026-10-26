@@ -240,6 +240,83 @@
         opacity: 0.7;
         font-size: 0.85rem;
       }
+      a {
+        color: #1a73e8;
+      }
+      /* Status badges on the user and account pages (as in the PHP StartupAPI admin) */
+      .label-admin {
+        background: #d93025;
+      }
+      .label-plan {
+        background: #1a73e8;
+        text-decoration: none;
+      }
+      .label-current {
+        background: #1e8e3e;
+      }
+      .danger-btn {
+        background: #d93025;
+        color: #fff;
+      }
+      .danger-btn:hover {
+        background: #b3261e;
+      }
+      .back-link {
+        display: inline-block;
+        margin-bottom: 1rem;
+      }
+      .entity-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+      }
+      .entity-header h2 {
+        margin: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .entity-id {
+        font-size: 0.85rem;
+        font-weight: normal;
+        opacity: 0.7;
+      }
+      .entity-actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        vertical-align: middle;
+      }
+      .entity-header .avatar {
+        width: 40px;
+        height: 40px;
+      }
+      .name-cell {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .inline-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: flex-end;
+      }
+      .inline-form .form-group {
+        margin-bottom: 0;
+        min-width: 12rem;
+        flex: 1;
+      }
+      .credentials li {
+        margin-bottom: 0.25rem;
+      }
     </style>
   </head>
   <body data-ssr-plans="{{ssr:plans_json}}">
@@ -248,168 +325,247 @@
     </power-strip>
     <script type="module" src="/users/power-strip.js" async></script>
 
-    <h1>StartupAPI Admin</h1>
+    <h1><a href="/users/admin/" style="color: inherit; text-decoration: none">StartupAPI Admin</a></h1>
 
-    <section id="users-section">
-      <h2>Users</h2>
-      <form
-        class="search-bar"
-        onsubmit="
-          event.preventDefault();
-          searchUsers();
-        "
-      >
-        <input type="text" id="user-search" placeholder="Search users by name or email..." />
-        <button type="submit">Search</button>
-      </form>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Provider</th>
-            <th>Created</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="users-table">
-          <!-- Users -->
-        </tbody>
-      </table>
-    </section>
+    <!-- The dashboard: users, accounts and features. Rows link to the user and account pages. -->
+    <div id="list-view" hidden>
+      <section id="users-section">
+        <h2>Users</h2>
+        <form
+          class="search-bar"
+          onsubmit="
+            event.preventDefault();
+            searchUsers();
+          "
+        >
+          <input type="text" id="user-search" placeholder="Search users by name or email..." />
+          <button type="submit">Search</button>
+        </form>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Provider</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="users-table">
+            <!-- Users -->
+          </tbody>
+        </table>
+      </section>
 
-    <section id="accounts-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem">
-        <h2>Accounts</h2>
-        <button onclick="openCreateAccount()">Create Account</button>
-      </div>
-      <form
-        class="search-bar"
-        onsubmit="
-          event.preventDefault();
-          searchAccounts();
-        "
-      >
-        <input type="text" id="account-search" placeholder="Search accounts by name..." />
-        <button type="submit">Search</button>
-      </form>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Plan</th>
-            <th>Members</th>
-            <th>Created</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="accounts-table">
-          <!-- Accounts -->
-        </tbody>
-      </table>
-    </section>
+      <section id="accounts-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem">
+          <h2>Accounts</h2>
+          <button onclick="openCreateAccount()">Create Account</button>
+        </div>
+        <form
+          class="search-bar"
+          onsubmit="
+            event.preventDefault();
+            searchAccounts();
+          "
+        >
+          <input type="text" id="account-search" placeholder="Search accounts by name..." />
+          <button type="submit">Search</button>
+        </form>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Plan</th>
+              <th>Members</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="accounts-table">
+            <!-- Accounts -->
+          </tbody>
+        </table>
+      </section>
 
-    <section id="features-section" hidden>
-      <h2>Features</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Enabled</th>
-            <th>Feature</th>
-            <th colspan="2">Rolled-out to</th>
-          </tr>
-        </thead>
-        <tbody id="features-table">
-          <!-- Features -->
-        </tbody>
-      </table>
-    </section>
+      <section id="features-section" hidden>
+        <h2>Features</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Enabled</th>
+              <th>Feature</th>
+              <th colspan="2">Rolled-out to</th>
+            </tr>
+          </thead>
+          <tbody id="features-table">
+            <!-- Features -->
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <!-- A user's page (/users/admin/users/<id>), laid out like the PHP StartupAPI admin's user.php -->
+    <div id="user-view" hidden>
+      <a class="back-link" href="/users/admin/">&larr; All users</a>
+      <section>
+        <div class="entity-header">
+          <h2 id="user-title"></h2>
+          <div class="entity-actions">
+            <button id="user-impersonate" onclick="impersonate(viewId)">Impersonate</button>
+            <button class="danger-btn" onclick="deleteUser(viewId)">Delete</button>
+          </div>
+        </div>
+        <p id="user-email"></p>
+        <p id="user-registered"></p>
+        <p id="user-provider"></p>
+      </section>
+
+      <section>
+        <h3>Profile</h3>
+        <form
+          class="inline-form"
+          onsubmit="
+            event.preventDefault();
+            saveUser();
+          "
+        >
+          <div class="form-group">
+            <label for="edit-user-name">Name</label>
+            <input type="text" id="edit-user-name" />
+          </div>
+          <div class="form-group">
+            <label for="edit-user-email">Email</label>
+            <input type="text" id="edit-user-email" />
+          </div>
+          <button type="submit">Save</button>
+        </form>
+      </section>
+
+      <section>
+        <h3>Authentication Credentials</h3>
+        <ul class="credentials" id="user-credentials"></ul>
+      </section>
+
+      <section>
+        <h3>Accounts</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Role</th>
+              <th>Plan</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="user-accounts-table"></tbody>
+        </table>
+      </section>
+
+      <section id="user-features-section" hidden>
+        <h3>Features</h3>
+        <p>You can enable or remove particular features for this user.</p>
+        <p class="muted">
+          Keep in mind that if set for a user, it overrides account feature settings, so most of the time you might want to control features
+          on the account level instead.
+        </p>
+        <div id="user-features-list"></div>
+        <button class="save-features" onclick="saveEntityFeatures()">Update features</button>
+      </section>
+    </div>
+
+    <!-- An account's page (/users/admin/accounts/<id>), laid out like the PHP StartupAPI admin's account.php -->
+    <div id="account-view" hidden>
+      <a class="back-link" href="/users/admin/">&larr; All accounts</a>
+      <section>
+        <div class="entity-header">
+          <h2 id="account-title"></h2>
+          <div class="entity-actions">
+            <button class="danger-btn" onclick="deleteAccount(viewId)">Delete</button>
+          </div>
+        </div>
+        <p id="account-status"></p>
+        <p id="account-created"></p>
+      </section>
+
+      <section>
+        <h3>Edit Account</h3>
+        <form
+          class="inline-form"
+          onsubmit="
+            event.preventDefault();
+            saveAccount();
+          "
+        >
+          <div class="form-group">
+            <label for="edit-account-name">Name</label>
+            <input type="text" id="edit-account-name" />
+          </div>
+          <div class="form-group">
+            <label for="edit-account-status">Status</label>
+            <select id="edit-account-status">
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="canceled">Canceled</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-account-plan">Plan</label>
+            <select id="edit-account-plan">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <button type="submit">Save</button>
+        </form>
+      </section>
+
+      <section>
+        <h3>Account Users</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Role</th>
+              <th>Joined</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="account-members-table"></tbody>
+        </table>
+        <h4>Add a user</h4>
+        <form
+          class="inline-form"
+          onsubmit="
+            event.preventDefault();
+            addMember();
+          "
+        >
+          <div class="form-group">
+            <label for="add-member-user">User</label>
+            <select id="add-member-user">
+              <option value="">-- Select User --</option>
+            </select>
+          </div>
+          <div class="form-group" style="min-width: 8rem; flex: 0">
+            <label for="add-member-role">Role</label>
+            <select id="add-member-role">
+              <option value="0">User</option>
+              <option value="1">Admin</option>
+            </select>
+          </div>
+          <button type="submit">Add</button>
+        </form>
+      </section>
+
+      <section id="account-features-section" hidden>
+        <h3>Features</h3>
+        <div id="account-features-list"></div>
+        <button class="save-features" onclick="saveEntityFeatures()">Update features</button>
+      </section>
+    </div>
 
     <div id="toast"></div>
-
-    <!-- Edit User Modal -->
-    <dialog id="edit-user-modal">
-      <h3>Edit User</h3>
-      <input type="hidden" id="edit-user-id" />
-      <div class="form-group">
-        <label for="edit-user-name">Name</label>
-        <input type="text" id="edit-user-name" />
-      </div>
-      <div class="form-group">
-        <label for="edit-user-email">Email</label>
-        <input type="text" id="edit-user-email" />
-      </div>
-      <div class="modal-actions">
-        <button class="secondary-btn" onclick="closeModal('edit-user-modal')">Cancel</button>
-        <button onclick="saveUser()">Save</button>
-      </div>
-    </dialog>
-
-    <!-- User Memberships Modal -->
-    <dialog id="user-memberships-modal" style="width: 500px">
-      <h3>User Memberships</h3>
-      <input type="hidden" id="memberships-user-id" />
-      <table style="font-size: 0.9rem">
-        <thead>
-          <tr>
-            <th>Account</th>
-            <th>Role</th>
-            <th>Current</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="user-memberships-table-body">
-          <!-- Memberships -->
-        </tbody>
-      </table>
-      <div class="modal-actions">
-        <button class="secondary-btn" onclick="closeModal('user-memberships-modal')">Close</button>
-      </div>
-    </dialog>
-
-    <!-- Entity Features Modal (user or account) -->
-    <dialog id="entity-features-modal" style="width: 500px">
-      <h3 id="entity-features-title">Features</h3>
-      <div id="entity-features-help" class="muted"></div>
-      <div id="entity-features-list">
-        <!-- Features -->
-      </div>
-      <div class="modal-actions">
-        <button class="secondary-btn" onclick="closeModal('entity-features-modal')">Close</button>
-        <button id="save-entity-features" onclick="saveEntityFeatures()">Update features</button>
-      </div>
-    </dialog>
-
-    <!-- Edit Account Modal -->
-    <dialog id="edit-account-modal">
-      <h3>Edit Account</h3>
-      <input type="hidden" id="edit-account-id" />
-      <div class="form-group">
-        <label for="edit-account-name">Name</label>
-        <input type="text" id="edit-account-name" />
-      </div>
-      <div class="form-group">
-        <label for="edit-account-status">Status</label>
-        <select id="edit-account-status">
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-          <option value="canceled">Canceled</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="edit-account-plan">Plan</label>
-        <select id="edit-account-plan">
-          <!-- Populated dynamically -->
-        </select>
-      </div>
-      <div class="modal-actions">
-        <button class="secondary-btn" onclick="closeModal('edit-account-modal')">Cancel</button>
-        <button onclick="saveAccount()">Save</button>
-      </div>
-    </dialog>
 
     <!-- Create Account Modal -->
     <dialog id="create-account-modal">
@@ -437,53 +593,18 @@
       </div>
     </dialog>
 
-    <!-- Members Modal -->
-    <dialog id="members-modal" style="width: 600px">
-      <h3>Manage Members</h3>
-      <input type="hidden" id="members-account-id" />
-
-      <div style="margin-bottom: 1.5rem">
-        <h4>Add Member</h4>
-        <div style="display: flex; gap: 0.5rem">
-          <select id="add-member-user" style="flex-grow: 1; padding: 0.5rem">
-            <option value="">-- Select User --</option>
-          </select>
-          <select id="add-member-role" style="width: 120px; padding: 0.5rem">
-            <option value="0">User</option>
-            <option value="1">Admin</option>
-          </select>
-          <button onclick="addMember()">Add</button>
-        </div>
-      </div>
-
-      <h4>Current Members</h4>
-      <table style="font-size: 0.9rem">
-        <thead>
-          <tr>
-            <th>User</th>
-            <th>Role</th>
-            <th>Joined</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="members-table-body">
-          <!-- Members -->
-        </tbody>
-      </table>
-
-      <div class="modal-actions">
-        <button class="secondary-btn" onclick="closeModal('members-modal')">Close</button>
-      </div>
-    </dialog>
-
     <script>
+      const ADMIN_BASE = '/users/admin/';
       const API_BASE = '/users/admin/api';
       let currentUsers = [];
-      let currentAccounts = [];
       let availablePlans = [];
-      let availableFeatures = [];
-      // The user or account whose features are shown in the features dialog
+      // The id of the user or account whose page is shown
+      let viewId = null;
+      // The user or account whose features are shown on its page
       let featuresEntity = null;
+
+      const userUrl = (id) => `${ADMIN_BASE}users/${encodeURIComponent(id)}`;
+      const accountUrl = (id) => `${ADMIN_BASE}accounts/${encodeURIComponent(id)}`;
 
       function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -503,6 +624,21 @@
         return [];
       }
 
+      function planName(slug) {
+        const plan = getPlans().find((p) => p.slug === slug);
+        return plan ? plan.name : slug;
+      }
+
+      function planBadge(slug) {
+        return slug
+          ? `<span class="label label-plan">${escapeHtml(planName(slug))}</span>`
+          : '<span class="label label-admin">NO PLAN</span>';
+      }
+
+      function roleBadge(role) {
+        return role === 1 ? '<span class="label label-admin">admin</span>' : '<span class="label">user</span>';
+      }
+
       function populatePlanSelect(selectId, selectedValue) {
         const select = document.getElementById(selectId);
         const plans = getPlans();
@@ -514,8 +650,17 @@
         }
 
         select.innerHTML = plans
-          .map((p) => `<option value="${p.slug}" ${p.slug === selectedValue ? 'selected' : ''}>${p.name}</option>`)
+          .map((p) => `<option value="${escapeHtml(p.slug)}" ${p.slug === selectedValue ? 'selected' : ''}>${escapeHtml(p.name)}</option>`)
           .join('');
+      }
+
+      function formatDateTime(ms) {
+        return ms ? new Date(ms).toLocaleString() : '-';
+      }
+
+      function daysAgo(ms) {
+        const days = Math.floor((Date.now() - ms) / 86400000);
+        return `${days} day${days === 1 ? '' : 's'} ago`;
       }
 
       async function fetchAPI(endpoint, options = {}) {
@@ -525,13 +670,27 @@
             showToast('Access Denied. Admin privileges required.');
             return null;
           }
-          if (!res.ok) throw new Error('Request failed');
+          if (!res.ok) throw new Error(res.status === 404 ? 'Not found' : 'Request failed');
           return await res.json();
         } catch (e) {
           showToast(e.message);
           return null;
         }
       }
+
+      /** Send a change; returns whether it worked. */
+      async function sendAPI(method, endpoint, body) {
+        const res = await fetch(`${API_BASE}${endpoint}`, {
+          method,
+          headers: body ? { 'Content-Type': 'application/json' } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        return res;
+      }
+
+      // ---------------------------------------------------------------
+      // Dashboard
+      // ---------------------------------------------------------------
 
       async function searchUsers() {
         const query = document.getElementById('user-search').value;
@@ -546,7 +705,6 @@
         const query = document.getElementById('account-search').value;
         const accounts = await fetchAPI(`/accounts?q=${encodeURIComponent(query)}`);
         if (accounts) {
-          currentAccounts = accounts;
           renderAccounts(accounts);
         }
       }
@@ -557,24 +715,17 @@
           .map(
             (u) => `
                 <tr>
-                    <td>${u.id.substring(0, 8)}...</td>
+                    <td>${escapeHtml(u.id.substring(0, 8))}...</td>
                     <td>
-                      <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <img src="${u.picture || ''}" style="width: 24px; height: 24px; border-radius: 50%;" onerror="this.style.display='none'">
-                        ${u.name || '-'}
-                        ${u.is_admin ? '<span style="background: #d93025; color: white; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: bold;">Admin</span>' : ''}
+                      <div class="name-cell">
+                        <img class="avatar" src="${escapeHtml(u.picture || '')}" alt="" onerror="this.style.display='none'">
+                        <a href="${userUrl(u.id)}">${escapeHtml(u.name || u.email || u.id)}</a>
+                        ${u.is_admin ? '<span class="label label-admin">Admin</span>' : ''}
                       </div>
                     </td>
-                    <td>${u.email || '-'}</td>
-                    <td>${u.provider || '-'}</td>
+                    <td>${escapeHtml(u.email || '-')}</td>
+                    <td>${escapeHtml(u.provider || '-')}</td>
                     <td>${new Date(u.created_at).toLocaleDateString()}</td>
-                    <td class="actions">
-                        <button class="secondary-btn" onclick="openEditUser('${u.id}')">Edit</button>
-                        <button class="secondary-btn" onclick="openUserMemberships('${u.id}')">Memberships</button>
-                        ${availableFeatures.length ? `<button class="secondary-btn" onclick="openEntityFeatures('user', '${u.id}')">Features</button>` : ''}
-                        <button onclick="impersonate('${u.id}')">Impersonate</button>
-                        <button style="background: #d93025; color: #fff;" onclick="deleteUser('${u.id}')">Delete</button>
-                    </td>
                 </tr>
             `,
           )
@@ -583,64 +734,20 @@
 
       function renderAccounts(accounts) {
         const tbody = document.getElementById('accounts-table');
-        const plans = getPlans();
         tbody.innerHTML = accounts
-          .map((a) => {
-            const plan = plans.find((p) => p.slug === a.plan);
-            const planName = plan ? plan.name : a.plan;
-            return `
+          .map(
+            (a) => `
                 <tr>
-                    <td>${a.id.substring(0, 8)}...</td>
-                    <td>${a.name || '-'}</td>
-                    <td>${a.status || '-'}</td>
-                    <td>${planName || '-'}</td>
+                    <td>${escapeHtml(a.id.substring(0, 8))}...</td>
+                    <td><a href="${accountUrl(a.id)}">${escapeHtml(a.name || a.id)}</a></td>
+                    <td>${escapeHtml(a.status || '-')}</td>
+                    <td>${escapeHtml(planName(a.plan) || '-')}</td>
                     <td>${a.member_count || 0}</td>
                     <td>${new Date(a.created_at).toLocaleDateString()}</td>
-                    <td class="actions">
-                         <button class="secondary-btn" onclick="openEditAccount('${a.id}')">Edit</button>
-                         <button class="secondary-btn" onclick="openMembers('${a.id}')">Members</button>
-                         ${availableFeatures.length ? `<button class="secondary-btn" onclick="openEntityFeatures('account', '${a.id}')">Features</button>` : ''}
-                         <button style="background: #d93025; color: #fff;" onclick="deleteAccount('${a.id}')">Delete</button>
-                    </td>
                 </tr>
-            `;
-          })
+            `,
+          )
           .join('');
-      }
-
-      async function impersonate(userId) {
-        if (!confirm('Are you sure you want to log in as this user?')) return;
-
-        const res = await fetch(`${API_BASE}/impersonate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId }),
-        });
-
-        if (res.ok) {
-          window.location.href = '/';
-        } else {
-          showToast('Impersonation failed');
-        }
-      }
-
-      function openEditUser(userId) {
-        const user = currentUsers.find((u) => u.id === userId);
-        if (!user) return;
-        document.getElementById('edit-user-id').value = user.id;
-        document.getElementById('edit-user-name').value = user.name || '';
-        document.getElementById('edit-user-email').value = user.email || '';
-        document.getElementById('edit-user-modal').showModal();
-      }
-
-      function openEditAccount(accountId) {
-        const account = currentAccounts.find((a) => a.id === accountId);
-        if (!account) return;
-        document.getElementById('edit-account-id').value = account.id;
-        document.getElementById('edit-account-name').value = account.name || '';
-        document.getElementById('edit-account-status').value = account.status || 'active';
-        populatePlanSelect('edit-account-plan', account.plan || 'free');
-        document.getElementById('edit-account-modal').showModal();
       }
 
       function openCreateAccount() {
@@ -669,117 +776,13 @@
           return;
         }
 
-        const res = await fetch(`${API_BASE}/accounts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, ownerId, plan }),
-        });
-
+        const res = await sendAPI('POST', '/accounts', { name, ownerId, plan });
         if (res.ok) {
-          showToast('Account created');
-          closeModal('create-account-modal');
-          searchAccounts();
+          const { id } = await res.json();
+          // Go straight to the new account's page.
+          window.location.href = accountUrl(id);
         } else {
           showToast('Creation failed');
-        }
-      }
-
-      async function openMembers(accountId) {
-        document.getElementById('members-account-id').value = accountId;
-
-        // Populate user select
-        const userSelect = document.getElementById('add-member-user');
-        userSelect.innerHTML = '<option value="">-- Select User --</option>';
-        currentUsers.forEach((u) => {
-          const option = document.createElement('option');
-          option.value = u.id;
-          option.textContent = `${u.name || u.id} (${u.email || 'no email'})`;
-          userSelect.appendChild(option);
-        });
-
-        await refreshMembers();
-        document.getElementById('members-modal').showModal();
-      }
-
-      async function refreshMembers() {
-        const accountId = document.getElementById('members-account-id').value;
-        const members = await fetchAPI(`/accounts/${accountId}/members`);
-        if (members) {
-          renderMembers(members);
-        }
-      }
-
-      function renderMembers(members) {
-        const tbody = document.getElementById('members-table-body');
-        tbody.innerHTML = members
-          .map((m) => {
-            const user = currentUsers.find((u) => u.id === m.user_id);
-            return `
-            <tr>
-              <td>${user ? user.name || user.email || m.user_id : m.user_id}</td>
-              <td>${m.role === 1 ? 'Admin' : 'User'}</td>
-              <td>${new Date(m.joined_at).toLocaleDateString()}</td>
-              <td>
-                <button class="secondary-btn" onclick="removeMember('${m.user_id}')">Remove</button>
-              </td>
-            </tr>
-          `;
-          })
-          .join('');
-      }
-
-      async function addMember() {
-        const accountId = document.getElementById('members-account-id').value;
-        const userId = document.getElementById('add-member-user').value;
-        const role = parseInt(document.getElementById('add-member-role').value);
-
-        if (!userId) {
-          showToast('Please select a user');
-          return;
-        }
-
-        const res = await fetch(`${API_BASE}/accounts/${accountId}/members`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId, role }),
-        });
-
-        if (res.ok) {
-          showToast('Member added');
-          refreshMembers();
-        } else {
-          showToast('Failed to add member');
-        }
-      }
-
-      async function removeMember(userId) {
-        if (!confirm('Are you sure you want to remove this member?')) return;
-
-        const accountId = document.getElementById('members-account-id').value;
-        const res = await fetch(`${API_BASE}/accounts/${accountId}/members/${userId}`, {
-          method: 'DELETE',
-        });
-
-        if (res.ok) {
-          showToast('Member removed');
-          refreshMembers();
-        } else {
-          showToast('Failed to remove member');
-        }
-      }
-
-      async function deleteAccount(accountId) {
-        if (!confirm('Are you sure you want to PERMANENTLY delete this account? All data will be lost.')) return;
-
-        const res = await fetch(`${API_BASE}/accounts/${accountId}`, {
-          method: 'DELETE',
-        });
-
-        if (res.ok) {
-          showToast('Account deleted');
-          searchAccounts();
-        } else {
-          showToast('Deletion failed');
         }
       }
 
@@ -802,111 +805,6 @@
         });
       });
 
-      async function saveUser() {
-        const id = document.getElementById('edit-user-id').value;
-        const name = document.getElementById('edit-user-name').value;
-        const email = document.getElementById('edit-user-email').value;
-
-        const res = await fetch(`${API_BASE}/users/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email }),
-        });
-
-        if (res.ok) {
-          showToast('User updated');
-          closeModal('edit-user-modal');
-          searchUsers();
-        } else {
-          showToast('Update failed');
-        }
-      }
-
-      async function deleteUser(userId) {
-        if (!confirm('Are you sure you want to PERMANENTLY delete this user? All data will be lost.')) return;
-
-        const res = await fetch(`${API_BASE}/users/${userId}`, {
-          method: 'DELETE',
-        });
-
-        if (res.ok) {
-          showToast('User deleted');
-          searchUsers();
-        } else {
-          showToast('Deletion failed');
-        }
-      }
-
-      async function openUserMemberships(userId) {
-        document.getElementById('memberships-user-id').value = userId;
-        const memberships = await fetchAPI(`/users/${userId}/memberships`);
-        if (memberships) {
-          renderUserMemberships(memberships);
-          document.getElementById('user-memberships-modal').showModal();
-        }
-      }
-
-      function renderUserMemberships(memberships) {
-        const userId = document.getElementById('memberships-user-id').value;
-        const tbody = document.getElementById('user-memberships-table-body');
-        tbody.innerHTML = memberships
-          .map((m) => {
-            const account = currentAccounts.find((a) => a.id === m.account_id);
-            return `
-            <tr>
-              <td>${account ? account.name : m.account_id.substring(0, 8) + '...'}</td>
-              <td>${m.role === 1 ? 'Admin' : 'User'}</td>
-              <td>${m.is_current ? '✅' : ''}</td>
-              <td>
-                <button class="secondary-btn" onclick="removeUserFromAccount('${userId}', '${m.account_id}')">Remove</button>
-              </td>
-            </tr>
-          `;
-          })
-          .join('');
-      }
-
-      async function removeUserFromAccount(userId, accountId) {
-        if (!confirm('Are you sure you want to remove this user from the account?')) return;
-
-        const res = await fetch(`${API_BASE}/accounts/${accountId}/members/${userId}`, {
-          method: 'DELETE',
-        });
-
-        if (res.ok) {
-          showToast('User removed from account');
-          // Refresh memberships
-          const memberships = await fetchAPI(`/users/${userId}/memberships`);
-          if (memberships) {
-            renderUserMemberships(memberships);
-          }
-          searchAccounts(); // Refresh member counts in the main table
-        } else {
-          showToast('Failed to remove user from account');
-        }
-      }
-
-      async function saveAccount() {
-        const id = document.getElementById('edit-account-id').value;
-        const name = document.getElementById('edit-account-name').value;
-        const status = document.getElementById('edit-account-status').value;
-        const plan = document.getElementById('edit-account-plan').value;
-
-        const res = await fetch(`${API_BASE}/accounts/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, status, plan }),
-        });
-
-        if (res.ok) {
-          showToast('Account updated');
-          closeModal('edit-account-modal');
-          searchAccounts();
-        } else {
-          showToast('Update failed');
-        }
-      }
-
       // Status label for a feature: shut down, rolled out to all users, on, or off.
       function featureStatusLabel(f) {
         if (f.emergency_shutdown) return '<span class="label label-down">down</span>';
@@ -922,7 +820,6 @@
       async function loadFeatures() {
         const data = await fetchAPI('/features');
         if (!data) return;
-        availableFeatures = data.features;
         document.getElementById('features-section').hidden = data.features.length === 0;
         renderFeatures(data);
       }
@@ -962,28 +859,216 @@
         return f.description ? `<span class="feature-description">${escapeHtml(f.description)}</span>` : '';
       }
 
-      async function openEntityFeatures(kind, id) {
-        featuresEntity = { kind, id, features: [] };
-        const entity = kind === 'user' ? currentUsers.find((u) => u.id === id) : currentAccounts.find((a) => a.id === id);
-        const label = entity ? entity.name || entity.email || id : id;
-        document.getElementById('entity-features-title').textContent = `Features: ${label}`;
-        document.getElementById('entity-features-help').innerHTML =
-          kind === 'user'
-            ? `<p>You can enable or remove particular features for this user.</p>
-               <p>Keep in mind that if set for a user, it overrides account feature settings, so most of the time you might want to control features on the account level instead.</p>`
-            : '';
-        if (await refreshEntityFeatures()) {
-          document.getElementById('entity-features-modal').showModal();
+      // ---------------------------------------------------------------
+      // User page
+      // ---------------------------------------------------------------
+
+      async function loadUserPage() {
+        const [user, memberships] = await Promise.all([fetchAPI(`/users/${viewId}`), fetchAPI(`/users/${viewId}/memberships`)]);
+        if (!user) {
+          document.getElementById('user-title').textContent = 'User not found';
+          return;
+        }
+        document.title = `${user.name || user.email || user.id} – Admin`;
+        document.getElementById('user-title').innerHTML = `
+          ${user.picture ? `<img class="avatar" src="${escapeHtml(user.picture)}" alt="" onerror="this.style.display='none'">` : ''}
+          ${escapeHtml(user.name || user.email || user.id)}
+          <span class="entity-id">(ID: ${escapeHtml(user.id)})</span>
+          ${user.is_admin ? '<span class="label label-admin">system admin</span>' : ''}`;
+        document.getElementById('user-email').innerHTML = user.email
+          ? `&#9993; <a href="mailto:${escapeHtml(user.email)}">${escapeHtml(user.email)}</a>`
+          : '<span class="muted">No email</span>';
+        document.getElementById('user-registered').innerHTML = user.created_at
+          ? `<b>Registered:</b> ${escapeHtml(formatDateTime(user.created_at))} <span class="label">${escapeHtml(daysAgo(user.created_at))}</span>`
+          : '';
+        document.getElementById('user-provider').innerHTML = user.provider ? `<b>Signed up with:</b> ${escapeHtml(user.provider)}` : '';
+        document.getElementById('edit-user-name').value = user.name || '';
+        document.getElementById('edit-user-email').value = user.email || '';
+
+        const credentials = user.credentials || [];
+        document.getElementById('user-credentials').innerHTML = credentials.length
+          ? credentials
+              .map(
+                (c) =>
+                  `<li><b>${escapeHtml(c.provider)}:</b> ${escapeHtml(c.handle || c.email || c.subject_id)}${
+                    c.created_at ? ` <span class="muted">(added ${escapeHtml(new Date(c.created_at).toLocaleDateString())})</span>` : ''
+                  }</li>`,
+              )
+              .join('')
+          : '<li class="muted">None</li>';
+
+        renderUserAccounts(memberships || []);
+        await loadEntityFeatures('user');
+      }
+
+      function renderUserAccounts(memberships) {
+        document.getElementById('user-accounts-table').innerHTML = memberships.length
+          ? memberships
+              .map(
+                (m) => `
+            <tr>
+              <td><a href="${accountUrl(m.account_id)}">${escapeHtml(m.account?.name || m.account_id)}</a></td>
+              <td>${roleBadge(m.role)} ${m.is_current ? '<span class="label label-current">current</span>' : ''}</td>
+              <td>${planBadge(m.account?.plan)}</td>
+              <td style="text-align: right">
+                <button class="secondary-btn" onclick="removeMembership('${escapeHtml(viewId)}', '${escapeHtml(m.account_id)}')">Remove</button>
+              </td>
+            </tr>`,
+              )
+              .join('')
+          : '<tr><td colspan="4" class="muted">Not a member of any account</td></tr>';
+      }
+
+      async function impersonate(userId) {
+        if (!confirm('Are you sure you want to log in as this user?')) return;
+        const res = await sendAPI('POST', '/impersonate', { userId });
+        if (res.ok) {
+          window.location.href = '/';
+        } else {
+          showToast('Impersonation failed');
         }
       }
 
-      async function refreshEntityFeatures() {
-        const { kind, id } = featuresEntity;
-        const features = await fetchAPI(`/${kind}s/${id}/features`);
-        if (!features) return false;
+      async function saveUser() {
+        const name = document.getElementById('edit-user-name').value;
+        const email = document.getElementById('edit-user-email').value;
+        const res = await sendAPI('PUT', `/users/${viewId}`, { name, email });
+        showToast(res.ok ? 'User updated' : 'Update failed');
+        if (res.ok) loadUserPage();
+      }
+
+      async function deleteUser(userId) {
+        if (!confirm('Are you sure you want to PERMANENTLY delete this user? All data will be lost.')) return;
+        const res = await sendAPI('DELETE', `/users/${userId}`);
+        if (res.ok) {
+          window.location.href = ADMIN_BASE;
+        } else {
+          showToast('Deletion failed');
+        }
+      }
+
+      async function removeMembership(userId, accountId) {
+        if (!confirm('Are you sure you want to remove this user from the account?')) return;
+        const res = await sendAPI('DELETE', `/accounts/${accountId}/members/${userId}`);
+        showToast(res.ok ? 'Removed from the account' : 'Failed to remove from the account');
+        if (!res.ok) return;
+        if (viewId === userId) {
+          renderUserAccounts((await fetchAPI(`/users/${userId}/memberships`)) || []);
+        } else {
+          loadAccountMembers();
+        }
+      }
+
+      // ---------------------------------------------------------------
+      // Account page
+      // ---------------------------------------------------------------
+
+      async function loadAccountPage() {
+        const account = await fetchAPI(`/accounts/${viewId}`);
+        if (!account) {
+          document.getElementById('account-title').textContent = 'Account not found';
+          return;
+        }
+        document.title = `${account.name || account.id} – Admin`;
+        document.getElementById('account-title').innerHTML = `
+          Account: ${escapeHtml(account.name || account.id)}
+          <span class="entity-id">(ID: ${escapeHtml(account.id)})</span>`;
+        const active = (account.status || 'active') === 'active';
+        document.getElementById('account-status').innerHTML = `
+          <b>Status:</b> <span class="label ${active ? 'label-on' : 'label-admin'}">${escapeHtml(account.status || 'active')}</span>
+          &nbsp; <b>Current plan:</b> ${planBadge(account.plan)}`;
+        document.getElementById('account-created').innerHTML = account.created_at
+          ? `<b>Created:</b> ${escapeHtml(formatDateTime(account.created_at))} <span class="label">${escapeHtml(daysAgo(account.created_at))}</span>`
+          : '';
+        document.getElementById('edit-account-name').value = account.name || '';
+        document.getElementById('edit-account-status').value = account.status || 'active';
+        populatePlanSelect('edit-account-plan', account.plan || 'free');
+
+        await Promise.all([loadAccountMembers(), loadMemberCandidates(), loadEntityFeatures('account')]);
+      }
+
+      async function loadAccountMembers() {
+        const members = (await fetchAPI(`/accounts/${viewId}/members`)) || [];
+        document.getElementById('account-members-table').innerHTML = members.length
+          ? members
+              .map((m) => {
+                const name = m.user ? m.user.name || m.user.email || m.user_id : m.user_id;
+                const nextRole = m.role === 1 ? 0 : 1;
+                return `
+            <tr>
+              <td><a href="${userUrl(m.user_id)}">${escapeHtml(name)}</a></td>
+              <td>${roleBadge(m.role)}</td>
+              <td>${m.joined_at ? escapeHtml(new Date(m.joined_at).toLocaleDateString()) : '-'}</td>
+              <td style="text-align: right">
+                <button class="secondary-btn" onclick="setMemberRole('${escapeHtml(m.user_id)}', ${nextRole})">${nextRole === 1 ? 'Make admin' : 'Make user'}</button>
+                <button class="secondary-btn" onclick="removeMembership('${escapeHtml(m.user_id)}', '${escapeHtml(viewId)}')">Remove</button>
+              </td>
+            </tr>`;
+              })
+              .join('')
+          : '<tr><td colspan="4" class="muted">No users in this account</td></tr>';
+      }
+
+      async function loadMemberCandidates() {
+        const users = (await fetchAPI('/users')) || [];
+        const select = document.getElementById('add-member-user');
+        select.innerHTML = '<option value="">-- Select User --</option>';
+        users.forEach((u) => {
+          const option = document.createElement('option');
+          option.value = u.id;
+          option.textContent = `${u.name || u.id} (${u.email || 'no email'})`;
+          select.appendChild(option);
+        });
+      }
+
+      async function saveAccount() {
+        const name = document.getElementById('edit-account-name').value;
+        const status = document.getElementById('edit-account-status').value;
+        const plan = document.getElementById('edit-account-plan').value;
+        const res = await sendAPI('PUT', `/accounts/${viewId}`, { name, status, plan });
+        showToast(res.ok ? 'Account updated' : 'Update failed');
+        if (res.ok) loadAccountPage();
+      }
+
+      async function addMember() {
+        const userId = document.getElementById('add-member-user').value;
+        const role = parseInt(document.getElementById('add-member-role').value);
+        if (!userId) {
+          showToast('Please select a user');
+          return;
+        }
+        const res = await sendAPI('POST', `/accounts/${viewId}/members`, { user_id: userId, role });
+        showToast(res.ok ? 'User added' : 'Failed to add the user');
+        if (res.ok) loadAccountMembers();
+      }
+
+      async function setMemberRole(userId, role) {
+        const res = await sendAPI('PATCH', `/accounts/${viewId}/members/${userId}`, { role });
+        showToast(res.ok ? 'Role updated' : 'Failed to update the role');
+        if (res.ok) loadAccountMembers();
+      }
+
+      async function deleteAccount(accountId) {
+        if (!confirm('Are you sure you want to PERMANENTLY delete this account? All data will be lost.')) return;
+        const res = await sendAPI('DELETE', `/accounts/${accountId}`);
+        if (res.ok) {
+          window.location.href = ADMIN_BASE;
+        } else {
+          showToast('Deletion failed');
+        }
+      }
+
+      // ---------------------------------------------------------------
+      // Features of a user or an account (on its page)
+      // ---------------------------------------------------------------
+
+      async function loadEntityFeatures(kind) {
+        featuresEntity = { kind, id: viewId, features: [] };
+        const features = await fetchAPI(`/${kind}s/${viewId}/features`);
+        if (!features) return;
         featuresEntity.features = features;
+        document.getElementById(`${kind}-features-section`).hidden = features.length === 0;
         renderEntityFeatures();
-        return true;
       }
 
       // An override can't change a feature that is shut down, disabled or rolled out, or (for accounts) one the plan grants.
@@ -994,7 +1079,7 @@
 
       function renderEntityFeatures() {
         const { kind, features } = featuresEntity;
-        document.getElementById('entity-features-list').innerHTML = features
+        document.getElementById(`${kind}-features-list`).innerHTML = features
           .map((f) => {
             const checked = f.rolled_out_to_all_users || f.override || (kind === 'account' && !!f.plan);
             let itemClass = '';
@@ -1013,7 +1098,7 @@
             } else if (f.enabled && kind === 'account' && f.plan) {
               note = `(Enabled by subscription plan: ${escapeHtml(f.plan.name)})`;
             } else if (f.enabled && kind === 'user' && f.accounts.length > 0) {
-              note = `(Enabled in accounts: ${f.accounts.map((a) => escapeHtml(a.name || a.id)).join(', ')})`;
+              note = `(Enabled in accounts: ${f.accounts.map((a) => `<a href="${accountUrl(a.id)}">${escapeHtml(a.name || a.id)}</a>`).join(', ')})`;
             }
 
             return `
@@ -1026,7 +1111,7 @@
           `;
           })
           .join('');
-        document.getElementById('save-entity-features').disabled = !features.some(isFeatureEditable);
+        document.querySelector(`#${kind}-features-section .save-features`).disabled = !features.some(isFeatureEditable);
       }
 
       async function saveEntityFeatures() {
@@ -1036,13 +1121,9 @@
           .map((f) => ({ id: f.id, override: f.override, checked: document.querySelector(`[data-feature-id="${f.id}"]`).checked }))
           .filter((c) => c.checked !== c.override);
 
-        const results = await Promise.all(
-          changes.map((c) => fetch(`${API_BASE}/${kind}s/${id}/features/${c.id}`, { method: c.checked ? 'PUT' : 'DELETE' })),
-        );
-
+        const results = await Promise.all(changes.map((c) => sendAPI(c.checked ? 'PUT' : 'DELETE', `/${kind}s/${id}/features/${c.id}`)));
         showToast(results.every((r) => r.ok) ? 'Features updated' : 'Failed to update some features');
-        await refreshEntityFeatures();
-        loadFeatures();
+        await loadEntityFeatures(kind);
       }
 
       function showToast(msg) {
@@ -1052,11 +1133,23 @@
         setTimeout(() => (toast.style.opacity = 0), 3000);
       }
 
-      // Initial load (features first, so the user and account rows know whether to show the Features button)
-      loadFeatures().then(() => {
+      // Pick the view from the path: /users/admin/users/<id>, /users/admin/accounts/<id>, or the dashboard.
+      const page = window.location.pathname.match(/\/admin\/(users|accounts)\/([^/]+)\/?$/);
+      if (page) {
+        viewId = decodeURIComponent(page[2]);
+        if (page[1] === 'users') {
+          document.getElementById('user-view').hidden = false;
+          loadUserPage();
+        } else {
+          document.getElementById('account-view').hidden = false;
+          loadAccountPage();
+        }
+      } else {
+        document.getElementById('list-view').hidden = false;
+        loadFeatures();
         searchUsers();
         searchAccounts();
-      });
+      }
     </script>
   </body>
 </html>

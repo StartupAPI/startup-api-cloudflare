@@ -56,25 +56,37 @@ export class SystemDO extends DurableObject {
     sql += ' ORDER BY created_at DESC LIMIT 50';
 
     const result = this.sql.exec(sql, ...args);
-    const users = Array.from(result).map((u: any) => {
-      const adminIds = (this.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
-      const isAdmin =
-        adminIds.includes(u.id) ||
-        (this.env.ENVIRONMENT === 'test' &&
-          adminIds.some((id) => {
-            try {
-              return u.id === this.env.USER.idFromName(id).toString();
-            } catch (_e) {
-              return false;
-            }
-          }));
-
-      return {
-        ...u,
-        is_admin: isAdmin,
-      };
-    });
+    const users = Array.from(result).map((u: any) => this.withAdminFlag(u));
     return users;
+  }
+
+  /** Mark a users-index row with `is_admin` (listed in ADMIN_IDS). */
+  private withAdminFlag(u: any): any {
+    const adminIds = (this.env.ADMIN_IDS || '').split(',').map((id) => id.trim());
+    const isAdmin =
+      adminIds.includes(u.id) ||
+      (this.env.ENVIRONMENT === 'test' &&
+        adminIds.some((id) => {
+          try {
+            return u.id === this.env.USER.idFromName(id).toString();
+          } catch (_e) {
+            return false;
+          }
+        }));
+    return { ...u, is_admin: isAdmin };
+  }
+
+  /** The users-index rows for these ids (id, name, email, provider, created_at, is_admin). */
+  async getUsersByIds(ids: string[]): Promise<any[]> {
+    if (ids.length === 0) return [];
+    const result = this.sql.exec(`SELECT * FROM users WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
+    return Array.from(result).map((u: any) => this.withAdminFlag(u));
+  }
+
+  /** The accounts-index rows for these ids (id, name, status, plan, member_count, created_at). */
+  async getAccountsByIds(ids: string[]): Promise<any[]> {
+    if (ids.length === 0) return [];
+    return Array.from(this.sql.exec(`SELECT * FROM accounts WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids));
   }
 
   async getUserMemberships(userId: string): Promise<any[]> {

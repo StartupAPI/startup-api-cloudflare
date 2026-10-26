@@ -193,7 +193,8 @@ export class AccountDO extends DurableObject {
     // Sync with User DO
     try {
       const userStub = this.env.USER.get(this.env.USER.idFromString(userId));
-      await userStub.addMembership(this.ctx.id.toString(), role, false);
+      // Only the role: re-adding the membership would also clear which account is current.
+      await userStub.updateMembershipRole(this.ctx.id.toString(), role);
     } catch (_e) {
       console.error('Failed to sync membership role to UserDO', _e);
     }

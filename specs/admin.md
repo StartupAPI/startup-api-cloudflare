@@ -19,6 +19,10 @@ The Admin Panel provides a centralized interface for platform owners to manage u
 
 - **Users**: (`admin/users.php`) List, search, and edit user details.
 - **Accounts**: (`admin/accounts.php`) Manage account statuses, view details, and intervene in billing issues.
+- **User and account pages** (Cloudflare version): the dashboard (`/users/admin/`) lists users and accounts, and each row links to its own page, `/users/admin/users/<id>` or `/users/admin/accounts/<id>`, where every action lives. They follow the PHP admin's `user.php` and `account.php`:
+  - User: name, ID and "system admin" badge with Impersonate and Delete, email, registration date, sign-up provider, profile form, authentication credentials, accounts (with role, current and plan badges, linked to the account page), features.
+  - Account: name and ID with Delete, status and plan badges, creation date, edit form (name, status, plan), account users (linked, with Make admin / Make user and Remove), adding a user, features.
+  - All three are served by the same page (`public/users/admin/index.html`), which picks the view from the path, so the URLs survive a reload and can be shared.
 - **Impersonation**: Admins can log in as any user to reproduce bugs or assist with configuration.
 
 ### 3. Subscription Management
