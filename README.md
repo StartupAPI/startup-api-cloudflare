@@ -360,7 +360,7 @@ const accessPolicy = {
 
 For non-`bypass` paths the worker forwards `X-StartupAPI-Authenticated`, `X-StartupAPI-Login-Provider`, a compact `X-StartupAPI-Entitlements` JSON, and (for Patreon) `X-StartupAPI-Patreon-Active` / `-Tiers` / `-Benefits` alongside the existing `X-StartupAPI-User-Id` / `-Account-Id`. When [feature flags](#feature-flags) are configured, `X-StartupAPI-Features` lists the ids of the features enabled for the visitor (comma-separated).
 
-The origin can rely on these headers because the worker **removes every `X-StartupAPI-*` header the visitor sent** before forwarding a request, on every path (including `bypass` paths and origin-sourced gate pages). A header reaches the origin only if the worker set it, so a logged-out visitor can't pass a made-up `X-StartupAPI-User-Id`. This only protects requests that come through the worker: make sure the origin can't be reached directly, or it can be sent any header.
+The origin can rely on these headers because the worker **removes every `X-StartupAPI-*` header the visitor sent** before forwarding a request, on every path (including `bypass` paths and origin-sourced gate pages). A header reaches the origin only if the worker set it, so a logged-out visitor can't pass a made-up `X-StartupAPI-User-Id`. This only protects requests that come through the worker: make sure the origin can't be reached directly, or it can be sent any header. An `ORIGIN` [service binding](#reaching-the-origin-through-a-service-binding) lets the origin have no public URL at all.
 
 ### Keeping entitlements fresh
 
