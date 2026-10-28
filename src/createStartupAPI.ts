@@ -70,6 +70,15 @@ function stripStartupAPIHeaders(headers: Headers): void {
   }
 }
 
+/**
+ * Mark an origin request as coming from this worker when ORIGIN_SECRET is set, so an origin with a
+ * public URL can refuse any request without it. Always called after stripStartupAPIHeaders, so a
+ * visitor can neither forge the header nor see its value.
+ */
+function setOriginSecret(headers: Headers, env: StartupAPIEnv): void {
+  if (env.ORIGIN_SECRET) headers.set('X-StartupAPI-Origin-Secret', env.ORIGIN_SECRET);
+}
+
 function isCronEnabled(options: ProviderOptions): boolean {
   const cron = options.entitlementCron;
   return cron === true || (typeof cron === 'object' && cron !== null);
@@ -146,6 +155,7 @@ async function serveGatePage(
     const proxied = new Request(target.toString(), request);
     proxied.headers.set('Host', target.host);
     stripStartupAPIHeaders(proxied.headers);
+    setOriginSecret(proxied.headers, env);
     res = await originFetch(env, proxied);
   }
   // Re-stamp the status (e.g. a 200 asset can be served as the configured gate status).
@@ -381,6 +391,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       // Never forward client-supplied identity, entitlement or feature headers, on any path; the ones
       // the origin should see are set below from the resolved session.
       stripStartupAPIHeaders(newRequest.headers);
+      setOriginSecret(newRequest.headers, env);
 
       if (rule.requirement.mode === 'bypass') {
         // Pure pass-through: no identity resolution, no headers, no power-strip injection.

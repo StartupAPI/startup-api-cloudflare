@@ -60,6 +60,7 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 | Variable                 | Required | Default   | Description                                                                   |
 | :----------------------- | :------- | :-------- | :---------------------------------------------------------------------------- |
 | `ORIGIN_URL`             | **Yes**¹ | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
+| `ORIGIN_SECRET`          | No       | N/A       | Secret sent to the origin with every request (see below)                      |
 | `USERS_PATH`             | No       | `/users/` | The path used to serve internal assets like `power-strip.js`                  |
 | `AUTH_ORIGIN`            | No       | N/A       | Optional base URL for OAuth redirects (overrides request origin)              |
 | `GOOGLE_CLIENT_ID`       | No       | N/A       | Google OAuth2 Client ID                                                       |
@@ -379,7 +380,19 @@ const accessPolicy = {
 
 For non-`bypass` paths the worker forwards `X-StartupAPI-Authenticated`, `X-StartupAPI-Login-Provider`, a compact `X-StartupAPI-Entitlements` JSON, and (for Patreon) `X-StartupAPI-Patreon-Active` / `-Tiers` / `-Benefits` alongside the existing `X-StartupAPI-User-Id` / `-Account-Id`. When [feature flags](#feature-flags) are configured, `X-StartupAPI-Features` lists the ids of the features enabled for the visitor (comma-separated).
 
-The origin can rely on these headers because the worker **removes every `X-StartupAPI-*` header the visitor sent** before forwarding a request, on every path (including `bypass` paths and origin-sourced gate pages). A header reaches the origin only if the worker set it, so a logged-out visitor can't pass a made-up `X-StartupAPI-User-Id`. This only protects requests that come through the worker: make sure the origin can't be reached directly, or it can be sent any header. An `ORIGIN` [service binding](#reaching-the-origin-through-a-service-binding) lets the origin have no public URL at all.
+The origin can rely on these headers because the worker **removes every `X-StartupAPI-*` header the visitor sent** before forwarding a request, on every path (including `bypass` paths and origin-sourced gate pages). A header reaches the origin only if the worker set it, so a logged-out visitor can't pass a made-up `X-StartupAPI-User-Id`. This only protects requests that come through the worker: make sure the origin can't be reached directly, or it can be sent any header. An `ORIGIN` [service binding](#reaching-the-origin-through-a-service-binding) lets the origin have no public URL at all; if it must keep one, use [`ORIGIN_SECRET`](#protecting-an-origin-with-a-public-url).
+
+#### Protecting an origin with a public URL
+
+When the origin has to stay reachable at its own URL, set an `ORIGIN_SECRET` (as a secret: `wrangler secret put ORIGIN_SECRET`). The worker then sends it as `X-StartupAPI-Origin-Secret` on **every** request it forwards, including `bypass` paths and origin-sourced gate pages. Give the origin the same value and have it refuse, or treat as logged out, any request without a matching header:
+
+```ts
+// In the origin (sketch): compare in constant time, and reject before trusting any X-StartupAPI-* header.
+const sent = request.headers.get('X-StartupAPI-Origin-Secret') ?? '';
+if (!timingSafeEqual(sent, env.ORIGIN_SECRET)) return new Response('Forbidden', { status: 403 });
+```
+
+Visitors can't forge or read it: like every `X-StartupAPI-*` header, a copy sent by the visitor is removed before the worker sets its own, and the worker never sends it back. It's worth setting even with a service binding, in case the origin's public URL is ever switched back on.
 
 ### Keeping entitlements fresh
 

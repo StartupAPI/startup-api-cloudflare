@@ -3,6 +3,9 @@ export type StartupAPIEnv = {
   // Optional service binding to the origin Worker. When set, origin requests go through it instead of
   // the public internet, so the origin can have no public URL at all. ORIGIN_URL becomes optional.
   ORIGIN?: Fetcher;
+  // Optional secret sent to the origin as X-StartupAPI-Origin-Secret on every request, so an origin with
+  // a public URL can refuse requests that didn't come through this worker. Set it as a Wrangler secret.
+  ORIGIN_SECRET?: string;
   USERS_PATH: string;
   AUTH_ORIGIN: string;
   GOOGLE_CLIENT_ID: string;
