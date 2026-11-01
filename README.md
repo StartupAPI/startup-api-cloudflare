@@ -130,6 +130,7 @@ const api = createStartupAPI({
     //   scopes: 'account:email',         // extra permissions on top of the base `atproto` (this one adds the account email)
     //   useRootOAuthClientMetadata: false, // keep the client-metadata document under USERS_PATH (default: true, served at /oauth-client-metadata.json)
     //   customOAuthClientMetadataURL: '/oauth-client-metadata.json', // use your own self-hosted document as client_id (requires useRootOAuthClientMetadata: false)
+    //   typeahead: ['https://public.api.bsky.app', 'https://typeahead.waow.tech'], // handle autocomplete hosts, tried in order (this is the default); false turns it off
     //   enabled: false,                  // explicit opt-out (e.g. for dynamically-built config)
     // },
   },
@@ -149,6 +150,8 @@ export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
    DID doc─▶ PDS endpoint    (the #atproto_pds service)
    PDS    ─▶ auth server     (.well-known/oauth-protected-resource → oauth-authorization-server)
    ```
+
+**Handle autocomplete.** As a visitor types into the handle field, the form suggests matching accounts with their avatar, display name and handle; picking one logs in with it. A PDS can't search the wider network, so suggestions come from aggregators that answer the `app.bsky.actor.searchActorsTypeahead` XRPC call — by default Bluesky's public AppView (`https://public.api.bsky.app`), then [`typeahead.waow.tech`](https://tangled.org/zzstoatzz.io/typeahead). The browser only talks to the worker (`/users/auth/atproto/typeahead?q=`), which tries the hosts in order and skips any that fails to answer (network error, 2.5s timeout, error status, or malformed body). Set `typeahead` to your own list of hosts, or to `false` to send nothing anywhere until the form is submitted. Suggestion avatars load directly from the host's image CDN. Suggestions are listed below the **Continue** button (never over it) as buttons reachable with Tab or the arrow keys, and are announced to screen readers. **Continue** looks dimmed until the field holds a valid handle or DID (pressing it early explains what's missing), and says **Logging in…** while the visitor is redirected to their server; a picked suggestion replaces the field with that account. Without JavaScript the form works as before.
 
 The flow uses PKCE, DPoP-bound (sender-constrained) tokens, and Pushed Authorization Requests (PAR) as required by the atproto OAuth profile. The PLC directory and DNS-over-HTTPS resolver are generic infrastructure and can be overridden via the `plcUrl` / `dohUrl` factory options.
 

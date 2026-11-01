@@ -251,6 +251,14 @@ describe('atproto provider', () => {
     expect(res.headers.get('Content-Security-Policy')).not.toContain('form-action');
     const html = await res.text();
     expect(html).toContain('name="handle"');
+    // The field validates natively (works without JS) and is described by its hint.
+    const { HANDLE_OR_DID_PATTERN } = await import('../src/auth/AtprotoProvider');
+    const pattern = new RegExp(`^(?:${HANDLE_OR_DID_PATTERN})$`, 'v');
+    expect(['alice.test', '@alice.bsky.social', 'did:plc:abc123'].every((v) => pattern.test(v))).toBe(true);
+    expect(['alice', 'alice.', 'did:plc:'].some((v) => pattern.test(v))).toBe(false);
+    expect(html).toContain('pattern="');
+    expect(html).toContain('aria-describedby="handle-hint"');
+    expect(html).not.toContain('aria-invalid');
   });
 
   it('serves the error page non-framable and non-cacheable', async () => {
@@ -572,6 +580,139 @@ describe('atproto provider', () => {
       installAtprotoMocks({ onPar: (init) => (parBody = new URLSearchParams((init.body as string) ?? '')) });
       await get(atprotoConfig, 'https://localhost:8273/users/auth/atproto?handle=alice.test');
       expect(parBody!.get('client_id')).toBe('https://localhost:8273/oauth-client-metadata.json');
+    });
+  });
+
+  describe('handle typeahead', () => {
+    const BSKY = 'https://public.api.bsky.app/xrpc/app.bsky.actor.searchActorsTypeahead';
+    const WAOW = 'https://typeahead.waow.tech/xrpc/app.bsky.actor.searchActorsTypeahead';
+    const alice = { did: 'did:plc:alicedid', handle: 'alice.test', displayName: 'Alice', avatar: 'https://cdn.test/alice.jpg' };
+
+    /** Answer each typeahead host with `answers[host]`, a Response or a thrown error; record URLs hit. */
+    function mockHosts(answers: Record<string, () => Response>): string[] {
+      const calls: string[] = [];
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+        calls.push(url);
+        const answer = answers[url.split('?')[0]];
+        if (!answer) throw new Error(`Unexpected fetch in test: ${url}`);
+        return answer();
+      }) as typeof fetch;
+      return calls;
+    }
+
+    it('proxies the first default host and trims the actors to what the form shows', async () => {
+      const calls = mockHosts({
+        [BSKY]: () =>
+          Response.json({
+            actors: [
+              { ...alice, labels: [], viewer: { muted: false } },
+              { did: 'did:plc:gone', handle: 'handle.invalid' },
+              { did: 'did:plc:bob', handle: 'bob.test', avatar: 'http://insecure.test/bob.jpg' },
+              { handle: 'no-did.test' },
+            ],
+          }),
+      });
+      const res = await get(atprotoConfig, 'http://example.com/users/auth/atproto/typeahead?q=%40ali');
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Cache-Control')).toBe('public, max-age=60');
+      expect(await res.json()).toEqual({ actors: [alice, { did: 'did:plc:bob', handle: 'bob.test' }] });
+      expect(calls).toHaveLength(1);
+      const upstream = new URL(calls[0]);
+      expect(upstream.searchParams.get('q')).toBe('ali'); // leading @ stripped
+      expect(upstream.searchParams.get('limit')).toBe('5');
+    });
+
+    it('falls over to the next host when one fails to answer', async () => {
+      const calls = mockHosts({
+        [BSKY]: () => {
+          throw new TypeError('network down');
+        },
+        [WAOW]: () => Response.json({ actors: [alice] }),
+      });
+      const res = await get(atprotoConfig, 'http://example.com/users/auth/atproto/typeahead?q=ali');
+
+      expect(await res.json()).toEqual({ actors: [alice] });
+      expect(calls.map((c) => c.split('?')[0])).toEqual([BSKY, WAOW]);
+    });
+
+    it('also falls over on an error status or a malformed body', async () => {
+      const calls = mockHosts({
+        'https://one.test/xrpc/app.bsky.actor.searchActorsTypeahead': () => new Response('overloaded', { status: 503 }),
+        'https://two.test/xrpc/app.bsky.actor.searchActorsTypeahead': () => Response.json({ unexpected: true }),
+        'https://three.test/xrpc/app.bsky.actor.searchActorsTypeahead': () => Response.json({ actors: [alice] }),
+      });
+      const config = { providers: { atproto: { typeahead: ['https://one.test', 'https://two.test', 'https://three.test'] } } };
+      const res = await get(config, 'http://example.com/users/auth/atproto/typeahead?q=ali');
+
+      expect(await res.json()).toEqual({ actors: [alice] });
+      expect(calls).toHaveLength(3);
+    });
+
+    it('stops at a host that answers with no matches', async () => {
+      const calls = mockHosts({ [BSKY]: () => Response.json({ actors: [] }) });
+      const res = await get(atprotoConfig, 'http://example.com/users/auth/atproto/typeahead?q=zzzz');
+
+      expect(await res.json()).toEqual({ actors: [] });
+      expect(calls).toHaveLength(1);
+    });
+
+    it('answers 502 with no suggestions when every host fails', async () => {
+      mockHosts({
+        [BSKY]: () => new Response('down', { status: 500 }),
+        [WAOW]: () => new Response('down', { status: 500 }),
+      });
+      const res = await get(atprotoConfig, 'http://example.com/users/auth/atproto/typeahead?q=ali');
+
+      expect(res.status).toBe(502);
+      expect(res.headers.get('Cache-Control')).toBe('no-store');
+      expect(await res.json()).toEqual({ actors: [] });
+    });
+
+    it('does not search upstream for an empty query or a DID', async () => {
+      const calls = mockHosts({});
+      for (const q of ['', '%20%40', 'did:plc:alicedid']) {
+        const res = await get(atprotoConfig, `http://example.com/users/auth/atproto/typeahead?q=${q}`);
+        expect(await res.json()).toEqual({ actors: [] });
+      }
+      expect(calls).toHaveLength(0);
+    });
+
+    it('enhances the handle form with the script, the endpoint, and a CSP that allows them', async () => {
+      const res = await get(atprotoConfig, 'http://example.com/users/auth/atproto');
+      const html = await res.text();
+      expect(html).toContain('data-typeahead="/users/auth/atproto/typeahead"');
+      expect(html).toContain('<script src="/users/atproto-login.js" defer></script>');
+      const csp = res.headers.get('Content-Security-Policy');
+      expect(csp).toContain("script-src 'self'");
+      expect(csp).toContain("connect-src 'self'");
+      expect(csp).toContain('img-src https:');
+      expect(csp).not.toContain('form-action');
+    });
+
+    it('is turned off with typeahead: false', async () => {
+      const config = { providers: { atproto: { typeahead: false as const } } };
+      const form = await get(config, 'http://example.com/users/auth/atproto');
+      const html = await form.text();
+      expect(html).not.toContain('data-typeahead');
+      // The login script still runs (it manages the Continue button), but it may fetch nothing.
+      expect(html).toContain('<script src="/users/atproto-login.js" defer></script>');
+      const csp = form.headers.get('Content-Security-Policy');
+      expect(csp).toContain("script-src 'self'");
+      expect(csp).not.toContain('connect-src');
+      expect(csp).not.toContain('img-src');
+
+      // The proxy route is not mounted, so nothing claims it.
+      const calls = mockHosts({});
+      const res = await get(config, 'http://example.com/users/auth/atproto/typeahead?q=ali');
+      expect(res.headers.get('Content-Type') ?? '').not.toContain('application/json');
+      expect(calls).toHaveLength(0);
+    });
+
+    it('rejects typeahead hosts that are not URLs, and an empty list', () => {
+      expect(() => createStartupAPI({ providers: { atproto: { typeahead: ['not a url'] } } })).toThrow();
+      expect(() => createStartupAPI({ providers: { atproto: { typeahead: [] } } })).toThrow();
     });
   });
 });
