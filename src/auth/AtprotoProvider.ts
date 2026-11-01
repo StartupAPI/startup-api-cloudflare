@@ -7,6 +7,7 @@ import type { ProviderOptions } from '../schemas/config';
 import { OAuthProvider, type AuthContext, type ExchangeResult, type OAuthTokenResponse, type UserProfile } from './OAuthProvider';
 import { dpopFetch, generateDpopKey, generatePkce, randomToken } from './atproto/crypto';
 import { fetchProfile, fetchSession, resolveIdentity, type ResolverOptions } from './atproto/identity';
+import { DEFAULT_TYPEAHEAD_HOSTS, normalizeTypeaheadQuery, searchActorsTypeahead } from './atproto/typeahead';
 
 const FLOW_COOKIE = 'atproto_flow';
 // Transient flow state lives only for the duration of the redirect round-trip.
@@ -29,6 +30,14 @@ interface AtprotoFlowState {
   handle?: string;
   returnUrl: string | null;
 }
+
+/**
+ * What the handle field accepts, as an HTML `pattern` (matched against the whole value, with the `v`
+ * flag, so `-` is escaped inside classes): an atproto handle (https://atproto.com/specs/handle),
+ * optionally `@`-prefixed, or a DID. The server does the real resolution; this only lets the browser
+ * stop an obviously incomplete entry before it is sent.
+ */
+export const HANDLE_OR_DID_PATTERN = String.raw`@?([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?|did:[a-z]+:[a-zA-Z0-9._:%\-]*[a-zA-Z0-9._\-]`;
 
 /** Hostnames that make the auth origin a local development machine (atproto loopback client mode). */
 const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];
@@ -80,6 +89,8 @@ export class AtprotoProvider extends OAuthProvider {
   private resolverOptions: ResolverOptions = {};
   /** Loopback client mode only: the `127.0.0.1` origin the whole login flow must run on. */
   private loopbackOrigin: string | null = null;
+  /** Handle-autocomplete aggregators, in failover order; empty when suggestions are off. */
+  private typeaheadHosts: string[] = DEFAULT_TYPEAHEAD_HOSTS;
 
   static create(env: StartupAPIEnv, redirectBase: string, options?: ProviderOptions): AtprotoProvider | null {
     if (!isAtprotoEnabled(options, env)) return null;
@@ -101,6 +112,7 @@ export class AtprotoProvider extends OAuthProvider {
       plcUrl: options?.plcUrl?.trim() || undefined,
       dohUrl: options?.dohUrl?.trim() || undefined,
     };
+    if (options?.typeahead !== undefined) provider.typeaheadHosts = options.typeahead || [];
     return provider;
   }
 
@@ -147,7 +159,23 @@ export class AtprotoProvider extends OAuthProvider {
     if (ctx.url.pathname === this.metadataPath) {
       return Response.json(this.getClientMetadata());
     }
+    if (this.typeaheadHosts.length && ctx.url.pathname === `${ctx.authPath}/atproto/typeahead`) {
+      return this.handleTypeahead(ctx);
+    }
     return null;
+  }
+
+  /**
+   * Handle-autocomplete proxy for the login form: `?q=` → `{ actors }` from the first aggregator that
+   * answers. Responds 502 (with an empty list) when every host failed, so the form just shows nothing.
+   */
+  private async handleTypeahead(ctx: AuthContext): Promise<Response> {
+    const q = normalizeTypeaheadQuery(ctx.url.searchParams.get('q'));
+    if (!q) return Response.json({ actors: [] });
+    const actors = await searchActorsTypeahead(this.typeaheadHosts, q);
+    if (!actors) return Response.json({ actors: [] }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
+    // Answers depend only on the query, not on who asks; a short cache absorbs repeated keystrokes.
+    return Response.json({ actors }, { headers: { 'Cache-Control': 'public, max-age=60' } });
   }
 
   /**
@@ -322,10 +350,19 @@ export class AtprotoProvider extends OAuthProvider {
   private renderHandleForm(ctx: AuthContext, returnUrl: string | null, options: { error?: string; handle?: string } = {}): Response {
     const action = `${ctx.authPath}/atproto`;
     const returnField = returnUrl ? `<input type="hidden" name="return_url" value="${escapeHtml(returnUrl)}" />` : '';
-    const errorBanner = options.error ? `<div class="error" role="alert">${escapeHtml(options.error)}</div>` : '';
+    const errorBanner = options.error ? `<div class="error" id="handle-error" role="alert">${escapeHtml(options.error)}</div>` : '';
+    // The hint always describes the field; a failed attempt's error does too, and marks it invalid.
+    const describedBy = options.error ? 'handle-hint handle-error' : 'handle-hint';
+    const invalidAttr = options.error ? ' aria-invalid="true"' : '';
     const handleValue = options.handle ? ` value="${escapeHtml(options.handle)}"` : '';
     const status = options.error ? 400 : 200;
     const stylesheet = `${escapeHtml(ctx.usersPath)}style.css`;
+    // The login script is progressive enhancement: it keeps Continue disabled until the field holds a
+    // valid identifier, shows progress once submitted, and (with typeahead on) suggests accounts.
+    // Without it the form works unchanged.
+    const typeahead = this.typeaheadHosts.length > 0;
+    const typeaheadAttr = typeahead ? ` data-typeahead="${escapeHtml(`${action}/typeahead`)}"` : '';
+    const loginScript = `<script src="${escapeHtml(ctx.usersPath)}atproto-login.js" defer></script>`;
     const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -334,15 +371,35 @@ export class AtprotoProvider extends OAuthProvider {
 <title>Login with your Atmosphere account</title>
 <link rel="stylesheet" href="${stylesheet}" />
 <style>
-  body { margin: 0; padding: 1rem; box-sizing: border-box; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text); }
+  /* Anchored near the top, not centered: suggestions grow the card downward, so Continue never moves. */
+  body { margin: 0; padding: max(1rem, 15vh) 1rem 1rem; box-sizing: border-box; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; background: var(--bg); color: var(--text); }
   .auth-card { background: var(--surface); border: 1px solid var(--border); padding: 2rem; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); width: 23rem; max-width: 100%; box-sizing: border-box; }
   .auth-card h1 { font-size: 1rem; margin: 0 0 1rem; color: var(--text); white-space: nowrap; }
   .auth-card label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.35rem; }
-  .auth-card input[type=text] { width: 100%; box-sizing: border-box; padding: 0.6rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; background: var(--surface); color: var(--text); }
-  .auth-card input[type=text]:focus { outline: none; border-color: #4a8ad4; }
-  .auth-card button { margin-top: 1rem; width: 100%; padding: 0.65rem; border: 0; border-radius: 8px; background: #4a8ad4; color: #fff; font-size: 0.95rem; cursor: pointer; }
-  .auth-card button:hover { background: #3d77ba; }
+  /* 1rem keeps iOS from zooming into the field on focus. */
+  .auth-card input[type=text] { width: 100%; box-sizing: border-box; padding: 0.6rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; background: var(--surface); color: var(--text); }
+  .auth-card :focus-visible { outline: 2px solid #4a8ad4; outline-offset: 2px; }
+  .auth-card button[type=submit] { margin-top: 1rem; width: 100%; padding: 0.65rem; border: 0; border-radius: 8px; background: #4a8ad4; color: #fff; font-size: 0.95rem; cursor: pointer; }
+  .auth-card button[type=submit]:hover:not(:disabled, [aria-disabled=true]) { background: #3d77ba; }
+  /* aria-disabled (not ready yet, but focusable and explains why when pressed) looks like disabled (logging in). */
+  .auth-card button[type=submit]:is(:disabled, [aria-disabled=true]) { opacity: 0.55; cursor: not-allowed; }
+  .auth-card[aria-busy=true] button[type=submit] { cursor: progress; }
   .auth-card p { font-size: 0.8rem; color: var(--text-muted); margin: 0.75rem 0 0; }
+  .auth-card .hint { margin: 0 0 0.5rem; }
+  .handle-field .selected { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .handle-field .selected[hidden] { display: none; }
+  .suggestions { margin-top: 1rem; }
+  .suggestions[hidden] { display: none; }
+  .auth-card .suggestions h2 { margin: 0 0 0.35rem; font-size: 0.85rem; font-weight: normal; color: var(--text-secondary); }
+  .suggestions ul { margin: 0; padding: 0; list-style: none; }
+  .suggestions button { display: flex; align-items: center; gap: 0.6rem; width: 100%; padding: 0.4rem 0.5rem; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .suggestions button:hover, .suggestions button:focus-visible { background: var(--hover-bg); }
+  .suggestions button:focus-visible { outline-offset: -2px; }
+  .visually-hidden:where(:not(:focus-within, :active)) { position: absolute !important; clip-path: inset(50%) !important; overflow: hidden !important; width: 1px !important; height: 1px !important; margin: -1px !important; padding: 0 !important; border: 0 !important; white-space: nowrap !important; }
+  .auth-card .avatar { flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--surface-alt); object-fit: cover; }
+  .auth-card .names { min-width: 0; display: flex; flex-direction: column; }
+  .auth-card .display-name { font-size: 0.9rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .auth-card .handle { font-size: 0.8rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .auth-card .error { background: var(--danger-soft-bg); border: 1px solid var(--danger); color: var(--danger); border-radius: 8px; padding: 0.6rem 0.7rem; font-size: 0.82rem; margin-bottom: 1rem; word-break: break-word; }
 </style>
 </head>
@@ -351,23 +408,30 @@ export class AtprotoProvider extends OAuthProvider {
     <h1>Login with your Atmosphere account</h1>
     ${errorBanner}
     <label for="handle">Your handle or DID</label>
-    <input type="text" id="handle" name="handle" placeholder="alice.bsky.social"${handleValue} autocomplete="username" autofocus required />
+    <p class="hint" id="handle-hint">For example alice.bsky.social. Your account's own server handles the login.</p>
+    <div class="handle-field">
+      <input type="text" id="handle" name="handle" placeholder="alice.bsky.social"${handleValue}${typeaheadAttr} pattern="${escapeHtml(HANDLE_OR_DID_PATTERN)}" aria-describedby="${describedBy}"${invalidAttr} autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" autofocus required />
+    </div>
     ${returnField}
     <button type="submit">Continue</button>
-    <p>Enter your atproto handle (e.g. alice.bsky.social) or DID. Your account's own server handles the login.</p>
   </form>
+  ${loginScript}
 </body>
 </html>`;
     return new Response(html, {
       status,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
-        // Hardening: same-origin styles only, never framed, never cached (the form reflects the
-        // user-supplied handle). NOTE: deliberately NO `form-action` directive — submitting this form
+        // Hardening: same-origin styles and scripts only, never framed, never cached (the form reflects
+        // the user-supplied handle). With typeahead on, the script calls only our own proxy, and
+        // suggestion avatars come from whichever aggregator answered, so images may load from any https
+        // host. NOTE: deliberately NO `form-action` directive — submitting this form
         // hits our endpoint, which 302-redirects to the user's *own* authorization server (any PDS).
         // `form-action` is enforced across the whole redirect chain, so `'self'` (or any fixed list)
         // would block that cross-origin redirect and the login would silently fail.
-        'Content-Security-Policy': "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+        'Content-Security-Policy': typeahead
+          ? "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src https:; base-uri 'none'; frame-ancestors 'none'"
+          : "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer',
         'Cache-Control': 'no-store',

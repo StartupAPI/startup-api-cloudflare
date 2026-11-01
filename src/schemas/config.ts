@@ -70,6 +70,13 @@ export const ProviderOptionsObjectSchema = z.object({
    */
   customOAuthClientMetadataURL: z.string().min(1).optional(),
   /**
+   * atproto only: handle autocomplete on the login form. A list of aggregator base URLs that answer
+   * `app.bsky.actor.searchActorsTypeahead`, tried in order — a host that fails to answer is skipped
+   * for the next. Default: `['https://public.api.bsky.app', 'https://typeahead.waow.tech']`. `false`
+   * turns suggestions off (the form then sends nothing anywhere until it is submitted).
+   */
+  typeahead: z.union([z.literal(false), z.array(z.string().url()).min(1)]).optional(),
+  /**
    * Lazily re-check entitlements on the request hot path when the cache is older than this duration.
    * ON by default for entitlement providers — default 1 day for Patreon, 15 min otherwise. Pass a
    * Duration to tune the interval, or `false` to disable (e.g. rely on the webhook only).
