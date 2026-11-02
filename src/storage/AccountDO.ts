@@ -303,10 +303,21 @@ export class AccountDO extends DurableObject {
     };
   }
 
-  private setBillingState(state: BillingState): void {
+  private async setBillingState(state: BillingState): Promise<void> {
     this.ctx.storage.transactionSync(() => {
       this.sql.exec('UPDATE account_info SET billing = ?, plan = ? WHERE id = 1', JSON.stringify(state), state.plan_slug);
     });
+
+    // Update SystemDO index
+    try {
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.updateAccountIndex(this.ctx.id.toString(), {
+        plan: state.plan_slug,
+        status: state.status,
+      });
+    } catch (_e) {
+      console.error('Failed to update account index in SystemDO', _e);
+    }
   }
 
   async getBillingInfo(): Promise<{ state: BillingState; plan_details: any }> {
@@ -373,7 +384,7 @@ export class AccountDO extends DurableObject {
       next_billing_date: Date.now() + (plan.schedules[schedule_idx]?.charge_period || 30) * 24 * 60 * 60 * 1000,
     };
 
-    this.setBillingState(newState);
+    await this.setBillingState(newState);
 
     return { success: true, state: newState };
   }
@@ -397,7 +408,7 @@ export class AccountDO extends DurableObject {
       next_plan_slug: currentPlan.downgrade_to_slug,
     };
 
-    this.setBillingState(newState);
+    await this.setBillingState(newState);
 
     return { success: true, state: newState };
   }
