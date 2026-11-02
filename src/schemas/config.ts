@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AccessPolicySchema } from './policy';
 import { FeatureDeliverySchema, FeaturesConfigSchema } from './feature';
+import type { StartupAPIEnv } from '../StartupAPIEnv';
 
 /**
  * Zod schema + types for the StartupAPI configuration factory (see src/createStartupAPI.ts).
@@ -69,6 +70,13 @@ export const ProviderOptionsObjectSchema = z.object({
    */
   customOAuthClientMetadataURL: z.string().min(1).optional(),
   /**
+   * atproto only: handle autocomplete on the login form. A list of aggregator base URLs that answer
+   * `app.bsky.actor.searchActorsTypeahead`, tried in order — a host that fails to answer is skipped
+   * for the next. Default: `['https://public.api.bsky.app', 'https://typeahead.waow.tech']`. `false`
+   * turns suggestions off (the form then sends nothing anywhere until it is submitted).
+   */
+  typeahead: z.union([z.literal(false), z.array(z.string().url()).min(1)]).optional(),
+  /**
    * Lazily re-check entitlements on the request hot path when the cache is older than this duration.
    * ON by default for entitlement providers — default 1 day for Patreon, 15 min otherwise. Pass a
    * Duration to tune the interval, or `false` to disable (e.g. rely on the webhook only).
@@ -111,6 +119,20 @@ export const SessionConfigSchema = z.object({
   ttl: DurationSchema.optional(),
 });
 
+/** What an `origin` resolver receives for each request. */
+export interface OriginContext {
+  request: Request;
+  /** The incoming request's URL (a copy; changing it has no effect). */
+  url: URL;
+  env: StartupAPIEnv;
+}
+
+/**
+ * Picks the origin's base URL for a request, for example from its hostname. Returning null or undefined
+ * means this request has no origin: it gets a 404 and nothing is forwarded.
+ */
+export type OriginResolver = (ctx: OriginContext) => string | URL | null | undefined | Promise<string | URL | null | undefined>;
+
 export const StartupAPIConfigSchema = z.object({
   providers: z.record(z.string(), ProviderOptionsSchema).optional(),
   accessPolicy: AccessPolicySchema.optional(),
@@ -121,6 +143,12 @@ export const StartupAPIConfigSchema = z.object({
   features: FeaturesConfigSchema.optional(),
   /** How resolved features reach the origin: the request header and, optionally, the HTML page. */
   featureDelivery: FeatureDeliverySchema.optional(),
+  /**
+   * Choose the origin per request instead of the fixed ORIGIN_URL, e.g. one deployment in front of
+   * several origins by hostname. Requests are addressed to the returned URL, like ORIGIN_URL; an ORIGIN
+   * service binding, when present, still carries them.
+   */
+  origin: z.custom<OriginResolver>((v) => typeof v === 'function', { message: 'origin must be a function' }).optional(),
 });
 
 export type ProviderOptions = z.infer<typeof ProviderOptionsSchema>;

@@ -18,7 +18,7 @@ export const CredentialDO = instance.CredentialDO;
 
 export { createStartupAPI };
 export { Feature, hasFeature } from './features/Feature';
-export type { StartupAPIConfig } from './schemas/config';
+export type { StartupAPIConfig, OriginContext, OriginResolver } from './schemas/config';
 export type { FeatureConfig, FeatureDelivery } from './schemas/feature';
 
 export default instance.default;

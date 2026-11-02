@@ -59,7 +59,8 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 
 | Variable                 | Required | Default   | Description                                                                   |
 | :----------------------- | :------- | :-------- | :---------------------------------------------------------------------------- |
-| `ORIGIN_URL`             | **Yes**  | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
+| `ORIGIN_URL`             | **Yes**¹ | N/A       | The base URL of your origin application (e.g., `https://your-app-origin.com`) |
+| `ORIGIN_SECRET`          | No       | N/A       | Secret sent to the origin with every request (see below)                      |
 | `USERS_PATH`             | No       | `/users/` | The path used to serve internal assets like `power-strip.js`                  |
 | `AUTH_ORIGIN`            | No       | N/A       | Optional base URL for OAuth redirects (overrides request origin)              |
 | `GOOGLE_CLIENT_ID`       | No       | N/A       | Google OAuth2 Client ID                                                       |
@@ -70,6 +71,8 @@ Either way, set your production secrets (`SESSION_SECRET`, OAuth credentials) on
 | `PATREON_CLIENT_SECRET`  | No       | N/A       | Patreon OAuth2 Client Secret                                                  |
 | `PATREON_WEBHOOK_SECRET` | No       | N/A       | Secret for verifying Patreon webhook signatures                               |
 | `ATPROTO_ENABLED`        | No       | N/A       | Set truthy (`true`/`1`/`yes`/`on`) to enable AT Protocol (Atmosphere) login   |
+
+¹ Not required when the origin is reached through an `ORIGIN` [service binding](#reaching-the-origin-through-a-service-binding), or chosen per request with the [`origin` option](#choosing-the-origin-per-request).
 
 > AT Protocol (Atmosphere) login needs **no client secret** — it is a public OAuth client. Enable it either by setting `ATPROTO_ENABLED` truthy (a per-deployment switch) **or** through the `createStartupAPI` factory (see [AT Protocol / Atmosphere](#at-protocol--atmosphere-atproto) below). A factory `atproto: { enabled: false }` overrides the env flag, so a deployment can force it off.
 
@@ -127,6 +130,7 @@ const api = createStartupAPI({
     //   scopes: 'account:email',         // extra permissions on top of the base `atproto` (this one adds the account email)
     //   useRootOAuthClientMetadata: false, // keep the client-metadata document under USERS_PATH (default: true, served at /oauth-client-metadata.json)
     //   customOAuthClientMetadataURL: '/oauth-client-metadata.json', // use your own self-hosted document as client_id (requires useRootOAuthClientMetadata: false)
+    //   typeahead: ['https://public.api.bsky.app', 'https://typeahead.waow.tech'], // handle autocomplete hosts, tried in order (this is the default); false turns it off
     //   enabled: false,                  // explicit opt-out (e.g. for dynamically-built config)
     // },
   },
@@ -146,6 +150,8 @@ export const { UserDO, AccountDO, SystemDO, CredentialDO } = api;
    DID doc─▶ PDS endpoint    (the #atproto_pds service)
    PDS    ─▶ auth server     (.well-known/oauth-protected-resource → oauth-authorization-server)
    ```
+
+**Handle autocomplete.** As a visitor types into the handle field, the form suggests matching accounts with their avatar, display name and handle; picking one logs in with it. A PDS can't search the wider network, so suggestions come from aggregators that answer the `app.bsky.actor.searchActorsTypeahead` XRPC call — by default Bluesky's public AppView (`https://public.api.bsky.app`), then [`typeahead.waow.tech`](https://tangled.org/zzstoatzz.io/typeahead). The browser only talks to the worker (`/users/auth/atproto/typeahead?q=`), which tries the hosts in order and skips any that fails to answer (network error, 2.5s timeout, error status, or malformed body). Set `typeahead` to your own list of hosts, or to `false` to send nothing anywhere until the form is submitted. Suggestion avatars load directly from the host's image CDN. Suggestions are listed below the **Continue** button (never over it) as buttons reachable with Tab or the arrow keys, and are announced to screen readers. **Continue** looks dimmed until the field holds a valid handle or DID (pressing it early explains what's missing), and says **Logging in…** while the visitor is redirected to their server; a picked suggestion replaces the field with that account. Without JavaScript the form works as before.
 
 The flow uses PKCE, DPoP-bound (sender-constrained) tokens, and Pushed Authorization Requests (PAR) as required by the atproto OAuth profile. The PLC directory and DNS-over-HTTPS resolver are generic infrastructure and can be overridden via the `plcUrl` / `dohUrl` factory options.
 
@@ -200,11 +206,46 @@ The consent screen then additionally asks for email access, and the email is sto
 }
 ```
 
+### Reaching the origin through a service binding
+
+When your origin is another Cloudflare Worker in the same account, bind it as `ORIGIN` instead of (or as well as) setting `ORIGIN_URL`:
+
+```json
+{
+  "services": [{ "binding": "ORIGIN", "service": "your-origin-worker" }]
+}
+```
+
+Requests to the origin then go straight to that Worker through the [service binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/), never over the public internet. That lets the origin Worker have **no public URL at all** (`"workers_dev": false` and no routes), so the only way to reach it is through Startup API and it can trust the `X-StartupAPI-*` headers it receives.
+
+- With only `ORIGIN` set, the origin receives each request at its public URL and `Host` (for example `https://app.example.com/page`).
+- With both set, requests go through the binding but are addressed to `ORIGIN_URL`, as before.
+- Origin-sourced gate pages (`{ origin: '/path' }`) go through the binding too.
+
+### Choosing the origin per request
+
+To put one deployment in front of several origins, pass an `origin` function to `createStartupAPI`. It gets each request and returns the base URL of the origin to send it to, for example by hostname:
+
+```ts
+const api = createStartupAPI({
+  // pr-42.previews.example.com → https://pr-42.origins.example.com
+  origin: ({ url }) => {
+    const m = url.hostname.match(/^pr-(\d+)\.previews\.example\.com$/);
+    return m ? `https://pr-${m[1]}.origins.example.com` : null;
+  },
+});
+```
+
+- The function receives `{ request, url, env }` and may be async. It runs on every request that would go to the origin, after Startup API's own paths (`USERS_PATH` pages, the API and login), which keep working whatever it returns.
+- Requests are addressed to the returned URL, with `Host` set to match, exactly as with `ORIGIN_URL`. It takes the place of `ORIGIN_URL`, so that variable isn't needed.
+- Returning `null` or `undefined` means this request has no origin: the visitor gets a 404 and nothing is forwarded. Only return URLs you trust; never build one from unchecked parts of the request.
+- With an `ORIGIN` service binding as well, requests still go through the binding, addressed to the returned URL. Origin-sourced gate pages use the returned origin too.
+
 ## How It Works
 
 1. **Request Interception:** The worker receives all incoming requests
 2. **Path Mapping:** If the request path starts with `USERS_PATH`, the worker serves assets directly from the `public/users/` directory
-3. **Proxying:** All other requests are proxied to the configured `ORIGIN_URL`
+3. **Proxying:** All other requests are proxied to the origin: the `ORIGIN` service binding when one is configured, otherwise the URL from the `origin` option or `ORIGIN_URL`
 4. **Injection:** For `text/html` responses, the worker injects a `<script>` tag and a `<power-strip>` custom element before serving the content to the user
 
 ### Customizing the power strip
@@ -284,7 +325,7 @@ StartupAPI can gate access to paths and forward the visitor's login/entitlement 
 
 Configure an ordered list of rules (first match wins) mapping a path pattern to a requirement, plus a `default` for unmatched paths. Requirement modes:
 
-- **`bypass`** — raw pass-through: no credential check, no identity resolution, no headers, no power-strip injection.
+- **`bypass`** — raw pass-through: no credential check, no identity resolution, no headers, no power-strip injection. Client-supplied `X-StartupAPI-*` headers are still removed (see [Headers forwarded to the origin](#headers-forwarded-to-the-origin)).
 - **`public`** — anyone; the session is resolved and identity/entitlement headers are forwarded when present.
 - **`authenticated`** — any logged-in user.
 - **`entitlement`** — a provider condition: Patreon `active_patron`, a specific `benefit` (perk) ID, or a `tier` ID.
@@ -341,6 +382,20 @@ const accessPolicy = {
 ### Headers forwarded to the origin
 
 For non-`bypass` paths the worker forwards `X-StartupAPI-Authenticated`, `X-StartupAPI-Login-Provider`, a compact `X-StartupAPI-Entitlements` JSON, and (for Patreon) `X-StartupAPI-Patreon-Active` / `-Tiers` / `-Benefits` alongside the existing `X-StartupAPI-User-Id` / `-Account-Id`. When [feature flags](#feature-flags) are configured, `X-StartupAPI-Features` lists the ids of the features enabled for the visitor (comma-separated).
+
+The origin can rely on these headers because the worker **removes every `X-StartupAPI-*` header the visitor sent** before forwarding a request, on every path (including `bypass` paths and origin-sourced gate pages). A header reaches the origin only if the worker set it, so a logged-out visitor can't pass a made-up `X-StartupAPI-User-Id`. This only protects requests that come through the worker: make sure the origin can't be reached directly, or it can be sent any header. An `ORIGIN` [service binding](#reaching-the-origin-through-a-service-binding) lets the origin have no public URL at all; if it must keep one, use [`ORIGIN_SECRET`](#protecting-an-origin-with-a-public-url).
+
+#### Protecting an origin with a public URL
+
+When the origin has to stay reachable at its own URL, set an `ORIGIN_SECRET` (as a secret: `wrangler secret put ORIGIN_SECRET`). The worker then sends it as `X-StartupAPI-Origin-Secret` on **every** request it forwards, including `bypass` paths and origin-sourced gate pages. Give the origin the same value and have it refuse, or treat as logged out, any request without a matching header:
+
+```ts
+// In the origin (sketch): compare in constant time, and reject before trusting any X-StartupAPI-* header.
+const sent = request.headers.get('X-StartupAPI-Origin-Secret') ?? '';
+if (!timingSafeEqual(sent, env.ORIGIN_SECRET)) return new Response('Forbidden', { status: 403 });
+```
+
+Visitors can't forge or read it: like every `X-StartupAPI-*` header, a copy sent by the visitor is removed before the worker sets its own, and the worker never sends it back. It's worth setting even with a service binding, in case the origin's public URL is ever switched back on.
 
 ### Keeping entitlements fresh
 

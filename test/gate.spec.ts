@@ -105,6 +105,24 @@ describe('gate action — serves an explainer page in place', () => {
     }
   });
 
+  it('origin variant strips client-supplied X-StartupAPI headers', async () => {
+    const gate: Gate = { anonymous: { origin: '/early-access' } };
+    const fetchSpy = spyOrigin();
+    try {
+      const api = createStartupAPI({ accessPolicy: gatePolicy(gate) });
+      const ctx = createExecutionContext();
+      const req = new Request('http://example.com/gated', { headers: { 'X-StartupAPI-User-Id': 'forged-user' } });
+      const res = await api.fetch(req, env, ctx);
+      await waitOnExecutionContext(ctx);
+      expect(await res.text()).toBe('origin:/early-access');
+
+      const out = fetchSpy.mock.calls.at(-1)![0] as Request;
+      expect(out.headers.has('X-StartupAPI-User-Id')).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('unentitled (logged-in, lacks benefit) → asset variant', async () => {
     const gate: Gate = { anonymous: { asset: '/early-access' }, unentitled: { asset: '/pledge-needed' } };
     const cookie = await createPatreonUser(['some-other-benefit']);

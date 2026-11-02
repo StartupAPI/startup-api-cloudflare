@@ -132,4 +132,60 @@ describe('Custom Headers Tests', () => {
       fetchSpy.mockRestore();
     }
   });
+
+  it('should strip client-supplied X-StartupAPI headers when no session is present', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('OK', { status: 200 }));
+
+    try {
+      const res = await SELF.fetch('http://example.com/forged-anonymous', {
+        headers: {
+          'X-StartupAPI-User-Id': 'forged-user',
+          'X-StartupAPI-Account-Id': 'forged-account',
+          'X-StartupAPI-Authenticated': 'true',
+          'x-startupapi-login-provider': 'forged-provider',
+          'X-StartupAPI-Entitlements': '{"forged":true}',
+        },
+      });
+      expect(res.status).toBe(200);
+
+      const outboundRequest = fetchSpy.mock.calls.at(-1)![0] as Request;
+      expect(outboundRequest.headers.has('X-StartupAPI-User-Id')).toBe(false);
+      expect(outboundRequest.headers.has('X-StartupAPI-Account-Id')).toBe(false);
+      expect(outboundRequest.headers.has('X-StartupAPI-Login-Provider')).toBe(false);
+      expect(outboundRequest.headers.has('X-StartupAPI-Entitlements')).toBe(false);
+      // Set by the worker from the (missing) session, not taken from the client.
+      expect(outboundRequest.headers.get('X-StartupAPI-Authenticated')).toBe('false');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('should strip a client-supplied X-StartupAPI-Account-Id when the user has no current account', async () => {
+    const userId = env.USER.newUniqueId();
+    const userStub = env.USER.get(userId);
+    const userIdStr = userId.toString();
+
+    // Session but no membership, so the worker sets no X-StartupAPI-Account-Id of its own.
+    const { sessionId } = await userStub.createSession();
+    const encryptedCookie = await cookieManager.encrypt(`${sessionId}:${userIdStr}`);
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('OK', { status: 200 }));
+
+    try {
+      const res = await SELF.fetch('http://example.com/forged-account', {
+        headers: {
+          Cookie: `session_id=${encryptedCookie}`,
+          'X-StartupAPI-User-Id': 'forged-user',
+          'X-StartupAPI-Account-Id': 'forged-account',
+        },
+      });
+      expect(res.status).toBe(200);
+
+      const outboundRequest = fetchSpy.mock.calls.at(-1)![0] as Request;
+      expect(outboundRequest.headers.get('X-StartupAPI-User-Id')).toBe(userIdStr);
+      expect(outboundRequest.headers.has('X-StartupAPI-Account-Id')).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });

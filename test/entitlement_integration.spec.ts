@@ -195,4 +195,24 @@ describe('Entitlement headers + access policy', () => {
       fetchSpy.mockRestore();
     }
   });
+
+  it('bypass path strips client-supplied X-StartupAPI headers', async () => {
+    const fetchSpy = spyOrigin();
+    try {
+      const api = createStartupAPI({ accessPolicy: POLICY });
+      const ctx = createExecutionContext();
+      const req = new Request('http://example.com/raw', {
+        headers: { 'X-StartupAPI-User-Id': 'forged-user', 'X-StartupAPI-Authenticated': 'true' },
+      });
+      const res = await api.fetch(req, env, ctx);
+      await waitOnExecutionContext(ctx);
+      expect(res.status).toBe(200);
+
+      const out = fetchSpy.mock.calls.at(-1)![0] as Request;
+      expect(out.headers.has('X-StartupAPI-User-Id')).toBe(false);
+      expect(out.headers.has('X-StartupAPI-Authenticated')).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });

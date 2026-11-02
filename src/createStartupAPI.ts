@@ -23,7 +23,7 @@ import { handleSSR } from './handlers/ssr';
 
 import type { StartupAPIEnv } from './StartupAPIEnv';
 import { StartupAPIConfigSchema, DEFAULT_SESSION_TTL_MS, durationToMs } from './schemas/config';
-import type { StartupAPIConfig, ProviderOptions, ResolvedFreshness } from './schemas/config';
+import type { StartupAPIConfig, ProviderOptions, ResolvedFreshness, OriginResolver } from './schemas/config';
 import type { AccessPolicyConfig, PageSource } from './schemas/policy';
 import { AccessPolicy, evaluateAccess } from './policy/accessPolicy';
 import type { PolicyDecision } from './policy/accessPolicy';
@@ -50,9 +50,34 @@ function defaultEntitlementTtlMs(providerName?: string): number {
 }
 
 // The factory's request handler is a local `const fetch`, which would shadow the global fetch inside
-// its body. Use this alias to proxy to the origin via the *current* global fetch at call time (so test
-// spies on globalThis.fetch are honored).
-const originFetch = (...args: Parameters<typeof fetch>): Promise<Response> => globalThis.fetch(...args);
+// its body. Proxy to the origin through the ORIGIN service binding when one is configured, otherwise via
+// the *current* global fetch at call time (so test spies on globalThis.fetch are honored).
+const originFetch = (env: StartupAPIEnv, request: Request): Promise<Response> =>
+  env.ORIGIN ? env.ORIGIN.fetch(request) : globalThis.fetch(request);
+
+/** True when an origin is configured: an `origin` resolver, a service binding, an ORIGIN_URL, or a mix. */
+const hasOrigin = (env: StartupAPIEnv, resolver?: OriginResolver): boolean => !!resolver || !!env.ORIGIN || !!env.ORIGIN_URL;
+
+/**
+ * Remove every `X-StartupAPI-*` header the visitor sent. The origin trusts these headers for identity,
+ * so it must only ever see the ones this worker sets; a client-supplied `X-StartupAPI-User-Id` would
+ * otherwise reach it unchanged whenever the worker doesn't overwrite it (logged out, no current account,
+ * bypass paths).
+ */
+function stripStartupAPIHeaders(headers: Headers): void {
+  for (const name of [...headers.keys()]) {
+    if (name.startsWith('x-startupapi-')) headers.delete(name);
+  }
+}
+
+/**
+ * Mark an origin request as coming from this worker when ORIGIN_SECRET is set, so an origin with a
+ * public URL can refuse any request without it. Always called after stripStartupAPIHeaders, so a
+ * visitor can neither forge the header nor see its value.
+ */
+function setOriginSecret(headers: Headers, env: StartupAPIEnv): void {
+  if (env.ORIGIN_SECRET) headers.set('X-StartupAPI-Origin-Secret', env.ORIGIN_SECRET);
+}
 
 function isCronEnabled(options: ProviderOptions): boolean {
   const cron = options.entitlementCron;
@@ -106,10 +131,17 @@ function resolveAccessPolicy(configPolicy: AccessPolicyConfig | undefined): Acce
 
 /**
  * Serve a gate page body in place (no redirect), sourced from either the ASSETS binding (a local file)
- * or a path proxied from ORIGIN_URL. The configured status is re-stamped onto the response so e.g. a
+ * or a path proxied from the origin. The configured status is re-stamped onto the response so e.g. a
  * 200 asset can be served as a 403 gate.
  */
-async function serveGatePage(source: PageSource, status: number, request: Request, env: StartupAPIEnv, reqUrl: URL): Promise<Response> {
+async function serveGatePage(
+  source: PageSource,
+  status: number,
+  request: Request,
+  env: StartupAPIEnv,
+  reqUrl: URL,
+  originBase: URL | null,
+): Promise<Response> {
   let res: Response;
   if ('asset' in source) {
     // Serve a local file from ASSETS, mirroring the existing user-asset path.
@@ -117,11 +149,14 @@ async function serveGatePage(source: PageSource, status: number, request: Reques
     assetReq.headers.set('x-skip-worker', 'true');
     res = await env.ASSETS.fetch(assetReq);
   } else {
-    // Proxy a path from ORIGIN_URL (swap host, set Host), like the main origin proxy.
-    const target = new URL(source.origin, new URL(env.ORIGIN_URL));
+    // Proxy a path from the origin (swap host, set Host), like the main origin proxy. With only a
+    // service binding and no origin URL, the request keeps its own host.
+    const target = new URL(source.origin, originBase ?? reqUrl);
     const proxied = new Request(target.toString(), request);
     proxied.headers.set('Host', target.host);
-    res = await originFetch(proxied);
+    stripStartupAPIHeaders(proxied.headers);
+    setOriginSecret(proxied.headers, env);
+    res = await originFetch(env, proxied);
   }
   // Re-stamp the status (e.g. a 200 asset can be served as the configured gate status).
   return new Response(res.body, { status, headers: res.headers });
@@ -138,13 +173,14 @@ function denyResponse(
     request: Request;
     env: StartupAPIEnv;
     url: URL;
+    originBase: URL | null;
   },
 ): Response | Promise<Response> {
   if (decision.action === 'gate' && decision.gate) {
     // Serve an explainer page in place: anonymous variant for logged-out visitors, unentitled variant
     // (falling back to anonymous) for logged-in visitors who fail the requirement. No redirect.
     const source = ctx.authenticated ? (decision.gate.unentitled ?? decision.gate.anonymous) : decision.gate.anonymous;
-    return serveGatePage(source, decision.gate.status ?? 200, ctx.request, ctx.env, ctx.url);
+    return serveGatePage(source, decision.gate.status ?? 200, ctx.request, ctx.env, ctx.url, ctx.originBase);
   }
   if (decision.action === 'forbidden') {
     return new Response('Forbidden', { status: 403 });
@@ -176,6 +212,8 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
     .map(([name]) => name);
   const anyCron = cronProviders.length > 0;
   const patreonWebhookEnabled = providerConfigs.patreon?.entitlementWebhook === true;
+  // Taken from the raw config: a function passes through zod's custom check unchanged.
+  const originResolver = config.origin;
 
   const fetch = async (request: Request, env: StartupAPIEnv, ctx: ExecutionContext): Promise<Response> => {
     // Features first: plans and the access policy are validated against them.
@@ -196,7 +234,7 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       return env.ASSETS.fetch(request);
     }
 
-    if (!env.ORIGIN_URL || !env.SESSION_SECRET) {
+    if (!hasOrigin(env, originResolver) || !env.SESSION_SECRET) {
       return env.ASSETS.fetch(request);
     }
 
@@ -325,27 +363,40 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
       return env.ASSETS.fetch(newRequest);
     }
 
-    if (env.ORIGIN_URL) {
+    if (hasOrigin(env, originResolver)) {
+      // Where this request goes: the `origin` resolver's answer, otherwise ORIGIN_URL. Null with no
+      // resolver means a service binding alone, which keeps the request's own URL.
+      let originBase: URL | null = env.ORIGIN_URL ? new URL(env.ORIGIN_URL) : null;
+      if (originResolver) {
+        const resolved = await originResolver({ request, url: new URL(url), env });
+        if (!resolved) return new Response('Not Found', { status: 404 });
+        originBase = new URL(resolved);
+      }
+
       // Evaluate the access policy BEFORE any identity work, so bypass paths are a raw proxy.
       const rule = AccessPolicy.evaluate(url.pathname);
       const requestOrigin = env.AUTH_ORIGIN && env.AUTH_ORIGIN !== '' ? env.AUTH_ORIGIN : url.origin;
       const returnUrl = url.pathname + url.search;
 
-      const originUrl = new URL(env.ORIGIN_URL);
-      url.protocol = originUrl.protocol;
-      url.host = originUrl.host;
-      url.port = originUrl.port;
+      // Point the request at the origin URL when there is one. With only a service binding, the origin
+      // receives the request at its public URL (the binding decides where it goes, not the host).
+      if (originBase) {
+        url.protocol = originBase.protocol;
+        url.host = originBase.host;
+        url.port = originBase.port;
+      }
 
       const newRequest = new Request(url.toString(), request);
       newRequest.headers.set('Host', url.host);
+      // Never forward client-supplied identity, entitlement or feature headers, on any path; the ones
+      // the origin should see are set below from the resolved session.
+      stripStartupAPIHeaders(newRequest.headers);
+      setOriginSecret(newRequest.headers, env);
 
       if (rule.requirement.mode === 'bypass') {
         // Pure pass-through: no identity resolution, no headers, no power-strip injection.
-        return originFetch(newRequest);
+        return originFetch(env, newRequest);
       }
-
-      // Never forward a client-supplied feature list; it is set below from the resolved features.
-      newRequest.headers.delete('X-StartupAPI-Features');
 
       const user = await getUserFromSession(request, env, cookieManager, sessionTtlMs);
       const authenticated = !!user;
@@ -417,10 +468,11 @@ export function createStartupAPI(config: StartupAPIConfig = {}) {
           request,
           env,
           url,
+          originBase,
         });
       }
 
-      const response = await originFetch(newRequest);
+      const response = await originFetch(env, newRequest);
       const providers = getActiveProviders(env, providerConfigs);
       // Refresh the persistent session cookie's Max-Age when the DO extended the session (sliding renewal).
       const decorated = await injectPowerStrip(response, usersPath, providers, { authenticated, features: htmlFeatures });
