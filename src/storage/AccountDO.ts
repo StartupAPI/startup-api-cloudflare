@@ -308,11 +308,16 @@ export class AccountDO extends DurableObject {
       this.sql.exec('UPDATE account_info SET billing = ?, plan = ? WHERE id = 1', JSON.stringify(state), state.plan_slug);
     });
 
-    const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
-    await systemStub.updateAccountIndex(this.ctx.id.toString(), {
-      plan: state.plan_slug,
-      status: state.status,
-    });
+    // Update SystemDO index
+    try {
+      const systemStub = this.env.SYSTEM.get(this.env.SYSTEM.idFromName('global'));
+      await systemStub.updateAccountIndex(this.ctx.id.toString(), {
+        plan: state.plan_slug,
+        status: state.status,
+      });
+    } catch (_e) {
+      console.error('Failed to update account index in SystemDO', _e);
+    }
   }
 
   async getBillingInfo(): Promise<{ state: BillingState; plan_details: any }> {
